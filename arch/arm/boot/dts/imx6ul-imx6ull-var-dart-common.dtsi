@@ -220,21 +220,21 @@
 	status = "okay";
 
 	display0: display {
-		bits-per-pixel = <16>;
-		bus-width = <24>;
+		bits-per-pixel = <32>;
+		bus-width = <18>;
 
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: timing0 {
-				clock-frequency =<35000000>;
-				hactive = <800>;
-				vactive = <480>;
-				hfront-porch = <40>;
-				hback-porch = <40>;
-				hsync-len = <48>;
-				vback-porch = <29>;
+				clock-frequency =<12000000>;
+				hactive = <480>;
+				vactive = <640>;
+				hfront-porch = <10>;
+				hback-porch = <8>;
+				hsync-len = <32>;
+				vback-porch = <13>;
 				vfront-porch = <13>;
-				vsync-len = <3>;
+				vsync-len = <5>;
 				hsync-active = <0>;
 				vsync-active = <0>;
 				de-active = <1>;
@@ -536,6 +536,8 @@
 			fsl,pins = <
 				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x79
 				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x79
+				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x79
+				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x79
 			>;
 		};
 
