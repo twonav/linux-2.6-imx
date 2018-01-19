@@ -125,6 +125,14 @@ config LCD_LD9040
 	  If you have an LD9040 Panel, say Y to enable its
 	  control driver.
 
+config LCD_T55149GD030J
+	tristate "T55149GD030J LCD Driver"
+	depends on SPI_GPIO && BACKLIGHT_CLASS_DEVICE
+	default y
+	help
+	  If you have an T55149GD030J Panel, say Y to enable its
+	  LCD control driver.
+
 config LCD_AMS369FG06
 	tristate "AMS369FG06 AMOLED LCD Driver"
 	depends on SPI && BACKLIGHT_CLASS_DEVICE
