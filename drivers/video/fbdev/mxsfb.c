@@ -359,15 +359,15 @@ static const struct fb_bitfield def_rgb666[] = {
 
 static const struct fb_bitfield def_rgb888[] = {
 	[RED] = {
-		.offset = 16,
+		.offset = 0,
 		.length = 8,
 	},
 	[GREEN] = {
-		.offset = 8,
+		.offset = 16,
 		.length = 8,
 	},
 	[BLUE] = {
-		.offset = 0,
+		.offset = 8,
 		.length = 8,
 	},
 	[TRANSP] = {	/* no support for transparency */
@@ -1368,6 +1368,7 @@ MODULE_DEVICE_TABLE(of, mxsfb_dt_ids);
 
 static int mxsfb_probe(struct platform_device *pdev)
 {
+	printk("mxsfb_probe\n");
 	const struct of_device_id *of_id =
 			of_match_device(mxsfb_dt_ids, &pdev->dev);
 	struct resource *res;
@@ -1563,6 +1564,7 @@ static void mxsfb_shutdown(struct platform_device *pdev)
 #ifdef CONFIG_PM
 static int mxsfb_runtime_suspend(struct device *dev)
 {
+	printk("mxsfb_runtime_suspend\n");
 	release_bus_freq(BUS_FREQ_HIGH);
 	dev_dbg(dev, "mxsfb busfreq high release.\n");
 
@@ -1571,6 +1573,7 @@ static int mxsfb_runtime_suspend(struct device *dev)
 
 static int mxsfb_runtime_resume(struct device *dev)
 {
+	printk("mxsfb_runtime_resume\n");
 	request_bus_freq(BUS_FREQ_HIGH);
 	dev_dbg(dev, "mxsfb busfreq high request.\n");
 
@@ -1579,6 +1582,7 @@ static int mxsfb_runtime_resume(struct device *dev)
 
 static int mxsfb_suspend(struct device *pdev)
 {
+	printk("mxsfb_suspend\n");
 	struct mxsfb_info *host = dev_get_drvdata(pdev);
 	struct fb_info *fb_info = host->fb_info;
 	int saved_blank;
@@ -1597,6 +1601,7 @@ static int mxsfb_suspend(struct device *pdev)
 
 static int mxsfb_resume(struct device *pdev)
 {
+	printk("mxsfb_resume\n");
 	struct mxsfb_info *host = dev_get_drvdata(pdev);
 	struct fb_info *fb_info = host->fb_info;
 

@@ -21,11 +21,9 @@
 	};
 
 	backlight {
-		compatible = "pwm-backlight";
-		pwms = <&pwm1 0 20000>;
-		brightness-levels = <0 4 8 16 32 64 128 255>;
-		default-brightness-level = <6>;
-		status = "okay";
+		compatible = "gpio-backlight";
+		gpios = <&gpio4 17 GPIO_ACTIVE_HIGH>;
+		default-on;
 	};
 
 	pxp_v4l2 {

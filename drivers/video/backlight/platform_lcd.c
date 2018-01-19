@@ -44,6 +44,8 @@ static int platform_lcd_get_power(struct lcd_device *lcd)
 
 static int platform_lcd_set_power(struct lcd_device *lcd, int power)
 {
+	printk("platform_lcd_set_power\n");
+
 	struct platform_lcd *plcd = to_our_lcd(lcd);
 	int lcd_power = 1;
 
@@ -75,6 +77,9 @@ static struct lcd_ops platform_lcd_ops = {
 
 static int platform_lcd_probe(struct platform_device *pdev)
 {
+
+	printk("platform_lcd_probe\n");
+
 	struct plat_lcd_data *pdata;
 	struct platform_lcd *plcd;
 	struct device *dev = &pdev->dev;
