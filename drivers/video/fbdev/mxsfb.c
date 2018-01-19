@@ -1116,6 +1116,10 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	int i;
 	int ret = 0;
 
+	//PROVISIONAL: Hardcoded gpio's to enable display
+	gpio_request_one(133, GPIOF_DIR_OUT | GPIOF_INIT_HIGH, "standby");
+	gpio_request_one(136, GPIOF_DIR_OUT | GPIOF_INIT_HIGH, "reset");
+
 	host->id = of_alias_get_id(np, "lcdif");
 
 	display_np = of_parse_phandle(np, "display", 0);
