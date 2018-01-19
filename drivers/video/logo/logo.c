@@ -115,6 +115,24 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		/* M32R Linux logo */
 		logo = &logo_m32r_clut224;
 #endif
+#ifdef CONFIG_LOGO_FLASHER_BIG_CLUT224
+		logo = &logo_flasher_big_clut224;
+#endif
+#ifdef CONFIG_LOGO_FLASHER_SMALL_CLUT224
+		logo = &logo_flasher_small_clut224;
+#endif
+#ifdef CONFIG_LOGO_TWONAV_BIG_CLUT224
+		logo = &logo_twonav_big_clut224;
+#endif
+#ifdef CONFIG_LOGO_TWONAV_SMALL_CLUT224
+		logo = &logo_twonav_small_clut224;
+#endif
+#ifdef CONFIG_LOGO_OS_BIG_CLUT224
+		logo = &logo_os_big_clut224;
+#endif
+#ifdef CONFIG_LOGO_OS_SMALL_CLUT224
+		logo = &logo_os_small_clut224;
+#endif
 	}
 	return logo;
 }
