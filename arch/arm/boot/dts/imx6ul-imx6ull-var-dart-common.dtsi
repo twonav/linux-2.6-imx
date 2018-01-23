@@ -220,6 +220,10 @@
 	display0: display {
 		bits-per-pixel = <32>;
 		bus-width = <18>;
+		gpios = <
+				&gpio5 5 GPIO_ACTIVE_HIGH
+				&gpio5 8 GPIO_ACTIVE_HIGH
+				>;
 
 		display-timings {
 			native-mode = <&timing0>;

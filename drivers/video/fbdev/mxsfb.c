@@ -1111,14 +1111,11 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	struct device_node *display_np;
 	struct device_node *timings_np;
 	struct display_timings *timings = NULL;
+	enum of_gpio_flags gpio_flags;
 	const char *disp_dev;
 	u32 width;
 	int i;
 	int ret = 0;
-
-	//PROVISIONAL: Hardcoded gpio's to enable display
-	gpio_request_one(133, GPIOF_DIR_OUT | GPIOF_INIT_HIGH, "standby");
-	gpio_request_one(136, GPIOF_DIR_OUT | GPIOF_INIT_HIGH, "reset");
 
 	host->id = of_alias_get_id(np, "lcdif");
 
@@ -1132,6 +1129,26 @@ static int mxsfb_init_fbinfo_dt(struct mxsfb_info *host)
 	if (ret < 0) {
 		dev_err(dev, "failed to get property bus-width\n");
 		goto put_display_node;
+	}
+
+	int number_gpios = of_gpio_count(display_np);
+
+	printk("GPIOS found = %d\n", number_gpios);
+
+	for(i = 0; i < number_gpios; ++i)
+	{
+		int gpio = of_get_gpio_flags(display_np, i, &gpio_flags);
+
+		if (!gpio_is_valid(gpio)) {
+			if (gpio != -EPROBE_DEFER) {
+				printk("Error: The gpios parameter is missing or invalid.\n");
+			}
+			return gpio;
+		}
+		int active = (gpio_flags & OF_GPIO_ACTIVE_LOW) ? 0 : 1;
+		printk("GPIOS property found = %d, active= %d\n", gpio, active);
+		devm_gpio_request_one(dev, gpio, GPIOF_DIR_OUT |
+			    (active ? GPIOF_INIT_HIGH : GPIOF_INIT_LOW), "mxsfb");
 	}
 
 	switch (width) {
