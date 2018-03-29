@@ -21,9 +21,11 @@
 	};
 
 	backlight {
-		compatible = "gpio-backlight";
-		gpios = <&gpio4 17 GPIO_ACTIVE_HIGH>;
-		default-on;
+		compatible = "pwm-backlight";
+		pwms = <&pwm1 0 20000>;
+		brightness-levels = <0 4 8 16 32 64 128 255>;
+		default-brightness-level = <6>;
+		status = "okay";
 	};
 
 	pxp_v4l2 {
@@ -219,10 +221,10 @@
 
 	display0: display {
 		bits-per-pixel = <32>;
-		bus-width = <18>;
+		bus-width = <24>;
 		gpios = <
 				&gpio5 5 GPIO_ACTIVE_HIGH
-				&gpio5 8 GPIO_ACTIVE_HIGH
+				&gpio3 4 GPIO_ACTIVE_HIGH
 				>;
 
 		display-timings {
@@ -276,11 +278,7 @@
 	xnur-gpio = <&gpio1 3 GPIO_ACTIVE_LOW>;
 	measure_delay_time = <0xffff>;
 	pre_charge_time = <0xfff>;
-#ifdef WIFI
-	status = "disabled";
-#else
 	status = "okay";
-#endif
 };
 
 /* Console UART */
@@ -464,9 +462,6 @@
 				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	/* User Button */
 				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
 				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0
-#ifdef WIFI
-				MX6UL_PAD_GPIO1_IO03__REF_CLK_32K	0x03029	/* WLAN Slow Clock */
-#endif
 			>;
 		};
 
