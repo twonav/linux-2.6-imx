@@ -471,6 +471,7 @@
 				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	/* User Button */
 				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
 				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0
+				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0xC0000000 Sample to get feedback from grpio sysfs*/
 			>;
 		};
 
