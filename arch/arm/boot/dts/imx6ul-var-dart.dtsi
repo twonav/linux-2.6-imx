@@ -69,14 +69,20 @@
 			>;
 		};
 
-		pinctrl_ecspi1_1: ecspi1grp {
-			fsl,pins = <
-				MX6UL_PAD_CSI_DATA07__ECSPI1_MISO       0x100b1
-				MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI       0x100b1
-				MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK       0x100b1
-				MX6UL_PAD_CSI_DATA05__GPIO4_IO26        0x100b1
-			>;
-};
+	pinctrl_ecspi1_1: ecspi1grp {
+		fsl,pins = <
+			MX6UL_PAD_CSI_DATA07__ECSPI1_MISO       0x100b1
+			MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI       0x100b1
+			MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK       0x100b1
+			MX6UL_PAD_CSI_DATA05__GPIO4_IO26        0x100b1
+		>;
+	};
+
+	pinctrl_rtc: rtcgrp {
+		fsl,pins = <
+			MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x1b0b0 /* RTC alarm IRQ */
+		>;
+	};
 	
 
 
