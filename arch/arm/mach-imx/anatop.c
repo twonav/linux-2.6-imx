@@ -68,7 +68,8 @@ static void imx_anatop_enable_weak2p5(bool enable)
 
 	regmap_read(anatop, ANADIG_ANA_MISC0, &val);
 
-	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
+		|| cpu_is_imx6sll())
 		mask = BM_ANADIG_ANA_MISC0_V3_STOP_MODE_CONFIG;
 	else if (cpu_is_imx6sl())
 		mask = BM_ANADIG_ANA_MISC0_V2_STOP_MODE_CONFIG;
@@ -95,7 +96,8 @@ static inline void imx_anatop_enable_2p5_pulldown(bool enable)
 
 static inline void imx_anatop_disconnect_high_snvs(bool enable)
 {
-	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull() ||
+		cpu_is_imx6sll())
 		regmap_write(anatop, ANADIG_ANA_MISC0 +
 			(enable ? REG_SET : REG_CLR),
 			BM_ANADIG_ANA_MISC0_V2_DISCON_HIGH_SNVS);
@@ -146,15 +148,17 @@ void imx_anatop_pre_suspend(void)
 	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
 		imx_anatop_disable_pu(true);
 
-	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2) &&
-		!imx_gpc_usb_wakeup_enabled())
+	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2 ||
+		imx_mmdc_get_ddr_type() == IMX_MMDC_DDR_TYPE_LPDDR3) &&
+		!imx_gpc_usb_wakeup_enabled() && !imx_gpc_enet_wakeup_enabled())
 		imx_anatop_enable_2p5_pulldown(true);
 	else
 		imx_anatop_enable_weak2p5(true);
 
 	imx_anatop_enable_fet_odrive(true);
 
-	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() ||
+		cpu_is_imx6ull() || cpu_is_imx6sll())
 		imx_anatop_disconnect_high_snvs(true);
 }
 
@@ -174,17 +178,18 @@ void imx_anatop_post_resume(void)
 	if (cpu_is_imx6q() && imx_get_soc_revision() == IMX_CHIP_REVISION_2_0)
 		imx_anatop_disable_pu(false);
 
-	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2) &&
-		!imx_gpc_usb_wakeup_enabled())
+	if ((imx_mmdc_get_ddr_type() == IMX_DDR_TYPE_LPDDR2 ||
+		imx_mmdc_get_ddr_type() == IMX_MMDC_DDR_TYPE_LPDDR3) &&
+		!imx_gpc_usb_wakeup_enabled() && !imx_gpc_enet_wakeup_enabled())
 		imx_anatop_enable_2p5_pulldown(false);
 	else
 		imx_anatop_enable_weak2p5(false);
 
 	imx_anatop_enable_fet_odrive(false);
 
-	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6sl() || cpu_is_imx6sx() || cpu_is_imx6ul() ||
+		cpu_is_imx6ull() || cpu_is_imx6sll())
 		imx_anatop_disconnect_high_snvs(false);
-
 }
 
 static void imx_anatop_usb_chrg_detect_disable(void)

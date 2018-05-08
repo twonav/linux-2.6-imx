@@ -814,6 +814,10 @@ static int wm8960_set_bias_level_out3(struct snd_soc_codec *codec,
 				}
 			}
 
+			ret = wm8960_configure_clocking(codec);
+			if (ret)
+				return ret;
+
 			/* Set VMID to 2x50k */
 			snd_soc_update_bits(codec, WM8960_POWER1, 0x180, 0x80);
 			break;
@@ -1020,11 +1024,6 @@ static bool is_pll_freq_available(unsigned int source, unsigned int target)
 	target *= 4;
 	Ndiv = target / source;
 
-	if (Ndiv < 6) {
-		source >>= 1;
-		Ndiv = target / source;
-	}
-
 	if ((Ndiv < 6) || (Ndiv > 12))
 		return false;
 
@@ -1134,6 +1133,9 @@ static int wm8960_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 
 	if (pll_id == WM8960_SYSCLK_AUTO)
 		return 0;
+
+	if (is_pll_freq_available(freq_in, freq_out))
+		return -EINVAL;
 
 	return wm8960_set_pll(codec, freq_in, freq_out);
 }
@@ -1294,6 +1296,7 @@ static int wm8960_i2c_probe(struct i2c_client *i2c,
 	struct wm8960_data *pdata = dev_get_platdata(&i2c->dev);
 	struct wm8960_priv *wm8960;
 	int ret;
+	int repeat_reset = 10;
 
 	wm8960 = devm_kzalloc(&i2c->dev, sizeof(struct wm8960_priv),
 			      GFP_KERNEL);
@@ -1315,7 +1318,11 @@ static int wm8960_i2c_probe(struct i2c_client *i2c,
 	else if (i2c->dev.of_node)
 		wm8960_set_pdata_from_of(i2c, &wm8960->pdata);
 
-	ret = wm8960_reset(wm8960->regmap);
+	do {
+		ret = wm8960_reset(wm8960->regmap);
+		repeat_reset--;
+	} while (repeat_reset > 0 && ret != 0);
+
 	if (ret != 0) {
 		dev_err(&i2c->dev, "Failed to issue reset\n");
 		return ret;

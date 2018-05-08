@@ -27,6 +27,7 @@
 #define GPC_CNTR		0x000
 #define GPC_CNTR_PCIE_PHY_PDU_SHIFT	0x7
 #define GPC_CNTR_PCIE_PHY_PDN_SHIFT	0x6
+#define GPC_CNTR_L2_PGE			22
 #define PGC_PCIE_PHY_CTRL		0x200
 #define PGC_PCIE_PHY_PDN_EN		0x1
 #define GPC_IMR1		0x008
@@ -68,6 +69,9 @@
 
 /* for irq #74 and #75 */
 #define GPC_USB_VBUS_WAKEUP_IRQ_MASK		0xc00
+
+/* for irq #150 and #151 */
+#define GPC_ENET_WAKEUP_IRQ_MASK        0xC00000
 
 struct pu_domain {
 	struct generic_pm_domain base;
@@ -157,7 +161,8 @@ unsigned int imx_gpc_is_m4_sleeping(void)
 
 bool imx_gpc_usb_wakeup_enabled(void)
 {
-	if (!(cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()))
+	if (!(cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
+		|| cpu_is_imx6sll()))
 		return false;
 
 	/*
@@ -168,6 +173,17 @@ bool imx_gpc_usb_wakeup_enabled(void)
 	 * if to keep weak 2P5 on.
 	 */
 	if (gpc_wake_irqs[1] & GPC_USB_VBUS_WAKEUP_IRQ_MASK)
+		return true;
+
+	return false;
+}
+
+bool imx_gpc_enet_wakeup_enabled(void)
+{
+	if (!cpu_is_imx6q())
+		return false;
+
+	if (gpc_wake_irqs[3] & GPC_ENET_WAKEUP_IRQ_MASK)
 		return true;
 
 	return false;
@@ -218,7 +234,8 @@ void imx_gpc_pre_suspend(bool arm_power_off)
 		_imx6q_pm_pu_power_off(&imx6q_pu_domain.base);
 
 	/* power down the mega-fast power domain */
-	if ((cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()) && arm_power_off)
+	if ((cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
+		|| cpu_is_imx6sll()) && arm_power_off)
 		imx_gpc_mf_mix_off();
 
 	/* Tell GPC to power off ARM core when suspend */
@@ -242,7 +259,8 @@ void imx_gpc_post_resume(void)
 	/* Keep ARM core powered on for other low-power modes */
 	imx_gpc_set_arm_power_in_lpm(false);
 	/* Keep M/F mix powered on for other low-power modes */
-	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
+		|| cpu_is_imx6sll())
 		writel_relaxed(0x0, gpc_base + GPC_PGC_MF_PDN);
 
 	for (i = 0; i < IMR_NUM; i++)
@@ -406,7 +424,8 @@ int imx_gpc_mf_power_on(unsigned int irq, unsigned int on)
 
 int imx_gpc_mf_request_on(unsigned int irq, unsigned int on)
 {
-	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull())
+	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
+		|| cpu_is_imx6sll())
 		return imx_gpc_mf_power_on(irq, on);
 	else if (cpu_is_imx7d())
 		return imx_gpcv2_mf_power_on(irq, on);
@@ -512,7 +531,8 @@ static int __init imx_gpc_init(struct device_node *node,
 		writel_relaxed(~0, gpc_base + GPC_IMR1 + i * 4);
 
 	/* Read supported wakeup source in M/F domain */
-	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()) {
+	if (cpu_is_imx6sx() || cpu_is_imx6ul() || cpu_is_imx6ull()
+		|| cpu_is_imx6sll()) {
 		of_property_read_u32_index(node, "fsl,mf-mix-wakeup-irq", 0,
 			&gpc_mf_irqs[0]);
 		of_property_read_u32_index(node, "fsl,mf-mix-wakeup-irq", 1,
@@ -524,6 +544,13 @@ static int __init imx_gpc_init(struct device_node *node,
 		if (!(gpc_mf_irqs[0] | gpc_mf_irqs[1] |
 			gpc_mf_irqs[2] | gpc_mf_irqs[3]))
 			pr_info("No wakeup source in Mega/Fast domain found!\n");
+	}
+
+	/* clear the L2_PGE bit on i.MX6SLL */
+	if (cpu_is_imx6sll()) {
+		val = readl_relaxed(gpc_base + GPC_CNTR);
+		val &= ~(1 << GPC_CNTR_L2_PGE);
+		writel_relaxed(val, gpc_base + GPC_CNTR);
 	}
 
 	/*
