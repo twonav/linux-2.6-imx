@@ -395,6 +395,110 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
+
+	pmic: bd7181x@4b {
+		compatible = "rohm,bd71815";
+		reg = <0x4b>;
+		gpio_intr = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
+		irq_base = <0>;
+
+		gpo {
+			rohm,mode = <0x30>;	/* 0b0011_0000 all gpos with cmos output mode */
+		};
+
+		regulators {
+                        buck1_reg: buck1 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <2000000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                                regulator-ramp-delay = <6250>;
+                        };
+
+                        buck2_reg: buck2 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <2000000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                                regulator-ramp-delay = <6250>;
+                        };
+
+                        buck3_reg: buck3 {
+                                regulator-min-microvolt = <1200000>;
+                                regulator-max-microvolt = <2700000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        buck4_reg: buck4 {
+                                regulator-min-microvolt = <1100000>;
+                                regulator-max-microvolt = <1850000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        buck5_reg: buck5 {
+                                regulator-min-microvolt = <1800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo1_reg: ldo1 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo2_reg: ldo2 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo3_reg: ldo3 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo4_reg: ldo4 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo5_reg: ldo5 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        dvref_reg: dvref {
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        lpsr_reg: lpsr {
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        wled_reg: wled {
+                                regulator-min-microamp = <10>;
+                                regulator-max-microamp = <25000>;
+                                /*regulator-boot-on;*/
+                        };
+
+		};
+
+	};
+
 };
 
 &i2c2 {
@@ -430,6 +534,7 @@
 		interrupt-parent = <&gpio5>;
 		interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
 	};
+
 };
 
 &iomuxc {
