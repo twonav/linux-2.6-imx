@@ -265,15 +265,23 @@
 	status = "okay";
 };
 
-/* ttymxc2 UART*/
+/* ttymxc2 UART [GPS]*/
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
-	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
-/* ttymxc5 UART [GPS] */
+
+
+/* ttymxc4 UART [ANT]*/
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+	status = "okay";
+};
+
+/* ttymxc5 UART [GPRS] */
 &uart6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart6>;
@@ -287,7 +295,7 @@
 };
 
 &usbotg1 {
-	dr_mode = "host";
+	dr_mode = "peripheral";
 	disable-over-current;
 	status = "okay";
 };
@@ -395,6 +403,15 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
+			
+	//tsc2007@48 {
+	//	compatible = "ti,tsc2007";
+	//	reg = <0x48>;
+	//	interrupt-parent = <&gpio4>;
+	//	interrupts = <0x0 0x8>;
+	//	gpios = <&gpio4 0 0>;
+	//	ti,x-plate-ohms = <180>;
+	//};
 
 	pmic: bd7181x@4b {
 		compatible = "rohm,bd71815";
@@ -547,6 +564,9 @@
 				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	/* User Button */
 				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
 				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0
+				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0xC0000000 /* GPS_RESET */
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0xC0000000 /* GPS_POWER_ON */
+				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0xC0000000 /* GPRS_POWER_ON */
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0xC0000000 Sample to get feedback from grpio sysfs*/
 			>;
 		};
@@ -646,16 +666,21 @@
 			>;
 		};
 
-		pinctrl_uart3: uart3grp {
+		pinctrl_uart3: uart3grp { /* GPS */
 			fsl,pins = <
 				MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
 				MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
-				MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
-				MX6UL_PAD_UART3_RTS_B__UART3_DCE_RTS	0x1b0b1
+			>;
+		};
+
+		pinctrl_uart5: uart5grp { /* ANT */
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA00__UART5_DCE_TX	0x1b0b1
+				MX6UL_PAD_CSI_DATA01__UART5_DCE_RX	0x1b0b1
 			>;
 		};
 		
-		pinctrl_uart6: uart6grp { /* GPS */
+		pinctrl_uart6: uart6grp { /* GPRS */
 			fsl,pins = <
 				MX6UL_PAD_ENET2_RX_DATA0__UART6_DCE_TX 	0x1b0b1
 				MX6UL_PAD_ENET2_RX_DATA1__UART6_DCE_RX 	0x1b0b1
