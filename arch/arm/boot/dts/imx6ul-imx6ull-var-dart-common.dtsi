@@ -65,7 +65,7 @@
 			states = <1300000 0x1 1400000 0x0>;
 		};
 	};
-
+/*
 	sound {
 		compatible = "fsl,imx-audio-wm8731";
 		model = "wm8731-audio";
@@ -77,6 +77,7 @@
 			"LLINEIN",		"Line Jack",
 			"RLINEIN",		"Line Jack";
 	};
+*/
 
 	keys {
 		compatible = "gpio-keys";
@@ -524,11 +525,24 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
+/*
 	codec: wm8731@1a {
 		compatible = "wlf,wm8731";
 		reg = <0x1a>;
 		clocks = <&clks IMX6UL_CLK_SAI2>;
 		clock-names = "mclk";
+	};
+*/
+	codec: max98357a@0 {
+		compatible = "maxim,max98357a";
+	};
+
+	
+	sound {
+		compatible = "pt,pt10ex-audio";
+		pt,model = "pt10ex";
+		ssi-controller = <&sai2>;
+		codec = <&codec>;
 	};
 
 	ft5x06_ts@38 {
