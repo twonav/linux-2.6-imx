@@ -69,7 +69,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_MAX98088 if I2C
 	select SND_SOC_MAX98090 if I2C
 	select SND_SOC_MAX98095 if I2C
-	select SND_SOC_MAX98357A if GPIOLIB
 	select SND_SOC_MAX98925 if I2C
 	select SND_SOC_MAX9850 if I2C
 	select SND_SOC_MAX9768 if I2C
@@ -463,7 +462,10 @@ config SND_SOC_MAX98095
        tristate
 
 config SND_SOC_MAX98357A
-       tristate
+       tristate "MAX98357A Audio Codec"
+
+config SND_SOC_IMX_MAX98357A
+       tristate "MAX98357A Audio Codec Link"
 
 config SND_SOC_MAX98925
        tristate

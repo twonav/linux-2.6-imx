@@ -69,6 +69,8 @@ static int max98357a_codec_probe(struct snd_soc_codec *codec)
 	gpiod_direction_output(sdmode, 0);
 	snd_soc_codec_set_drvdata(codec, sdmode);
 
+	dev_info(codec->dev,"sdmode GPIO mapped to %d\n", desc_to_gpio(sdmode));
+
 	return 0;
 }
 
@@ -85,7 +87,7 @@ static struct snd_soc_dai_ops max98357a_dai_ops = {
 };
 
 static struct snd_soc_dai_driver max98357a_dai_driver = {
-	.name = "HiFi",
+	.name = "max98357a-dai-driver",
 	.playback = {
 		.stream_name	= "HiFi Playback",
 		.formats	= SNDRV_PCM_FMTBIT_S16 |
@@ -112,6 +114,8 @@ static int max98357a_platform_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "%s() error registering codec driver: %d\n",
 				__func__, ret);
+
+	dev_info(&pdev->dev, "max98357a codec driver successfully registered \n");
 
 	return ret;
 }

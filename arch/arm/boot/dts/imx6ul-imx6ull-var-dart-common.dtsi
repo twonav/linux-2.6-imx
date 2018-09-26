@@ -66,16 +66,15 @@
 		};
 	};
 
+	codec: max98357a@0 {
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio3 9 0>;
+	};
+
 	sound {
-		compatible = "fsl,imx-audio-wm8731";
-		model = "wm8731-audio";
-		cpu-dai = <&sai2>;
-		audio-codec = <&codec>;
-		audio-routing =
-			"Headphone Jack",	"LHPOUT",
-			"Headphone Jack",	"RHPOUT",
-			"LLINEIN",		"Line Jack",
-			"RLINEIN",		"Line Jack";
+		compatible = "fsl,imx-max98357a-audio";
+		ssi-controller = <&sai2>;
+		codec = <&codec>;
 	};
 
 	keys {
@@ -228,12 +227,14 @@
 };
 
 &sai2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai2>;
-	assigned-clocks = <&clks IMX6UL_CLK_SAI2_SEL>,<&clks IMX6UL_CLK_SAI2>;
-	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <0>, <11289600>;
-	status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_sai2>;
+        assigned-clocks = <&clks IMX6UL_CLK_SAI2_SEL>,
+                          <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
+                          <&clks IMX6UL_CLK_SAI2>;
+        assigned-clock-rates = <0>, <786432000>, <12288000>;
+        assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
+        status = "okay";
 };
 
 &adc1 {
@@ -524,13 +525,6 @@
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
 
-	codec: wm8731@1a {
-		compatible = "wlf,wm8731";
-		reg = <0x1a>;
-		clocks = <&clks IMX6UL_CLK_SAI2>;
-		clock-names = "mclk";
-	};
-
 	ft5x06_ts@38 {
 		compatible = "edt,edt-ft5x06";
 		reg = <0x38>;
@@ -794,8 +788,6 @@
 				MX6UL_PAD_JTAG_TDI__SAI2_TX_BCLK	0x17088
 				MX6UL_PAD_JTAG_TDO__SAI2_TX_SYNC	0x17088
 				MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x11088
-				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x11088
-				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
 			>;
 		};
 
