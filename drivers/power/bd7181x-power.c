@@ -19,7 +19,6 @@
 #include <linux/mfd/bd7181x.h>
 #include <linux/delay.h>
 
-
 #define TWONAV_AVENTURA
 
 #if 0
@@ -49,6 +48,7 @@
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	/* uA - 1A */
+
 #define AC_NAME			"bd7181x_ac"
 #define BAT_NAME		"bd7181x_bat"
 #define BD7181X_BATTERY_FULL	100
@@ -1228,6 +1228,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 #endif
 	if ((r & XSTB) == 0x00) {
 		printk("XXX ((r & XSTB) == 0x00)\n");
+
 	//if (r & BAT_DET) {
 		/* Init HW, when the battery is inserted. */
 
@@ -2525,7 +2526,6 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	}
 
 	// TODO: read interrupts and treat/clear them on startup... maybe in INIT HW ?
-
 
 	ret = sysfs_create_group(&pwr->bat->dev.kobj, &bd7181x_sysfs_attr_group);
 	if (ret < 0) {

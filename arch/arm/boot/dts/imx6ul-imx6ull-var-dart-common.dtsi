@@ -81,16 +81,15 @@
 		};
 	};
 
+	codec: max98357a@0 {
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio3 9 0>;
+	};
+
 	sound {
-		compatible = "fsl,imx-audio-wm8731";
-		model = "wm8731-audio";
-		cpu-dai = <&sai2>;
-		audio-codec = <&codec>;
-		audio-routing =
-			"Headphone Jack",	"LHPOUT",
-			"Headphone Jack",	"RHPOUT",
-			"LLINEIN",		"Line Jack",
-			"RLINEIN",		"Line Jack";
+		compatible = "fsl,imx-max98357a-audio";
+		ssi-controller = <&sai2>;
+		codec = <&codec>;
 	};
 
 	keys {
@@ -244,12 +243,14 @@
 };
 
 &sai2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai2>;
-	assigned-clocks = <&clks IMX6UL_CLK_SAI2_SEL>,<&clks IMX6UL_CLK_SAI2>;
-	assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <0>, <11289600>;
-	status = "okay";
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_sai2>;
+        assigned-clocks = <&clks IMX6UL_CLK_SAI2_SEL>,
+                          <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>,
+                          <&clks IMX6UL_CLK_SAI2>;
+        assigned-clock-rates = <0>, <786432000>, <12288000>;
+        assigned-clock-parents = <&clks IMX6UL_CLK_PLL4_AUDIO_DIV>;
+        status = "okay";
 };
 
 &adc1 {
@@ -281,15 +282,23 @@
 	status = "okay";
 };
 
-/* ttymxc2 UART*/
+/* ttymxc2 UART [GPS]*/
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
-	fsl,uart-has-rtscts;
 	status = "okay";
 };
 
-/* ttymxc5 UART [GPS] */
+
+
+/* ttymxc4 UART [ANT]*/
+&uart5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart5>;
+	status = "okay";
+};
+
+/* ttymxc5 UART [GPRS] */
 &uart6 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart6>;
@@ -303,7 +312,7 @@
 };
 
 &usbotg1 {
-	dr_mode = "host";
+	dr_mode = "peripheral";
 	disable-over-current;
 	status = "okay";
 };
@@ -411,6 +420,119 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
+			
+	//tsc2007@48 {
+	//	compatible = "ti,tsc2007";
+	//	reg = <0x48>;
+	//	interrupt-parent = <&gpio4>;
+	//	interrupts = <0x0 0x8>;
+	//	gpios = <&gpio4 0 0>;
+	//	ti,x-plate-ohms = <180>;
+	//};
+
+	pmic: bd7181x@4b {
+		compatible = "rohm,bd71815";
+		reg = <0x4b>;
+		gpio_intr = <&gpio4 24 IRQ_TYPE_EDGE_FALLING>;
+		irq_base = <0>;
+
+		gpo {
+			rohm,mode = <0x30>;	/* 0b0011_0000 all gpos with cmos output mode */
+		};
+
+		regulators {
+                        buck1_reg: buck1 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <2000000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                                regulator-ramp-delay = <6250>;
+                        };
+
+                        buck2_reg: buck2 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <2000000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                                regulator-ramp-delay = <6250>;
+                        };
+
+                        buck3_reg: buck3 {
+                                regulator-min-microvolt = <1200000>;
+                                regulator-max-microvolt = <2700000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        buck4_reg: buck4 {
+                                regulator-min-microvolt = <1100000>;
+                                regulator-max-microvolt = <1850000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        buck5_reg: buck5 {
+                                regulator-min-microvolt = <1800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo1_reg: ldo1 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo2_reg: ldo2 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo3_reg: ldo3 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo4_reg: ldo4 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo5_reg: ldo5 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        dvref_reg: dvref {
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        lpsr_reg: lpsr {
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        wled_reg: wled {
+                                regulator-min-microamp = <10>;
+                                regulator-max-microamp = <25000>;
+                                /*regulator-boot-on;*/
+                        };
+
+		};
+
+	};
+
 };
 
 &i2c2 {
@@ -418,13 +540,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
-
-	codec: wm8731@1a {
-		compatible = "wlf,wm8731";
-		reg = <0x1a>;
-		clocks = <&clks IMX6UL_CLK_SAI2>;
-		clock-names = "mclk";
-	};
 
 	ft5x06_ts@38 {
 		compatible = "edt,edt-ft5x06";
@@ -549,7 +664,7 @@
 		};
 
 	};
-
+  
 };
 
 &iomuxc {
@@ -562,6 +677,9 @@
 				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	/* User Button */
 				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
 				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0
+				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0xC0000000 /* GPS_RESET */
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0xC0000000 /* GPS_POWER_ON */
+				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0xC0000000 /* GPRS_POWER_ON */
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0xC0000000 Sample to get feedback from grpio sysfs*/
 			>;
 		};
@@ -662,16 +780,21 @@
 			>;
 		};
 
-		pinctrl_uart3: uart3grp {
+		pinctrl_uart3: uart3grp { /* GPS */
 			fsl,pins = <
 				MX6UL_PAD_UART3_TX_DATA__UART3_DCE_TX	0x1b0b1
 				MX6UL_PAD_UART3_RX_DATA__UART3_DCE_RX	0x1b0b1
-				MX6UL_PAD_UART3_CTS_B__UART3_DCE_CTS	0x1b0b1
-				MX6UL_PAD_UART3_RTS_B__UART3_DCE_RTS	0x1b0b1
+			>;
+		};
+
+		pinctrl_uart5: uart5grp { /* ANT */
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA00__UART5_DCE_TX	0x1b0b1
+				MX6UL_PAD_CSI_DATA01__UART5_DCE_RX	0x1b0b1
 			>;
 		};
 		
-		pinctrl_uart6: uart6grp { /* GPS */
+		pinctrl_uart6: uart6grp { /* GPRS */
 			fsl,pins = <
 				MX6UL_PAD_ENET2_RX_DATA0__UART6_DCE_TX 	0x1b0b1
 				MX6UL_PAD_ENET2_RX_DATA1__UART6_DCE_RX 	0x1b0b1
@@ -785,8 +908,6 @@
 				MX6UL_PAD_JTAG_TDI__SAI2_TX_BCLK	0x17088
 				MX6UL_PAD_JTAG_TDO__SAI2_TX_SYNC	0x17088
 				MX6UL_PAD_JTAG_TRST_B__SAI2_TX_DATA	0x11088
-				MX6UL_PAD_JTAG_TCK__SAI2_RX_DATA	0x11088
-				MX6UL_PAD_JTAG_TMS__CCM_CLKO1		0x17088
 			>;
 		};
 
