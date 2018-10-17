@@ -10,7 +10,7 @@
 /* #define WIFI */
 /* #define EMMC */
 /* #define  NAND  */
-
+ 
 / {
 	chosen {
 		stdout-path = &uart1;
@@ -20,15 +20,19 @@
 		reg = <0x80000000 0x20000000>;
 	};
 
-	/*
-	backlight {
-		compatible = "pwm-backlight";
-		pwms = <&pwm1 0 20000>;
-		brightness-levels = <0 4 8 16 32 64 128 255>;
-		default-brightness-level = <6>;
-		status = "okay";
+	bd7181_bl {
+		compatible = "bd7181x-backlight";
+		regulator-name = "bl-wled";
+		regulator-boot-on;
+		regulator-supply = "backlight";
+		backlight-supply = <&wled_reg>;
+
+		brightness {
+			brightness-levels = <10 20 30 50 70 100 200 300 500 700 1000 2000 3000 4000 5000 6000 7000 8000 9000 
+								10000 11000 12000 13000 14000 15000 16000 17000 18000 19000 20000 21000 22000 23000 24000 25000>;
+			default-brightness-level = <15>;
+		};
 	};
-	*/
 
 	pxp_v4l2 {
 		compatible = "fsl,imx6ul-pxp-v4l2", "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
@@ -116,48 +120,6 @@
 &clks {
 	assigned-clocks = <&clks IMX6UL_CLK_PLL4_POST_DIV>;
 	assigned-clock-rates = <812851200>;
-};
-
-&fec1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet1>;
-	phy-mode = "rmii";
-	phy-reset-gpios=<&gpio5 0 1>;
-	phy-reset-duration=<100>;
-	phy-reset-on-resume;
-	phy-handle = <&ethphy0>;
-	status = "okay";
-};
-
-&fec2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_enet2>;
-	phy-mode = "rmii";
-	phy-handle = <&ethphy1>;
-	phy-reset-gpios=<&gpio1 10 1>;
-	phy-reset-duration=<100>;
-	phy-reset-on-resume;
-	status = "okay";
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		ethphy0: ethernet-phy@1 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			micrel,rmii-reference-clock-select-25-mhz;
-			clocks = <&rmii_ref_clk>;
-			clock-names = "rmii-ref";
-			reg = <1>;
-		};
-
-		ethphy1: ethernet-phy@3 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			micrel,rmii-reference-clock-select-25-mhz;
-			clocks = <&rmii_ref_clk>;
-			clock-names = "rmii-ref";
-			reg = <3>;
-		};
-	};
 };
 
 &flexcan1 {
@@ -546,6 +508,109 @@
 		interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
 	};
 
+	pmic: bd7181x@4b {
+		compatible = "rohm,bd71815";
+		reg = <0x4b>;
+		gpio_intr = <&gpio2 12 IRQ_TYPE_EDGE_FALLING>;
+		irq_base = <0>;
+
+		gpo {
+			rohm,mode = <0x30>;	/* 0b0011_0000 all gpos with cmos output mode */
+		};
+
+		regulators {
+                        buck1_reg: buck1 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <2000000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                                regulator-ramp-delay = <6250>;
+                        };
+
+                        buck2_reg: buck2 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <2000000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                                regulator-ramp-delay = <6250>;
+                        };
+
+                        buck3_reg: buck3 {
+                                regulator-min-microvolt = <1200000>;
+                                regulator-max-microvolt = <2700000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        buck4_reg: buck4 {
+                                regulator-min-microvolt = <1100000>;
+                                regulator-max-microvolt = <1850000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        buck5_reg: buck5 {
+                                regulator-min-microvolt = <1800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo1_reg: ldo1 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo2_reg: ldo2 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo3_reg: ldo3 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo4_reg: ldo4 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        ldo5_reg: ldo5 {
+                                regulator-min-microvolt = <800000>;
+                                regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        dvref_reg: dvref {
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        lpsr_reg: lpsr {
+                                regulator-boot-on;
+                                regulator-always-on;
+                        };
+
+                        wled_reg: wled {
+                                regulator-min-microamp = <10>;
+                                regulator-max-microamp = <25000>;
+                                regulator-boot-on;
+                        };
+
+		};
+
+	};
+  
 };
 
 &iomuxc {
@@ -562,33 +627,6 @@
 				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0xC0000000 /* GPS_POWER_ON */
 				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0xC0000000 /* GPRS_POWER_ON */
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0xC0000000 Sample to get feedback from grpio sysfs*/
-			>;
-		};
-
-		pinctrl_enet1: enet1grp {
-			fsl,pins = <
-				MX6UL_PAD_ENET1_RX_EN__ENET1_RX_EN	0x1b0b0
-				MX6UL_PAD_ENET1_RX_ER__ENET1_RX_ER	0x1b0b0
-				MX6UL_PAD_ENET1_RX_DATA0__ENET1_RDATA00	0x1b0b0
-				MX6UL_PAD_ENET1_RX_DATA1__ENET1_RDATA01	0x1b0b0
-				MX6UL_PAD_ENET1_TX_EN__ENET1_TX_EN	0x1b0b0
-				MX6UL_PAD_ENET1_TX_DATA0__ENET1_TDATA00	0x1b0b0
-				MX6UL_PAD_ENET1_TX_DATA1__ENET1_TDATA01	0x1b0b0
-				MX6UL_PAD_ENET1_TX_CLK__ENET1_REF_CLK1	0x4001b031
-			>;
-		};
-
-		pinctrl_enet2: enet2grp {
-			fsl,pins = <
-				MX6UL_PAD_ENET2_RX_EN__ENET2_RX_EN	0x1b0b0
-				MX6UL_PAD_ENET2_RX_ER__ENET2_RX_ER	0x1b0b0
-				MX6UL_PAD_ENET2_RX_DATA0__ENET2_RDATA00	0x1b0b0
-				MX6UL_PAD_ENET2_RX_DATA1__ENET2_RDATA01	0x1b0b0
-				MX6UL_PAD_ENET2_TX_EN__ENET2_TX_EN	0x1b0b0
-				MX6UL_PAD_ENET2_TX_DATA0__ENET2_TDATA00	0x1b0b0
-				MX6UL_PAD_ENET2_TX_DATA1__ENET2_TDATA01	0x1b0b0
-				MX6UL_PAD_ENET2_TX_CLK__ENET2_REF_CLK2	0x4001b031
-				MX6UL_PAD_JTAG_MOD__GPIO1_IO10		0x1b0b0
 			>;
 		};
 

@@ -19,35 +19,49 @@
 #include <linux/mfd/bd7181x.h>
 #include <linux/delay.h>
 
+#define TWONAV_AVENTURA
+
 #if 0
 #define bd7181x_info	dev_info
 #else
 #define bd7181x_info(...)
 #endif
 
-#define JITTER_DEFAULT		3000		/* hope 3s is enough */ // HOW OFTEN THE WORKER IS CALLED/UPDATED
-#define JITTER_REPORT_CAP	10000		/* 10 seconds */
+#define JITTER_DEFAULT		3000		/* seconds */
+#define JITTER_REPORT_CAP	10000		/* seconds */
 
-// *********** THIS NEEDS TO BE SET FOR EACH BATTERY ***********
-#define BD7181X_BATTERY_CAP_MAH	1650
+// *********** CAPACITY FOR EACH DEVICE ***********
+#ifdef TWONAV_VELO
+	#define BD7181X_BATTERY_CAP_MAH	1650
+#elif defined TWONAV_HORIZON
+	#define BD7181X_BATTERY_CAP_MAH	1500
+#elif defined TWONAV_TRAIL
+	#define BD7181X_BATTERY_CAP_MAH	4200
+#elif defined TWONAV_AVENTURA
+	#define BD7181X_BATTERY_CAP_MAH	5000
+#else
+	#define BD7181X_BATTERY_CAP_MAH	1650
+#endif
 
 #define BD7181X_BATTERY_CAP	mAh_A10s(BD7181X_BATTERY_CAP_MAH)
 #define MAX_VOLTAGE		ocv_table[0]
-#define MIN_VOLTAGE		3000000
-#define THR_VOLTAGE		3800000 // ?????? when discharging under this threshold soc is being estimated every ... ???? why ????
-#define MAX_CURRENT		5000000		/* uA */
+#define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
+#define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
+#define MAX_CURRENT		1000000	/* uA - 1A */
+
 #define AC_NAME			"bd7181x_ac"
 #define BAT_NAME		"bd7181x_bat"
 #define BD7181X_BATTERY_FULL	100
 
+// used to set initial coulomb counter CC based on battery voltage OCV
 #define BY_BAT_VOLT		0
 #define BY_VBATLOAD_REG		1
 #define INIT_COULOMB		BY_VBATLOAD_REG
 
 //VBAT Low voltage detection Threshold
-#define VBAT_LOW_TH		0x00D4 // 0x00D4*16mV = 212*0.016 = 3.392v 
+#define VBAT_LOW_TH		0x00BC // 0x00BC*16mV = 3.008V 
 
-//#define RS_30mOHM		/* This is for 30mOhm sense resistance */
+//#define RS_30mOHM		/* we have 10mOhm */
 
 #ifdef RS_30mOHM
 #define A10s_mAh(s)		((s) * 1000 / (360 * 3))
@@ -60,7 +74,7 @@
 #define THR_RELAX_CURRENT	10		/* mA */ // Coulomb counter related
 #define THR_RELAX_TIME		(60 * 60)	/* sec. */ // Coulomb counter related
 
-#define BD7181X_DGRD_CYC_CAP	26	/* 1 micro Ah unit */ // How much capacity we lose after each cycle
+#define BD7181X_DGRD_CYC_CAP	26	/* 1 micro Ah unit How much capacity we lose after each cycle */
 
 #define BD7181X_DGRD_TEMP_M	25	/* 1 degrees C unit */ // CALC FULL CAPACITY
 #define BD7181X_DGRD_TEMP_L	5	/* 1 degrees C unit */ // CALC FULL CAPACITY
@@ -68,6 +82,7 @@
 #define BD7181X_DGRD_TEMP_CAP_M	(1187)	/* 1 micro Ah unit */ // CALC FULL CAPACITY
 #define BD7181X_DGRD_TEMP_CAP_L	(5141)	/* 1 micro Ah unit */ // CALC FULL CAPACITY
 
+// Bellow values are limmits that exist in ocv_table
 #define CANCEL_ADJ_COULOMB_SOC_H_1	700	/* unit 0.1% */ // ADJUST COULOMB COUNTER & SW
 #define CANCEL_ADJ_COULOMB_SOC_L_1	550	/* unit 0.1% */ // ADJUST COULOMB COUNTER & SW
 #define CANCEL_ADJ_COULOMB_SOC_H_2	350	/* unit 0.1% */ // ADJUST COULOMB COUNTER & SW
@@ -78,32 +93,138 @@
 
 unsigned int battery_cycle;
 
-// THE FOLLOWING TABLE HAS TO BE UPDATED FOR EACH BATTERY
+#ifdef TWONAV_VELO
+	static int ocv_table[] = {
+		4200000,
+		4114000,
+		4070000,
+		4016000,
+		3977000,
+		3943000,
+		3899000,
+		3865000,
+		3831000,
+		3797000,
+		3767000,
+		3743000,
+		3728000,
+		3719000,
+		3709000,
+		3699000,
+		3675000,
+		3640000,
+		3587000,
+		3518000,
+		3470000,
+		3343000,
+		3000000
+	};	/* unit 1 micro V */
+#elif defined TWONAV_HORIZON
+	static int ocv_table[] = {
+		4350000,
+		4270000,
+		4202000,
+		4148000,
+		4099000,
+		4050000,
+		4011000,
+		3948000,
+		3914000,
+		3875000,
+		3845000,
+		3816000,
+		3792000,
+		3772000,
+		3753000,
+		3743000,
+		3728000,
+		3714000,
+		3694000,
+		3665000,
+		3645000,
+		3582000,
+		3000000
+	};
+#elif defined TWONAV_TRAIL
+	static int ocv_table[] = {
+		4200000,
+		4143000,
+		4089000,
+		4036000,
+		4002000,
+		3967000,
+		3924000,
+		3889000,
+		3850000,
+		3802000,
+		3748000,
+		3694000,
+		3655000,
+		3626000,
+		3606000,
+		3587000,
+		3567000,
+		3538000,
+		3504000,
+		3460000,
+		3431000,
+		3309000,
+		3000000
+	};
+#elif defined TWONAV_AVENTURA
 static int ocv_table[] = {
-	4200000,
-	4167456,
-	4109781,
-	4065242,
-	4025618,
-	3989877,
-	3958031,
-	3929302,
-	3900935,
-	3869637,
-	3838475,
-	3815196,
-	3799778,
-	3788385,
-	3779627,
-	3770675,
-	3755368,
-	3736049,
-	3713545,
-	3685118,
-	3645278,
-	3465599,
-	2830610
-};	/* unit 1 micro V */
+		4200000,
+		4148000,
+		4104000,
+		4055000,
+		4011000,
+		3972000,
+		3940000,
+		3909000,
+		3880000,
+		3845000,
+		3811000,
+		3792000,
+		3772000,
+		3762000,
+		3753000,
+		3748000,
+		3733000,
+		3719000,
+		3694000,
+		3665000,
+		3645000,
+		3372000,
+		2850000
+	};	/* unit 1 micro V */
+#else
+	static int ocv_table[] = {
+		4200000,
+		4167456,
+		4109781,
+		4065242,
+		4025618,
+		3989877,
+		3958031,
+		3929302,
+		3900935,
+		3869637,
+		3838475,
+		3815196,
+		3799778,
+		3788385,
+		3779627,
+		3770675,
+		3755368,
+		3736049,
+		3713545,
+		3685118,
+		3645278,
+		3465599,
+		2830610
+	};	/* unit 1 micro V */
+
+#endif
 
 static int soc_table[] = {
 	1000,
@@ -132,39 +253,38 @@ static int soc_table[] = {
 	/* unit 0.1% */
 };
 
-
 /** @brief power deivce */
 struct bd7181x_power {
 	struct device *dev;
 	struct bd7181x *mfd;			/**< multi-function device parent for access register */
-	struct power_supply *ac;			/**< alternating current power */
+	struct power_supply *ac;		/**< alternating current power */
 	struct power_supply *bat;		/**< battery power */
-	struct delayed_work bd_work;		/**< delayed work for timed work */
+	struct delayed_work bd_work;	/**< delayed work for timed work */
 
-	int	reg_index;			/**< register address saved for sysfs */
+	int	reg_index;			/**< register address saved for sysfs ???? */
 
-	int    vbus_status;			/**< last vbus status */
-	int    charge_status;			/**< last charge status */
-	int    bat_status;			/**< last bat status */
+	int vbus_status;		/**< last vbus status */
+	int charge_status;		/**< last charge status */
+	int bat_status;			/**< last bat status */
 
-	int	hw_ocv1;			/**< HW ocv1 */
-	int	hw_ocv2;			/**< HW ocv2 */
-	int	bat_online;			/**< battery connect */
-	int	charger_online;			/**< charger connect */
+	int	hw_ocv1;			/**< HW open charge voltage 1. Measured Battery Voltage (1st time) at boot */
+	int	hw_ocv2;			/**< HW ocv2 . Measured Battery Voltage (2nd time) at boot*/
+	int	bat_online;			/**< battery connect - by checking BAT_TEMP */
+	int	charger_online;		/**< charger connect - by VBAT_DET */
 	int	vcell;				/**< battery voltage */
 	int	vsys;				/**< system voltage */
-	int	vcell_min;			/**< minimum battery voltage */
-	int	vsys_min;			/**< minimum system voltage */
+	int	vcell_min;			/**< Latest minimum Battery Voltage (simple average) */
+	int	vsys_min;			/**< Latest minimum VSYS voltage (simple average) */
 	int	rpt_status;			/**< battery status report */
-	int	prev_rpt_status;		/**< previous battery status report */
+	int	prev_rpt_status;	/**< previous battery status report */
 	int	bat_health;			/**< battery health */
-	int	designed_cap;			/**< battery designed capacity */
+	int	designed_cap;		/**< battery designed capacity */
 	int	full_cap;			/**< battery capacity */
 	int	curr;				/**< battery current from DS-ADC */
 	int	curr_sar;			/**< battery current from VM_IBAT */
 	int	temp;				/**< battery tempature */
-	u32	coulomb_cnt;			/**< Coulomb Counter */
-	int	state_machine;			/**< initial-procedure state machine */
+	u32	coulomb_cnt;		/**< Coulomb Counter */
+	int	state_machine;		/**< initial-procedure state machine - POWER_ON / INITIALIZED */
 
 	u32	soc_org;			/**< State Of Charge using designed capacity without by load */
 	u32	soc_norm;			/**< State Of Charge using full capacity without by load */
@@ -555,7 +675,7 @@ static int init_coulomb_counter(struct bd7181x_power* pwr) {
 	bd7181x_info(pwr->dev, "%s() CC_CCNTD = %d\n", __func__, pwr->coulomb_cnt);
 
 	/* Start canceling offset of the DS ADC. This needs 1 second at least */
-	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCCALIB); // FORCE CALIBRATION ???? WHAT IS THIS ????
+	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCCALIB); // 0x71h -> 0x20 FORCE CALIBRATION....
 
 	return 0;
 }
@@ -666,11 +786,11 @@ static int bd7181x_get_battery_parameters(struct bd7181x_power* pwr)
 {
 	/* Read detailed vcell and current */
 	bd7181x_get_vbat_curr(pwr, &pwr->vcell, &pwr->curr_sar);
-	bd7181x_info(pwr->dev, "VM_VBAT = %d\n", pwr->vcell);
-	bd7181x_info(pwr->dev, "VM_IBAT = %d\n", pwr->curr_sar);
+	bd7181x_info(pwr->dev, "VM_VBAT = %d\n", pwr->vcell); // battery voltage
+	bd7181x_info(pwr->dev, "VM_IBAT = %d\n", pwr->curr_sar); // current now
 
 	pwr->curr = bd7181x_get_current_ds_adc(pwr);
-	bd7181x_info(pwr->dev, "CC_CURCD = %d\n", pwr->curr);
+	bd7181x_info(pwr->dev, "CC_CURCD = %d\n", pwr->curr); // battery current value from DS_ADC
 
 	/* Read detailed vsys */
 	bd7181x_get_vsys(pwr, &pwr->vsys);
@@ -772,7 +892,7 @@ static int bd7181x_coulomb_count(struct bd7181x_power* pwr) {
  * @param pwr power device
  * @return 0
  */
-static int bd7181x_update_cycle(struct bd7181x_power* pwr) {
+static int bd7181x_update_cycle(struct bd7181x_power* pwr) { // TODO: review cycle concept, it should be a full cycle no small
 	int charged_coulomb_cnt;
 
 	charged_coulomb_cnt = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CCNTD_CHG_3);
@@ -802,6 +922,7 @@ static int bd7181x_calc_full_cap(struct bd7181x_power* pwr) {
 
 	/* Calculate full capacity by cycle */
 	designed_cap_uAh = A10s_mAh(pwr->designed_cap) * 1000;
+	bd7181x_info(pwr->dev, "Cycle = %d\n", pwr->cycle);
 	full_cap_uAh = designed_cap_uAh - BD7181X_DGRD_CYC_CAP * pwr->cycle;
 	pwr->full_cap = mAh_A10s(full_cap_uAh / 1000);
 	bd7181x_info(pwr->dev, "Calculate full capacity by cycle\n");
@@ -916,14 +1037,14 @@ int bd7181x_get_ocv(struct bd7181x_power* pwr, int dsoc) {
  * @return OCV
  */
 static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
-	int ocv_table_load[23];
+	int ocv_table_load[23]; // HARDCODED VALUE 23 - 23 samples in vector soc
 
 	pwr->soc = pwr->soc_norm;
 
 	switch (pwr->rpt_status) { /* Adjust for 0% between THR_VOLTAGE and MIN_VOLTAGE */
 	case POWER_SUPPLY_STATUS_DISCHARGING:
 	case POWER_SUPPLY_STATUS_NOT_CHARGING:
-		if (pwr->vsys_min <= THR_VOLTAGE) { // WHY calculate SOC whev V <= Vthr ?????????????????
+		if (pwr->vsys_min <= THR_VOLTAGE) { // WHY calculate SOC only whev latest minimun Vsys <= Vthr ????????????????? STILL I DONT GET IT 
 			int i;
 			int ocv;
 			int lost_cap;
@@ -1062,8 +1183,21 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 {
 	struct bd7181x *mfd = pwr->mfd;
 	int r;
-
-	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // DCIN Anti-collapse entry voltage threshold 4.32V (80mV steps)
+	/* DCIN Anti-collapse entry voltage threshold 0.0V to 20.4V range, 80 mV steps.
+	   When DCINOK = L, Anti-collapse detection is invalid.
+	   When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value. +++++++++++++++++++ !!!!!!!!!!!!!!!!!!!!!!!!!
+	   DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
+ 	   If DCIN_CLPS set lower than these value, can't detect removing DCIN.
+ 	*/
+#ifdef TWONAV_VELO
+	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 0x43 DCIN Anti-collapse entry voltage threshold 4.32V (80mV steps)
+#elif defined TWONAV_HORIZON
+	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x38); //  4.48
+#elif defined TWONAV_AVENTURA
+	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
+#elif defined TWONAV_TRAIL
+	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
+#endif
 
 	// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
 	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
@@ -1071,10 +1205,17 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	// VSYS voltage rising detection threshold. 0.0V to 8.128V range, 64mV steps
 	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MAX, 0x33); // 3.264
 	// VSYS voltage falling detection threshold. 0.0V to 8.128V range, 64mV steps.
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.264
+	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.072
 
+	/* XSTB
+	   Oscillator Stop Flag
+	   0: RTC clock has been stopped.
+	   1: RTC clock is normallyOscillator operating normally.
+	   The XSTB bit is used to check the status of the Real Time Clock (RTC). This bit accepts R/W for "1" and "0".
+	   If "1" is written to this bit, the XSTB bit will change value to "0" when the RTC is stopped.
+	*/
 #define XSTB		0x02 // The XSTB bit is used to check the status of the Real Time Clock (RTC)
-	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF);
+	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
 
 #if 0
 	for (i = 0; i < 300; i++) {
@@ -1086,6 +1227,8 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	}
 #endif
 	if ((r & XSTB) == 0x00) {
+		printk("XXX ((r & XSTB) == 0x00)\n");
+
 	//if (r & BAT_DET) {
 		/* Init HW, when the battery is inserted. */
 
@@ -1097,13 +1240,13 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 #define TEST_SEQ_03		0x56
 
 		/* Stop Coulomb Counter */
-		bd7181x_clear_bits(mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+		bd7181x_clear_bits(mfd, BD7181X_REG_CC_CTRL, CCNTENB); // 0x71 -> 0x40 Disable (stop counting)
 
 		/* Set Coulomb Counter Reset bit*/
-		bd7181x_set_bits(mfd, BD7181X_REG_CC_CTRL, CCNTRST);
+		bd7181x_set_bits(mfd, BD7181X_REG_CC_CTRL, CCNTRST); // 0x71 -> 0x80 Reset CC_CCNTD_3-0
 
 		/* Clear Coulomb Counter Reset bit*/
-		bd7181x_clear_bits(mfd, BD7181X_REG_CC_CTRL, CCNTRST);
+		bd7181x_clear_bits(mfd, BD7181X_REG_CC_CTRL, CCNTRST); // Release reset
 
 		/* Set default Battery Capacity */
 		pwr->designed_cap = BD7181X_BATTERY_CAP;
@@ -1112,52 +1255,78 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* Set initial Coulomb Counter by HW OCV */
 		init_coulomb_counter(pwr);
 
-		/* WDT_FST auto set */
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
+		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
+		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
 
-		// TODO : if External MOSFET is used and it will we should configure BD7181X_REG_CHG_SET1
-		// bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET2, 0xD8);
-		// AND set bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 1A
+		printk("XXX BD7181X_REG_CHG_SET2, 0xD8\n");
+		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET2, 0xD8);
+		// 0xD8 -> 11011000
+		// bit 7 VF_TREG_EN 1 thermal shutdown enabled
+		// bit 6 EXTMOS_EN 1 Select External MOSFET. Change this register after CHG_EN is set to '0'
+		// bit 5 REBATDET 0  Trigger for re-trial of Battery detection
+		// bit 4 BATDET_EN 1 Enable Battery detection
+		// bit 3 INHIBIT_1(note2) 1 For ROHM factory only
+		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
 
 		// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST, 0x14); // 500mA
+		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
 
 		// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x05); // 0.01C typical value 5000*0.01=50mA
+		#ifdef TWONAV_VELO
+			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1650*0.01=16.5mA -> 20mA
+		#elif defined TWONAV_HORIZON
+			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1500*0.01=15mA -> 20mA
+		#elif defined TWONAV_TRAIL
+			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x05); // 0.01C typical value 4200*0.01=42mA -> 50mA
+		#elif defined TWONAV_AVENTURA
+			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x06); // 0.01C typical value 5000*0.01=50mA -> 100mA
+		#endif
 
 		// Battery over-voltage detection threshold. 4.25V
-		// Battery voltage maintenance threshold : VBAT_CHG1/2/3 - 0.15V
-		bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x14);
+		// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
+		#ifdef TWONAV_VELO
+			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x15);
+		#elif defined TWONAV_HORIZON
+			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x45);
+		#elif defined TWONAV_TRAIL
+			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x15);
+		#elif defined TWONAV_AVENTURA
+			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x15);
+		#endif
 
 		// Charging Termination Battery voltage threshold for Fast Charge.
-		// VBAT_DONE = VBAT_CHG1/2/3 - 0.048V
-		bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_3, 0x42);
+		// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
+		bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_3, 0x62);
 
-		/* VBAT Low voltage detection Setting */
+		/* VBAT Low voltage detection Setting */ // 0x58
 		// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
 		// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
-		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.392V
-		// There are two more alarms that can be set if needed for DCIN and VSYS
+		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.002V
 
-		/* Mask Relax decision by PMU STATE */
+
+		/* Mask Relax decision by PMU STATE */ // 0xE6
+		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
 
 		/* Set Battery Capacity Monitor threshold1 as 90% */
 		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, (BD7181X_BATTERY_CAP * 9 / 10));  // Interrupt CC_MON1_DET (INTB)
 		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", (BD7181X_BATTERY_CAP * 9 / 10));
 
-		/* Enable LED ON when charging */
+		/* Enable LED ON when charging */ // 0x0E
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
 
 		// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm).
 		// Note: there are 3 thresholds available
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, 0x7D); // 800mA
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, 0xAB); // 1100mA
 
 		// Battery over-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
 
 		// Battery low-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_BTMP_LO_THR, 0xC8); // 200ºC ?????
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_BTMP_LO_THR, 0x32); // -5ºC
+
+		/* WDT_FST auto set */
+		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
 
 		pwr->state_machine = STAT_POWER_ON;
 	}
@@ -1208,7 +1377,7 @@ static void bd_work_callback(struct work_struct *work)
 
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
 	if (status != pwr->vbus_status) {
-		//printk("DCIN_STAT CHANGED from 0x%X to 0x%X\n", pwr->vbus_status, status);
+		printk("DCIN_STAT CHANGED from 0x%X to 0x%X\n", pwr->vbus_status, status);
 		pwr->vbus_status = status;
 		changed = 1;
 	}
@@ -1216,14 +1385,14 @@ static void bd_work_callback(struct work_struct *work)
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_BAT_STAT);
 	status &= ~BAT_DET_DONE;
 	if (status != pwr->bat_status) {
-		//printk("BAT_STAT CHANGED from 0x%X to 0x%X\n", pwr->bat_status, status);
+		printk("BAT_STAT CHANGED from 0x%X to 0x%X\n", pwr->bat_status, status);
 		pwr->bat_status = status;
 		changed = 1;
 	}
 
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
 	if (status != pwr->charge_status) {
-		//printk("CHG_STATE CHANGED from 0x%X to 0x%X\n", pwr->charge_status, status);
+		printk("CHG_STATE CHANGED from 0x%X to 0x%X\n", pwr->charge_status, status);
 		pwr->charge_status = status;
 		//changed = 1;
 	}
@@ -1268,7 +1437,7 @@ static irqreturn_t bd7181x_power_interrupt(int irq, void *pwrsys)
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 
-	bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
+	//bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
 	
 	reg = bd7181x_reg_read(mfd, BD7181X_REG_INT_STAT_03);
 	if (reg < 0)
@@ -1278,11 +1447,14 @@ static irqreturn_t bd7181x_power_interrupt(int irq, void *pwrsys)
 	if (r)
 		return IRQ_NONE;
 
-	if (reg & DCIN_MON_DET) {
-		printk("\n~~~DCIN General Alarm - removed\n");
+	if (reg & DCIN_MON_WDOGB) {
+		printk("\n~~~ WDOGB detection\n");
+	}
+	else if (reg & DCIN_MON_DET) {
+		printk("\n~~~ DCIN General Alarm Detection : DCIN(61h+62h) ≦ DCIN_TH(59h)\n");
 	}
 	else if (reg & DCIN_MON_RES) {
-		printk("\n~~~DCIN General Alarm Recover - inserted\n");
+		printk("\n~~~ DCIN General Alarm Resume : DCIN(61h+62h) > DCIN_TH(59h)\n");
 	}
 
 	return IRQ_HANDLED;
@@ -1301,7 +1473,7 @@ static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 
-	bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
+	//bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
 	
 	reg = bd7181x_reg_read(mfd, BD7181X_REG_INT_STAT_08);
 	if (reg < 0)
@@ -1312,11 +1484,11 @@ static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & VBAT_MON_DET) {
-		printk("\n~~~ VBAT LOW Detected ... \n");
+		printk("\n~~~ VBAT General Alarm Detection : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)... \n");
 		
 	}
 	else if (reg & VBAT_MON_RES) {
-		printk("\n~~~ VBAT LOW Resumed ... \n");
+		printk("\n~~~ VBAT General Alarm Resume : VBAT(5Dh+5Eh) > VBAT_TH(57h+58h) ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -1328,7 +1500,7 @@ static irqreturn_t bd7181x_int_dcin_ov_interrupt(int irq, void *pwrsys)
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 
-	bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
+	//bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
 
 	reg = bd7181x_reg_read(mfd, BD7181X_REG_INT_STAT_02);
 	if (reg < 0)
@@ -1339,19 +1511,19 @@ static irqreturn_t bd7181x_int_dcin_ov_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & DCIN_OV_DET) {
-		printk("\n~~~ DCIN OVERVOLTAGE Detected ... \n");
+		printk("\n~~~ DCIN >= 6.5V(typ) OVERVOLTAGE Detected ... \n");
 	}
 	else if (reg & DCIN_OV_RES) {
-		printk("\n~~~ DCIN OVERVOLTAGE Resume ... \n");
+		printk("\n~~~ DCIN OVERVOLTAGE Resume DCIN <= 6.5-150mV(typ) ... \n");
 	}
 	else if (reg & DCIN_CLPS_IN) {
-		printk("\n~~~ DCIN COLAPSE In ... \n");
+		printk("\n~~~ DCIN ANTI-COLAPSE detection DCIN(61h-62h) >= DCIN_CLPS(43h) ... \n");
 	}
 	else if (reg & DCIN_CLPS_OUT) {
-		printk("\n~~~ DCIN COLAPSE Out ... \n");
+		printk("\n~~~ DCIN COLAPSE RESUME  DCIN(61h-62h) < DCIN_CLPS(43h)... \n");
 	}
 	else if (reg & DCIN_RMV) {
-		printk("\n~~~ DCIN Remove ... \n");
+		printk("\n~~~ DCIN Removal ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -1370,7 +1542,7 @@ static irqreturn_t bd7181x_int_11_interrupt(int irq, void *pwrsys)
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 	
-	bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
+	//bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
 	
 	reg = bd7181x_reg_read(mfd, BD7181X_REG_INT_STAT_11);
 	if (reg < 0)
@@ -1382,28 +1554,28 @@ static irqreturn_t bd7181x_int_11_interrupt(int irq, void *pwrsys)
 	}
 
 	if (reg & INT_STAT_11_VF_DET) {
-		printk("\n~~~ VF Detected ... \n");
+		printk("\n~~~ Die temp.(VF) General Alarm Detection : VF(64h) ≦ VF_TH(53h) ... \n");
 	}
 	else if (reg & INT_STAT_11_VF_RES) {
-		printk("\n~~~ VF Resumed ... \n");
+		printk("\n~~~ Die temp.(VF) General Alarm Resume : VF(64h) > VF_TH(53h) ... \n");
 	}
 	else if (reg & INT_STAT_11_VF125_DET) {
-		printk("\n~~~ VF125 Detected ... \n");
+		printk("\n~~~ Die temp(VF) Over 125 degC Detection : VF(64h) ≦ 125 degC(typ) ... \n");
 	}
 	else if (reg & INT_STAT_11_VF125_RES) {
-		printk("\n~~~ VF125 Resumed ... \n");
+		printk("\n~~~ Die temp(VF) Over 125 degC Resume : VF(64h) > 125 degC(typ ... \n");
 	}
 	else if (reg & INT_STAT_11_OVTMP_DET) {
-		printk("\n~~~ Overtemp Detected ... \n");
+		printk("\n~~~ Battery Over-Temperature Detection : BTMP(5Fh) < OVBTMPTHR(86h) with duration timer OVBTMPDUR(87h) ... \n");
 	}
 	else if (reg & INT_STAT_11_OVTMP_RES) {
-		printk("\n~~~ Overtemp Detected ... \n");
+		printk("\n~~~ Battery Over-Temperature Resume : BTMP(5Fh) ≧ OVBTMPTHR(86h) with duration timer OVBTMPDUR(87h) ... \n");
 	}
 	else if (reg & INT_STAT_11_LOTMP_DET) {
-		printk("\n~~~ Lowtemp Detected ... \n");
+		printk("\n~~~ Battery Low-Temperature Detection : BTMP(5Fh) > LOBTMPTHR(88h) with duration timer LOBTMPDUR(89h) ... \n");
 	}
 	else if (reg & INT_STAT_11_LOTMP_RES) {
-		printk("\n~~~ Lowtemp Detected ... \n");
+		printk("\n~~~ Battery Low-Temperature Resume : BTMP(5Fh) ≦ LOBTMPTHR(88h) with duration timer LOBTMPDUR(89h) ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -1942,28 +2114,28 @@ static irqreturn_t bd7181x_int_buck_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & LED_SCP) {
-		printk("\n~~~ LED_SCP ... \n");
+		printk("\n~~~ Enable LED SCP detection ... \n");
 	}
 	else if (reg & LED_OCP) {
-		printk("\n~~~ LED_OCP ... \n");
+		printk("\n~~~ Enable LED OCP detection ... \n");
 	}
 	else if (reg & LED_OVP) {
-		printk("\n~~~ LED_OVP ... \n");
+		printk("\n~~~ Enable LED OVP detection ... \n");
 	}
 	else if (reg & BUCK5FAULT) {
-		printk("\n~~~ BUCK5FAULT ... \n");
+		printk("\n~~~ Enable BUCK5 output current limit detection interrupt ... \n");
 	}
 	else if (reg & BUCK4FAULT) {
-		printk("\n~~~ BUCK4FAULT ... \n");
+		printk("\n~~~ Enable BUCK4 output current limit detection interrupt ... \n");
 	}
 	else if (reg & BUCK3FAULT) {
-		printk("\n~~~ BUCK3FAULT ... \n");
+		printk("\n~~~ Enable BUCK3 output current limit detection interrupt ... \n");
 	}
 	else if (reg & BUCK2FAULT) {
-		printk("\n~~~ BUCK2FAULT ... \n");
+		printk("\n~~~ Enable BUCK2 output current limit detection interrupt ... \n");
 	}
 	else if (reg & BUCK1FAULT) {
-		printk("\n~~~ BUCK1FAULT ... \n");
+		printk("\n~~~ Enable BUCK1 output current limit detection interrupt ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -1984,22 +2156,22 @@ static irqreturn_t bd7181x_int_vsys_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & VSYS_MON_DET) {
-		printk("\n~~~ VSYS_MON_DET ... \n");
+		printk("\n~~~ VSYS General Alarm Detection : VSYS(63h) ≦ VSYS_TH(5Ah) ... \n");
 	}
 	else if (reg & VSYS_MON_RES) {
-		printk("\n~~~ VSYS_MON_RES ... \n");
+		printk("\n~~~ VSYS General Alarm Resume : VSYS(63h) > VSYS_TH(5Ah) ... \n");
 	}
 	else if (reg & VSYS_LO_DET) {
-		printk("\n~~~ VSYS_LO_DET ... \n");
+		printk("\n~~~ VSYS Low Voltage Detection : VSYS(63h) ≦ VSYS_MIN(46h) ... \n");
 	}
 	else if (reg & VSYS_LO_RES) {
-		printk("\n~~~ VSYS_LO_RES ... \n");
+		printk("\n~~~ VSYS Low Voltage Resume : VSYS(63h) ≧ VSYS_MAX(45h) ... \n");
 	}
 	else if (reg & VSYS_UV_DET) {
-		printk("\n~~~ VSYS_UV_DET ... \n");
+		printk("\n~~~ VSYS Under-Voltage Detection : VSYS ≦ 2.9V(typ) ... \n");
 	}
 	else if (reg & VSYS_UV_RES) {
-		printk("\n~~~ VSYS_UV_RES ... \n");
+		printk("\n~~~ VSYS Under-Voltage Resume : VSYS ≧ 3.2V(typ) ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -2020,25 +2192,25 @@ static irqreturn_t bd7181x_int_chg_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & CHG_TRNS) {
-		printk("\n~~~ CHG_TRNS ... \n");
+		printk("\n~~~ CHG_TRNS Battery Charger State Transition : CHG_STATE(39h) ... \n");
 	}
 	else if (reg & TMP_TRNS) {
-		printk("\n~~~ TMP_TRNS ... \n");
+		printk("\n~~~ TMP_TRNS Ranged Battery Temperature Transition : BAT_TEMP(40h) ... \n");
 	}
-	else if (reg & BAT_MIN_IN) {
-		printk("\n~~~ BAT_MIN_IN ... \n");
+	else if (reg & BAT_MNT_IN) {
+		printk("\n~~~ BAT_MNT_IN Battery Maintenance(Re-Charging) Condition Detection : VBAT(5Dh+5Eh) ≦ VBAT_MNT(55h) ... \n");
 	}
-	else if (reg & BAT_MIN_OUT) {
-		printk("\n~~~ BAT_MIN_OUT ... \n");
+	else if (reg & BAT_MNT_OUT) {
+		printk("\n~~~ BAT_MNT_OUT Battery Maintenance(Re-Charging) Condition Resume : VBAT(5Dh+5Eh) < VBAT_MNT(55h) ... \n");
 	}
 	else if (reg & CHG_WDT_EXP) {
-		printk("\n~~~ CHG_WDT_EXP ... \n");
+		printk("\n~~~ CHG_WDT_EXP Charging Watch Dog Timer Expiration for abnormal long charging : CHG_WDT_PRE(49h), CHG_WDT_FST(4Ah) ... \n");
 	}
 	else if (reg & EXTEMP_TOUT) {
-		printk("\n~~~ EXTEMP_TOUT ... \n");
+		printk("\n~~~ EXTEMP_TOUT Charging Watch Dog Timer Expiration for abnormal temperature protection .... \n");
 	}
-	else if (reg & INHIBIT) {
-		printk("\n~~~ INHIBIT ... \n");
+	else if (reg & INHIBIT_0) {
+		printk("\n~~~ INHIBIT For ROHM factory only ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -2060,22 +2232,22 @@ static irqreturn_t bd7181x_int_bat_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & TH_DET) {
-		printk("\n~~~ TH_DET ... \n");
+		printk("\n~~~ TH_DET External Thermistor Detection ... \n");
 	}
 	else if (reg & TH_RMV) {
-		printk("\n~~~ TH_RMV ... \n");
+		printk("\n~~~ TH_RMV External Thermister Removal ... \n");
 	}
 	else if (reg & BAT_DET) {
-		printk("\n~~~ BAT_DET ... \n");
+		printk("\n~~~ BAT_DET Battery Detection : BAT_SET(3Bh) [5]BAT_DET, [4]BAT_DET_DONE and CHG_SET2(48h) [4]BATDET_E... \n");
 	}
 	else if (reg & BAT_RMV) {
-		printk("\n~~~ BAT_RMV ... \n");
+		printk("\n~~~ BAT_RMV Battery Removal : BAT_SET(3Bh) [5]BAT_DET, [4]BAT_DET_DONE and CHG_SET2(48h) [4]BATDET_E... \n");
 	}
 	else if (reg & TMP_OUT_DET) {
-		printk("\n~~~ TMP_OUT_DET ... \n");
+		printk("\n~~~ TMP_OUT_DET Out of Battery Charging Temperature Range Detection : BAT_TEMP(40h) is HOT3 or COLD2... \n");
 	}
 	else if (reg & TMP_OUT_RES) {
-		printk("\n~~~ TMP_OUT_RES ... \n");
+		printk("\n~~~ TMP_OUT_RES Out of Battery Charging Temperature Range Resume : BAT_TEMP(40h) is except HOT3 and COLD2... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -2096,25 +2268,25 @@ static irqreturn_t bd7181x_int_vbat_mon1_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & VBAT_OV_DET) {
-		printk("\n~~~ VBAT_OV_DET ... \n");
+		printk("\n~~~ VBAT Over-Voltage Detection : VBAT(5Dh+5Eh) ≧ VBAT_OVP(55h) ... \n");
 	}
 	else if (reg & VBAT_OV_RES) {
-		printk("\n~~~ VBAT_OV_RES ... \n");
+		printk("\n~~~ VBAT Over-Voltage Resume : VBAT(5Dh+5Eh) ≦ VBAT_OVP(55h)-150mV ... \n");
 	}
 	else if (reg & VBAT_LO_DET) {
-		printk("\n~~~ VBAT_LO_DET ... \n");
+		printk("\n~~~ VBAT Low-Voltage Detection : VBAT(5Dh+5Eh) ≦ VBAT_LO(54h) ... \n");
 	}
 	else if (reg & VBAT_LO_RES) {
-		printk("\n~~~ VBAT_LO_RES ... \n");
+		printk("\n~~~ VBAT Low-Voltage Resume : VBAT(5Dh+5Eh) ≧ VBAT_HI(54h) ... \n");
 	}
 	else if (reg & VBAT_SHT_DET) {
-		printk("\n~~~ VBAT_SHT_DET ... \n");
+		printk("\n~~~ VBAT Short-Circuit Detection : VBAT(5Dh+5Eh) ≦ 1.5V(typ) ... \n");
 	}
 	else if (reg & VBAT_SHT_RES) {
-		printk("\n~~~ VBAT_SHT_RES ... \n");
+		printk("\n~~~ VBAT Short-Circuit Resume : VBAT(5Dh+5Eh) > 1.6V(typ) ... \n");
 	}
 	else if (reg & DBAT_DET) {
-		printk("\n~~~ DBAT_DET ... \n");
+		printk("\n~~~ VBAT Dead-Battery Detection : VBAT(5Dh+5Eh) ≦ VBAT_LO(54h) with duration timer TIM_DBP(56h) ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -2136,13 +2308,13 @@ static irqreturn_t bd7181x_int_vbat_mon3_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & CC_MON3_DET) {
-		printk("\n~~~ CC_MON3_DET ... \n");
+		printk("\n~~~ Battery Capacity Alarm 3 : CCNTD(79h+7Ah+7Bh+7Ch) ≦ CC_BATCAP3_TH(76h+77h) (lower than equal) ... \n");
 	}
 	else if (reg & CC_MON2_DET) {
-		printk("\n~~~ CC_MON2_DET ... \n");
+		printk("\n~~~ Battery Capacity Alarm 2 : CCNTD(79h+7Ah+7Bh+7Ch) ≦ CC_BATCAP2_TH(74h+75h) (lower than equal) ... \n");
 	}
 	else if (reg & CC_MON1_DET) {
-		printk("\n~~~ CC_MON1_DET ... \n");
+		printk("\n~~~ Battery Capacity Alarm 1 : CCNTD(79h+7Ah+7Bh+7Ch) ≧ CC_BATCAP1_TH(72h+73h) (greater than equal) ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -2164,22 +2336,22 @@ static irqreturn_t bd7181x_int_vbat_mon4_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & OCUR3_DET) {
-		printk("\n~~~ OCUR3_DET ... \n");
+		printk("\n~~~ Battery Over-Current 3 Detection : CURCD(7Dh+7Eh) ≧ OCURTHR3(83h) with duration timer OCURDUR3(84h) ... \n");
 	}
 	else if (reg & OCUR3_RES) {
-		printk("\n~~~ OCUR3_RES ... \n");
+		printk("\n~~~ Battery Over-Current 3 Resume : CURCD(7Dh+7Eh) < OCURTHR3(83h) with duration timer OCURDUR3(84h) ... \n");
 	}
 	else if (reg & OCUR2_DET) {
-		printk("\n~~~ OCUR2_DET ... \n");
+		printk("\n~~~ Battery Over-Current 2 Detection : CURCD(7Dh+7Eh) ≧ OCURTHR2(81h) with duration timer OCURDUR2(82h) ... \n");
 	}
 	else if (reg & OCUR2_RES) {
-		printk("\n~~~ OCUR2_RES ... \n");
+		printk("\n~~~ Battery Over-Current 2 Resume : CURCD(7Dh+7Eh) < OCURTHR2(81h) with duration timer OCURDUR2(82h) ... \n");
 	}
 	else if (reg & OCUR1_DET) {
-		printk("\n~~~ OCUR1_DET ... \n");
+		printk("\n~~~ Battery Over-Current 1 Detection : CURCD(7Dh+7Eh) ≧ OCURTHR1(7Fh) with duration timer OCURDUR1(80h) ... \n");
 	}
 	else if (reg & OCUR1_RES) {
-		printk("\n~~~ OCUR1_RES ... \n");
+		printk("\n~~~ Battery Over-Current 1 Resume : CURCD(7Dh+7Eh) < OCURTHR1(7Fh) with duration timer OCURDUR1(80h) ... \n");
 	}
 
 	return IRQ_HANDLED;
@@ -2353,8 +2525,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	// Clear all interrupts on startup...
-
+	// TODO: read interrupts and treat/clear them on startup... maybe in INIT HW ?
 
 	ret = sysfs_create_group(&pwr->bat->dev.kobj, &bd7181x_sysfs_attr_group);
 	if (ret < 0) {

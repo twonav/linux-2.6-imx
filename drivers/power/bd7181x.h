@@ -641,4 +641,3 @@ struct bd7181x_gpo_plat_data {
 };
 
 #endif /* __LINUX_MFD_BD7181X_H */
-
