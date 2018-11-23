@@ -376,6 +376,25 @@
 	//	ti,x-plate-ohms = <180>;
 	//};
 
+};
+
+&i2c2 {
+	clock_frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	ft5x06_ts@38 {
+		compatible = "edt,edt-ft5x06";
+		reg = <0x38>;
+		interrupt-parent = <&gpio3>;
+		interrupts = <4 0>;
+		touchscreen-size-x = <800>;
+		touchscreen-size-y = <480>;
+		touchscreen-inverted-x;
+		touchscreen-inverted-y;
+	};
+	
 	pmic: bd7181x@4b {
 		compatible = "rohm,bd71815";
 		reg = <0x4b>;
@@ -477,25 +496,6 @@
 
 		};
 
-	};
-
-};
-
-&i2c2 {
-	clock_frequency = <100000>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c2>;
-	status = "okay";
-
-	ft5x06_ts@38 {
-		compatible = "edt,edt-ft5x06";
-		reg = <0x38>;
-		interrupt-parent = <&gpio3>;
-		interrupts = <4 0>;
-		touchscreen-size-x = <800>;
-		touchscreen-size-y = <480>;
-		touchscreen-inverted-x;
-		touchscreen-inverted-y;
 	};
 
 	/* DS1337 RTC module */
