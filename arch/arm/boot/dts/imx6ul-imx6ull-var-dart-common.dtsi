@@ -39,6 +39,7 @@
 		status = "okay";
 	};
 
+	
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -50,15 +51,20 @@
 			regulator-always-on;
 			status = "okay";
 		};
-
-#ifdef WIFI
 		reg_sd1_vmmc: regulator_sd1_vmmc {
 			compatible = "regulator-fixed";
-			regulator-name = "VSD_3V3";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
+			regulator-name = "wlan-en-regulator";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+
+			/* WLAN_EN GPIO for this board - Bank5, pin13 */
+			/* gpio = <&gpio1 29 0>; */
+			/* output-high; */
+	
+			/* WLAN card specific delay */
+			/* startup-delay-us = <70000>; */
+			/* enable-active-high; */
 		};
-#endif
 		reg_gpio_dvfs: regulator-gpio {
 			compatible = "regulator-gpio";
 			regulator-min-microvolt = <1300000>;
@@ -69,6 +75,7 @@
 			states = <1300000 0x1 1400000 0x0>;
 		};
 	};
+	
 
 	codec: max98357a@0 {
 		compatible = "maxim,max98357a";
@@ -84,13 +91,50 @@
 	keys {
 		compatible = "gpio-keys";
 
-		user {
-			gpios = <&gpio1 0 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_BACK>;
+		button_tr {
+			label = "BUTTONS.T_R";
+			gpios = <&gpio2 0 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F1>;
+			gpio-key,wakeup;
+		};
+
+		button_tl {
+			label = "BUTTONS.T_L";
+			gpios = <&gpio2 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F2>;
+			gpio-key,wakeup;
+		};
+
+		keyboard_tr {
+			label = "BUTTONS.KB_T_R";
+			gpios = <&gpio5 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F4>;
+			gpio-key,wakeup;
+		};
+
+		keyboard_tl {
+			label = "BUTTONS.KB_T_L";
+			gpios = <&gpio5 2 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F3>;
+			gpio-key,wakeup;
+		};
+
+		keyboard_br {
+			label = "BUTTONS.KB_B_R";
+			gpios = <&gpio5 3 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F6>;
+			gpio-key,wakeup;
+		};
+
+		keyboard_bl {
+			label = "BUTTONS.KB_B_L";
+			gpios = <&gpio5 4 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F5>;
 			gpio-key,wakeup;
 		};
 	};
 
+	/* TBD
 	leds {
 		compatible = "gpio-leds";
 
@@ -99,6 +143,7 @@
 			linux,default-trigger = "heartbeat";
 		};
 	};
+	*/
 };
 
 &cpu0 {
@@ -269,85 +314,28 @@
 	status = "okay";
 };
 
-#ifdef WIFI
 /*  Wi-Fi/BT SD Card Slot Definition */
 &usdhc1 {
-	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1>;
-	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
-	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
-	assigned-clocks = <&clks IMX6UL_CLK_USDHC1_SEL>, <&clks IMX6UL_CLK_USDHC1>;
-	assigned-clock-parents = <&clks IMX6UL_CLK_PLL2_PFD2>;
-	assigned-clock-rates = <0>, <132000000>;
-	fsl,tuning-step= <2>;
 	vmmc-supply = <&reg_sd1_vmmc>;
-	status = "okay";
-	bus-width = <4>;
-	cap-power-off-card;
 	keep-power-in-suspend;
-
+	enable-sdio-wakeup;
+	bus-width = <4>;
+	broken-cd;
+	cap-power-off-card;
+	status = "okay";
 	#address-cells = <1>;
 	#size-cells = <0>;
-	wlcore: wlcore@2 {
+
+	wlcore: wlcore@0 {
 		compatible = "ti,wl1835";
 		reg = <2>;
 		interrupt-parent = <&gpio1>;
 		interrupts = <28 IRQ_TYPE_LEVEL_HIGH>;
 	};
 };
-#else
-&usdhc1 {
-	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc1>;
-	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
-	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
-	no-1-8-v;
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
-	cd-gpios = <&gpio4 19 GPIO_ACTIVE_LOW>;
-	status = "okay";
-};
-#endif
 
-#ifdef NAND
-&gpmi {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_gpmi_nand_1>;
-	fsl,legacy-bch-geometry;
-	status = "okay";
-
-	partition@0 {
-		label = "spl";
-		reg = <0x00000000 0x00200000>;
-	};
-
-	partition@1 {
-		label = "uboot";
-		reg = <0x00200000 0x00200000>;
-	};
-
-	partition@2 {
-		label = "uboot-env";
-		reg = <0x00400000 0x00200000>;
-	};
-
-	partition@3 {
-		label = "kernel";
-		reg = <0x00600000 0x00800000>;
-	};
-
-	partition@4 {
-		label = "rootfs";
-		reg = <0x00e00000 0x3f200000>;
-	};
-};
-
-&usdhc2 {
-	status = "disabled";
-};
-#endif
-
-#ifdef EMMC
 &usdhc2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc2>;
@@ -357,8 +345,8 @@
 	enable-sdio-wakeup;
 	status = "okay";
 };
-#endif
 
+/* NOT USED. CHECK
 &i2c1 {
 	clock-frequency = <400000>;
 	pinctrl-names = "default";
@@ -366,6 +354,7 @@
 	status = "okay";
 
 };
+*/
 
 &i2c2 {
 	clock_frequency = <100000>;
@@ -546,14 +535,26 @@
 	imx6ul-evk {
 		pinctrl_hog_1: hoggrp-1 {
 			fsl,pins = <
-				MX6UL_PAD_CSI_HSYNC__GPIO4_IO20		0x1b0b0	/* User LED */
-				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	/* User Button */
-				MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0
-				MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0
-				MX6UL_PAD_GPIO1_IO09__GPIO1_IO09	0xC0000000 /* GPS_RESET */
-				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01	0xC0000000 /* GPS_POWER_ON */
-				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08	0xC0000000 /* GPRS_POWER_ON */
-				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22	0xC0000000 Sample to get feedback from grpio sysfs*/
+				/* MX6UL_PAD_CSI_HSYNC__GPIO4_IO20		0x1b0b0	User LED - Check */
+				/* MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	User Button - Check */
+				/* MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0 Need to Check */ 
+				/* MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0 Need to Check */
+				/*-------------------------------GPS-----------------------------------*/
+				MX6UL_PAD_UART3_RTS_B__GPIO1_IO27		0x1b0b0 /* GPS_SYSTEM_ON (INPUT)*/
+				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26		0x1b0b0 /* GPS_ON_OFF */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18		0x1b0b0 /* GPS_RESET */
+				MX6UL_PAD_ENET1_TX_DATA0__GPIO2_IO03	0x1b0b0 /* GPS_PWR_EN */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19		0x1b0b0 /* GPS_BOOTSEL */
+				/*-------------------------------GPRS----------------------------------*/
+				MX6UL_PAD_ENET2_TX_CLK__GPIO2_IO14		0x1b0b0 /* GPRS_SWITCH */
+				MX6UL_PAD_ENET2_TX_EN__GPIO2_IO13		0x1b0b0 /* GPRS_PWRKEY */
+				MX6UL_PAD_ENET2_TX_DATA0__GPIO2_IO11	0x1b0b0 /* GPRS_STATUS (INPUT) */ 
+				/*-------------------------------WiFi----------------------------------*/
+				MX6UL_PAD_UART5_RX_DATA__GPIO1_IO31		0x1b0b0 /* WL_SWITCH */
+				/*-------------------------------BLE-----------------------------------*/
+				MX6UL_PAD_UART5_TX_DATA__GPIO1_IO30		0x1b0b0 /* BT_EN */
+				/*---------------------------------------------------------------------*/
+				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22		0x40000000 Sample to get feedback from grpio sysfs*/
 			>;
 		};
 
@@ -609,14 +610,14 @@
 			>;
 		};
 
-		pinctrl_uart1: uart1grp {
+		pinctrl_uart1: uart1grp { /* DEBUG */
 			fsl,pins = <
 				MX6UL_PAD_UART1_TX_DATA__UART1_DCE_TX	0x1b0b1
 				MX6UL_PAD_UART1_RX_DATA__UART1_DCE_RX	0x1b0b1
 			>;
 		};
 
-		pinctrl_uart2: uart2grp {
+		pinctrl_uart2: uart2grp { /* WLAN */
 			fsl,pins = <
 				MX6UL_PAD_UART2_TX_DATA__UART2_DCE_TX	0x1b0b1
 				MX6UL_PAD_UART2_RX_DATA__UART2_DCE_RX	0x1b0b1
@@ -648,13 +649,15 @@
 
 		pinctrl_usdhc1: usdhc1grp {
 			fsl,pins = <
-				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x17059
-				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x17059
-				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x17059
-				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x17059
-				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x17059
-				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x17059
-				MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	/* SD card detect */
+				MX6UL_PAD_SD1_CMD__USDHC1_CMD		0x17071
+				MX6UL_PAD_SD1_CLK__USDHC1_CLK		0x17071
+				MX6UL_PAD_SD1_DATA0__USDHC1_DATA0	0x17071
+				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x17071
+				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x17071
+				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x17071
+				MX6UL_PAD_UART4_RX_DATA__GPIO1_IO29	0x17071 /* WL_EN */
+				MX6UL_PAD_UART4_TX_DATA__GPIO1_IO28 0x17071 /* WL_IRQ */
+				/* MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	 SD card detect */
 			>;
 		};
 
@@ -666,7 +669,7 @@
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170b9
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170b9
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170b9
-				MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	/* SD card detect */
+				/* MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	 SD card detect */
 			>;
 		};
 
@@ -678,10 +681,9 @@
 				MX6UL_PAD_SD1_DATA1__USDHC1_DATA1	0x170f9
 				MX6UL_PAD_SD1_DATA2__USDHC1_DATA2	0x170f9
 				MX6UL_PAD_SD1_DATA3__USDHC1_DATA3	0x170f9
-				MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	/* SD card detect */
+				/* MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	 SD card detect */
 			>;
 		};
-#ifdef EMMC
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
 				MX6UL_PAD_NAND_RE_B__USDHC2_CLK		0x17059
@@ -692,41 +694,20 @@
 				MX6UL_PAD_NAND_DATA03__USDHC2_DATA3	0x17059
 			>;
 		};
-#endif
-#ifdef NAND
-		pinctrl_gpmi_nand_1: gpmi-nand-1 {
-			fsl,pins = <
-				MX6UL_PAD_NAND_CLE__RAWNAND_CLE		0xb0b1
-				MX6UL_PAD_NAND_ALE__RAWNAND_ALE		0xb0b1
-				MX6UL_PAD_NAND_WP_B__RAWNAND_WP_B	0xb0b1
-				MX6UL_PAD_NAND_READY_B__RAWNAND_READY_B	0xb000
-				MX6UL_PAD_NAND_CE0_B__RAWNAND_CE0_B	0xb0b1
-				MX6UL_PAD_NAND_CE1_B__RAWNAND_CE1_B	0xb0b1
-				MX6UL_PAD_NAND_RE_B__RAWNAND_RE_B	0xb0b1
-				MX6UL_PAD_NAND_WE_B__RAWNAND_WE_B	0xb0b1
-				MX6UL_PAD_NAND_DATA00__RAWNAND_DATA00	0xb0b1
-				MX6UL_PAD_NAND_DATA01__RAWNAND_DATA01	0xb0b1
-				MX6UL_PAD_NAND_DATA02__RAWNAND_DATA02	0xb0b1
-				MX6UL_PAD_NAND_DATA03__RAWNAND_DATA03	0xb0b1
-				MX6UL_PAD_NAND_DATA04__RAWNAND_DATA04	0xb0b1
-				MX6UL_PAD_NAND_DATA05__RAWNAND_DATA05	0xb0b1
-				MX6UL_PAD_NAND_DATA06__RAWNAND_DATA06	0xb0b1
-				MX6UL_PAD_NAND_DATA07__RAWNAND_DATA07	0xb0b1
-			>;
-		};
-#endif
 
+		/* NOT USED. CHECK
 		pinctrl_i2c1: i2c1grp {
 			fsl,pins = <
 				MX6UL_PAD_UART4_TX_DATA__I2C1_SCL	0x4001b8b0
 				MX6UL_PAD_UART4_RX_DATA__I2C1_SDA	0x4001b8b0
 			>;
 		};
+		*/
 
 		pinctrl_i2c2: i2c2grp {
 			fsl,pins = <
-				MX6UL_PAD_UART5_TX_DATA__I2C2_SCL	0x4001b8b0
-				MX6UL_PAD_UART5_RX_DATA__I2C2_SDA	0x4001b8b0
+				MX6UL_PAD_CSI_HSYNC__I2C2_SCL	0x4001b8b0
+				MX6UL_PAD_CSI_VSYNC__I2C2_SDA	0x4001b8b0
 			>;
 		};
 

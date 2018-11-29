@@ -264,6 +264,8 @@ static int wlcore_probe_of(struct device *dev, int *irq,
 static int wl1271_probe(struct sdio_func *func,
 				  const struct sdio_device_id *id)
 {
+	printk(KERN_INFO "wl1271_probe\n");
+
 	struct wlcore_platdev_data pdev_data;
 	struct wl12xx_sdio_glue *glue;
 	struct resource res[1];

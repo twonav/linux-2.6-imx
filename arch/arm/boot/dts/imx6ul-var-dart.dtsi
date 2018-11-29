@@ -50,24 +50,10 @@
 	};
 };
 
-
-
-
-
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_1
-		     &pinctrl_hog_2>;
+	pinctrl-0 = <&pinctrl_hog_1>;
 	imx6ul-evk {
-		pinctrl_hog_2: hoggrp-2 {
-			fsl,pins = <
-				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x1b0b0
-#ifdef WIFI
-				MX6UL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x1b0b0	/* BT Enable */
-				MX6UL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x03029	/* WLAN enable */
-#endif
-			>;
-		};
 
 		pinctrl_ecspi1_1: ecspi1grp {
 			fsl,pins = <
