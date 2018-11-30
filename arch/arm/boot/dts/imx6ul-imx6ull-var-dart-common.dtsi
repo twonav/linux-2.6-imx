@@ -79,7 +79,7 @@
 
 	codec: max98357a@0 {
 		compatible = "maxim,max98357a";
-		sdmode-gpios = <&gpio3 9 0>;
+		sdmode-gpios = <&gpio1 11 0>;
 	};
 
 	sound {
