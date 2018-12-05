@@ -198,7 +198,7 @@
 		bits-per-pixel = <32>;
 		bus-width = <24>;
 		gpios = <
-				&gpio5 5 GPIO_ACTIVE_HIGH
+				&gpio3 5 GPIO_ACTIVE_HIGH
 				&gpio3 4 GPIO_ACTIVE_HIGH
 				>;
 
@@ -223,11 +223,13 @@
 	};
 };
 
+/*
 &pwm1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pwm1>;
 	status = "okay";
 };
+*/
 
 &pxp {
 	status = "okay";
@@ -315,6 +317,7 @@
 };
 
 /*  Wi-Fi/BT SD Card Slot Definition */
+/*
 &usdhc1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc1>;
@@ -335,6 +338,7 @@
 		interrupts = <28 IRQ_TYPE_LEVEL_HIGH>;
 	};
 };
+*/
 
 &usdhc2 {
 	pinctrl-names = "default";
@@ -372,8 +376,8 @@
 		cy,core {
 			cy,name = "cyttsp5_core";
 
-			cy,irq_gpio = <&gpio2 2 IRQ_TYPE_EDGE_FALLING>;
-			cy,rst_gpio = <&gpio2 7 GPIO_ACTIVE_HIGH>;
+			cy,irq_gpio = <34>;
+			cy,rst_gpio = <39>;
 			cy,hid_desc_register = <1>;
 			/* CY_CORE_FLAG_RESTORE_PARAMETERS */
 			cy,flags = <4>;
@@ -517,7 +521,7 @@
 
 	};
 
-	/* DS1337 RTC module */
+	/* DS1337 RTC module
 	rtc@0x68 {
 		compatible = "dallas,ds1337";
 		reg = <0x68>;
@@ -526,7 +530,7 @@
 		interrupt-parent = <&gpio5>;
 		interrupts = <7 IRQ_TYPE_EDGE_FALLING>;
 	};
-  
+	*/
 };
 
 &iomuxc {
@@ -539,6 +543,9 @@
 				/* MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	User Button - Check */
 				/* MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0 Need to Check */ 
 				/* MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0 Need to Check */
+				/*-------------------------------BUTTONS-------------------------------*/
+				MX6UL_PAD_ENET1_RX_DATA1__GPIO2_IO01	0x1b0b0 /* BUTTONS_TL*/
+				MX6UL_PAD_ENET1_RX_DATA0__GPIO2_IO00	0x1b0b0 /* BUTTONS_TR*/
 				/*-------------------------------GPS-----------------------------------*/
 				MX6UL_PAD_UART3_RTS_B__GPIO1_IO27		0x1b0b0 /* GPS_SYSTEM_ON (INPUT)*/
 				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26		0x1b0b0 /* GPS_ON_OFF */
@@ -553,6 +560,9 @@
 				MX6UL_PAD_UART5_RX_DATA__GPIO1_IO31		0x1b0b0 /* WL_SWITCH */
 				/*-------------------------------BLE-----------------------------------*/
 				MX6UL_PAD_UART5_TX_DATA__GPIO1_IO30		0x1b0b0 /* BT_EN */
+				/*-------------------------------PCAP----------------------------------*/
+				MX6UL_PAD_ENET1_RX_ER__GPIO2_IO07		0x1b0b0 /* PCAP_RESET */
+				MX6UL_PAD_ENET1_RX_EN__GPIO2_IO02		0x1b0b0 /* PCAP_INT */
 				/*---------------------------------------------------------------------*/
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22		0x40000000 Sample to get feedback from grpio sysfs*/
 			>;
@@ -604,11 +614,13 @@
 			>;
 		};
 
+		/*
 		pinctrl_pwm1: pwm1grp {
 			fsl,pins = <
 				MX6UL_PAD_LCD_DATA00__PWM1_OUT		0x110b0
 			>;
 		};
+		*/
 
 		pinctrl_uart1: uart1grp { /* DEBUG */
 			fsl,pins = <

@@ -173,11 +173,11 @@ int cyttsp5_xres(struct cyttsp5_core_platform_data *pdata,
 	int rst_gpio = pdata->rst_gpio;
 	int rc = 0;
 
-	gpio_set_value(rst_gpio, 0);
-	msleep(20);
 	gpio_set_value(rst_gpio, 1);
-	msleep(40);
+	msleep(20);
 	gpio_set_value(rst_gpio, 0);
+	msleep(40);
+	gpio_set_value(rst_gpio, 1);
 	msleep(20);
 	dev_info(dev,
 		"%s: RESET CYTTSP gpio=%d r=%d\n", __func__,
@@ -203,7 +203,7 @@ int cyttsp5_init(struct cyttsp5_core_platform_data *pdata,
 				"%s: Fail request gpio=%d\n", __func__,
 				rst_gpio);
 		} else {
-			rc = gpio_direction_output(rst_gpio, 0);
+			rc = gpio_direction_output(rst_gpio, 1);
 			if (rc < 0) {
 				pr_err("%s: Fail set output gpio=%d\n",
 					__func__, rst_gpio);
