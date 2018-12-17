@@ -319,8 +319,22 @@
 /*  Wi-Fi/BT SD Card Slot Definition */
 /*
 &usdhc1 {
-	pinctrl-names = "default";
+	compatible = "fsl,imx6ull-usdhc", "fsl,imx6sx-usdhc";
+	reg = <0x02190000 0x4000>;
+	interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
+	clocks = <&clks IMX6UL_CLK_USDHC1>,
+		 <&clks IMX6UL_CLK_USDHC1>,
+		 <&clks IMX6UL_CLK_USDHC1>;
+	clock-names = "ipg", "ahb", "per";
+	assigned-clocks = <&clks IMX6UL_CLK_USDHC1_SEL>, <&clks IMX6UL_CLK_USDHC1>;
+	assigned-clock-parents = <&clks IMX6UL_CLK_PLL2_PFD2>;
+	assigned-clock-rates = <0>, <132000000>;
+	fsl,tuning-step= <2>;
+	status = "disabled";
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc1>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
 	vmmc-supply = <&reg_sd1_vmmc>;
 	keep-power-in-suspend;
 	enable-sdio-wakeup;
@@ -341,12 +355,23 @@
 */
 
 &usdhc2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc2>;
-	no-1-8-v;
+	compatible = "fsl,imx6ull-usdhc", "fsl,imx6sx-usdhc";
+	reg = <0x02194000 0x4000>;
+	interrupts = <GIC_SPI 23 IRQ_TYPE_LEVEL_HIGH>;
+	clocks = <&clks IMX6UL_CLK_USDHC2>,
+		 <&clks IMX6UL_CLK_USDHC2>,
+		 <&clks IMX6UL_CLK_USDHC2>;
+	clock-names = "ipg", "ahb", "per";
+	assigned-clocks = <&clks IMX6UL_CLK_USDHC2_SEL>, <&clks IMX6UL_CLK_USDHC2>;
+	assigned-clock-parents = <&clks IMX6UL_CLK_PLL2_PFD2>;
+	assigned-clock-rates = <0>, <132000000>;
+	bus-width = <8>;
+	fsl,tuning-step= <2>;
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc2_8bit>;
+	pinctrl-1 = <&pinctrl_usdhc2_8bit_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc2_8bit_200mhz>;
 	non-removable;
-	keep-power-in-suspend;
-	enable-sdio-wakeup;
 	status = "okay";
 };
 
@@ -696,6 +721,7 @@
 				/* MX6UL_PAD_CSI_VSYNC__GPIO4_IO19		0x1b0b1	 SD card detect */
 			>;
 		};
+
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
 				MX6UL_PAD_NAND_RE_B__USDHC2_CLK		0x17059
@@ -704,6 +730,51 @@
 				MX6UL_PAD_NAND_DATA01__USDHC2_DATA1	0x17059
 				MX6UL_PAD_NAND_DATA02__USDHC2_DATA2	0x17059
 				MX6UL_PAD_NAND_DATA03__USDHC2_DATA3	0x17059
+			>;
+		};
+
+		pinctrl_usdhc2_8bit: usdhc2grp_8bit {
+			fsl,pins = <
+				MX6UL_PAD_NAND_RE_B__USDHC2_CLK     0x10069
+				MX6UL_PAD_NAND_WE_B__USDHC2_CMD     0x17059
+				MX6UL_PAD_NAND_DATA00__USDHC2_DATA0 0x17059
+				MX6UL_PAD_NAND_DATA01__USDHC2_DATA1 0x17059
+				MX6UL_PAD_NAND_DATA02__USDHC2_DATA2 0x17059
+				MX6UL_PAD_NAND_DATA03__USDHC2_DATA3 0x17059
+				MX6UL_PAD_NAND_DATA04__USDHC2_DATA4 0x17059
+				MX6UL_PAD_NAND_DATA05__USDHC2_DATA5 0x17059
+				MX6UL_PAD_NAND_DATA06__USDHC2_DATA6 0x17059
+				MX6UL_PAD_NAND_DATA07__USDHC2_DATA7 0x17059
+			>;
+		};
+
+		pinctrl_usdhc2_8bit_100mhz: usdhc2grp_8bit_100mhz {
+			fsl,pins = <
+				MX6UL_PAD_NAND_RE_B__USDHC2_CLK     0x100b9
+				MX6UL_PAD_NAND_WE_B__USDHC2_CMD     0x170b9
+				MX6UL_PAD_NAND_DATA00__USDHC2_DATA0 0x170b9
+				MX6UL_PAD_NAND_DATA01__USDHC2_DATA1 0x170b9
+				MX6UL_PAD_NAND_DATA02__USDHC2_DATA2 0x170b9
+				MX6UL_PAD_NAND_DATA03__USDHC2_DATA3 0x170b9
+				MX6UL_PAD_NAND_DATA04__USDHC2_DATA4 0x170b9
+				MX6UL_PAD_NAND_DATA05__USDHC2_DATA5 0x170b9
+				MX6UL_PAD_NAND_DATA06__USDHC2_DATA6 0x170b9
+				MX6UL_PAD_NAND_DATA07__USDHC2_DATA7 0x170b9
+			>;
+		};
+
+		pinctrl_usdhc2_8bit_200mhz: usdhc2grp_8bit_200mhz {
+			fsl,pins = <
+				MX6UL_PAD_NAND_RE_B__USDHC2_CLK     0x100f9
+				MX6UL_PAD_NAND_WE_B__USDHC2_CMD     0x170f9
+				MX6UL_PAD_NAND_DATA00__USDHC2_DATA0 0x170f9
+				MX6UL_PAD_NAND_DATA01__USDHC2_DATA1 0x170f9
+				MX6UL_PAD_NAND_DATA02__USDHC2_DATA2 0x170f9
+				MX6UL_PAD_NAND_DATA03__USDHC2_DATA3 0x170f9
+				MX6UL_PAD_NAND_DATA04__USDHC2_DATA4 0x170f9
+				MX6UL_PAD_NAND_DATA05__USDHC2_DATA5 0x170f9
+				MX6UL_PAD_NAND_DATA06__USDHC2_DATA6 0x170f9
+				MX6UL_PAD_NAND_DATA07__USDHC2_DATA7 0x170f9
 			>;
 		};
 
