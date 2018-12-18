@@ -17,20 +17,7 @@
 #include "imx6ul-imx6ull-var-dart-common.dtsi"
 
 / {
-#ifdef NAND
-#ifdef WIFI
-	model = "Variscite i.MX6 UltraLite DART NAND/WIFI";
-#else
-	model = "Variscite i.MX6 UltraLite DART NAND/SD";
-#endif
-#endif
-#ifdef EMMC
-#ifdef WIFI
-	model = "Variscite i.MX6 UltraLite DART EMMC/WIFI";
-#else
-	model = "Variscite i.MX6 UltraLite DART EMMC/SD";
-#endif
-#endif
+	model = "TwoNav i.MX6 EMMC/WIFI";
 	compatible = "fsl,imx6ul-var-dart", "fsl,imx6ul";
 };
 
