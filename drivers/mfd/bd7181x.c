@@ -23,7 +23,7 @@
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
 #include <linux/mfd/core.h>
-#include "bd7181x.h"
+#include <linux/mfd/bd7181x.h>
 
 /** @brief bd7181x irq resource */
 static struct resource rtc_resources[] = {
