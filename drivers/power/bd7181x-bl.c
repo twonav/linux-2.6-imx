@@ -27,7 +27,7 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/delay.h>
-#include "bd7181-bl.h"
+#include "bd7181x-bl.h"
 
 
 
