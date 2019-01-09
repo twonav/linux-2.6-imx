@@ -23,7 +23,7 @@
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include <linux/regulator/of_regulator.h>
-#include "bd7181x.h"
+#include <linux/mfd/bd7181x.h>
 
 #define BD7181X_VOL_OFFSET		0
 #define BD7181X_STANDBY_OFFSET		0

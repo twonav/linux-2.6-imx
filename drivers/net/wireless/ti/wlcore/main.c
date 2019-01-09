@@ -6491,6 +6491,8 @@ out:
 
 int wlcore_probe(struct wl1271 *wl, struct platform_device *pdev)
 {
+	printk(KERN_INFO "wlcore_probe\n");
+
 	int ret;
 
 	if (!wl->ops || !wl->ptable)
