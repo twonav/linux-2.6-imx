@@ -527,6 +527,11 @@
 
 	};
 
+	tsl2x7x@39 {
+        	compatible = "taos,tsl2572";
+        	reg = <0x39>;
+    	};
+
 	/* DS1337 RTC module
 	rtc@0x68 {
 		compatible = "dallas,ds1337";
