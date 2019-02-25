@@ -29,9 +29,9 @@
 		backlight-supply = <&wled_reg>;
 
 		brightness {
-			brightness-levels = <10 20 30 50 70 100 200 300 500 700 1000 2000 3000 4000 5000 6000 7000 8000 9000 
+			brightness-levels = <0 10 20 30 50 70 100 200 300 500 700 1000 2000 3000 4000 5000 6000 7000 8000 9000
 								10000 11000 12000 13000 14000 15000 16000 17000 18000 19000 20000 21000 22000 23000 24000 25000>;
-			default-brightness-level = <15>;
+			default-brightness-level = <16>;
 		};
 	};
 #endif
