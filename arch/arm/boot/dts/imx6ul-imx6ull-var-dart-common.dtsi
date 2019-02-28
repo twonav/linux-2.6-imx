@@ -553,7 +553,7 @@
 			fsl,pins = <
 				/* MX6UL_PAD_CSI_HSYNC__GPIO4_IO20		0x1b0b0	User LED - Check */
 				/* MX6UL_PAD_GPIO1_IO00__GPIO1_IO00	0x17059	User Button - Check */
-				/* MX6UL_PAD_GPIO1_IO07__ENET2_MDC		0x1b0b0 Need to Check */ 
+				MX6UL_PAD_GPIO1_IO07__GPIO1_IO07		0x1b0b0   /* Notification Led */
 				/* MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0 Need to Check */
 				/*-------------------------------BUTTONS-------------------------------*/
 				MX6UL_PAD_ENET1_RX_DATA1__GPIO2_IO01	0x1b0b0 /* BUTTONS_TL*/
