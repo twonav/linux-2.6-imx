@@ -30,10 +30,10 @@
 #include "bd7181x-bl.h"
 
 
+static int enable_brighntess_value = -1;
 
-/*
 
-static ssize_t reg_show_name(struct device *dev,
+/*static ssize_t reg_show_name(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
 
@@ -41,9 +41,23 @@ static ssize_t reg_show_name(struct device *dev,
 
 	return sprintf(buf, "%s\n", data->name);
 
-}
+}*/
 
-static ssize_t reg_show_state(struct device *dev,
+/*static ssize_t reg_show_state(struct device *dev,
+			  struct device_attribute *attr, char *buf)
+{
+
+	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
+
+	if (data->enabled)
+		return sprintf(buf, "enabled\n");
+
+	return sprintf(buf, "disabled\n");
+
+}*/
+
+
+static ssize_t reg_show_enabled(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
 
@@ -57,7 +71,15 @@ static ssize_t reg_show_state(struct device *dev,
 }
 
 
-static ssize_t reg_set_current_uA(struct device *dev, struct device_attribute *attr,
+/*static ssize_t reg_get_current_uA(struct device *dev, struct device_attribute *attr,
+			  const char *buf, size_t count)
+{
+	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%s\n", regulator_get_current_limit(data->regulator));
+}*/
+
+/*static ssize_t reg_set_current_uA(struct device *dev, struct device_attribute *attr,
 			  const char *buf, size_t count)
 {
 	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
@@ -81,13 +103,11 @@ static ssize_t reg_set_current_uA(struct device *dev, struct device_attribute *a
 	mutex_unlock(&data->lock);
 
 	return ret;
-}
-*/
+}*/
 
 static int reg_set_state(struct bd7181_bl_regulator_data *reg_data, bool enabled )
 {
 	int ret=0;
-
 	mutex_lock(&reg_data->lock);
 	if (enabled != reg_data->enabled) { // on _probe this is always true
 		if (enabled) {
@@ -97,11 +117,12 @@ static int reg_set_state(struct bd7181_bl_regulator_data *reg_data, bool enabled
 			ret = regulator_disable(reg_data->regulator);
 		}
 
-		if (ret == 0){
+		if (ret == 0) {
 			reg_data->enabled = enabled;
 			ret=0;
 		}
 	}
+
 	mutex_unlock(&reg_data->lock);
 
 	return ret;
@@ -151,6 +172,32 @@ static int backlight_power_on(struct backlight_device *bl_dev)
 	return ret;
 }
 
+static ssize_t reg_set_enabled(struct device *dev,
+							   struct device_attribute *attr,
+							   const char *buf,
+							   size_t count)
+{
+	struct backlight_device *bl_dev = dev_get_drvdata(dev);
+	struct bd7181_bl_regulator_data *data = bl_get_data(bl_dev);
+
+	long val;
+	if (kstrtol(buf, 10, &val) != 0)
+		return count;
+
+	if (val > 0) {
+		bl_dev->props.brightness = enable_brighntess_value;
+	}
+	else {
+		enable_brighntess_value = bl_dev->props.brightness;
+		bl_dev->props.brightness = 1;
+	}
+
+	update_brightness_status(bl_dev);
+
+	return count;
+}
+
+
 static unsigned int brightness2uA( struct bd7181_bl_regulator_data *reg_data, int brightness)
 {
 	unsigned int micro_amps;
@@ -173,8 +220,9 @@ static int reg_set_current_uA(struct bd7181_bl_regulator_data *reg_data, long va
 
 	mutex_unlock(&reg_data->lock);
 
-	if (ret>=0)
+	if (ret>=0) {
 		reg_data->actual_uA=val;
+	}
 
 	return ret;
 }
@@ -194,9 +242,8 @@ static int update_brightness_status(struct backlight_device *bl_dev)
 
 		if(micro_amps > 0){
 			ret = reg_set_current_uA(reg_data, micro_amps);
-			if (ret<0) {
+			if (ret<0)
 				return ret;
-			}
 			ret = backlight_power_on(bl_dev); /*No need to check if already ON, it is checked/set internally*/
 		}
 		else if (micro_amps==0)
@@ -229,24 +276,23 @@ static const struct backlight_ops reg_backlight_ops = {
 	.get_brightness = get_brightness_status,
 };
 
-/*
-static DEVICE_ATTR(name, 0444, reg_show_name, NULL);
+
+/*static DEVICE_ATTR(name, 0444, reg_show_name, NULL);
 static DEVICE_ATTR(state, 0644, reg_show_state, reg_set_state);
-static DEVICE_ATTR(set_current, 0664, reg_get_current_uA, reg_set_current_uA);
+static DEVICE_ATTR(set_current, 0664, reg_get_current_uA, reg_set_current_uA);*/
+static DEVICE_ATTR(enable, 0644, reg_show_enabled, reg_set_enabled);
 
 static struct attribute *attributes[] = {
-	&dev_attr_name.attr,
+	/*&dev_attr_name.attr,
 	&dev_attr_state.attr,
-	&dev_attr_set_current.attr,
+	&dev_attr_set_current.attr,*/
+	&dev_attr_enable.attr,
 	NULL,
 };
 
 static const struct attribute_group attr_group = {
 	.attrs	= attributes,
 };
-
-*/
-
 
 static struct bd7181_bl_data *get_pdata_from_dt_node(struct platform_device *pdev)
 {
@@ -323,6 +369,7 @@ static struct bd7181_bl_data *get_pdata_from_dt_node(struct platform_device *pde
 }
 
 
+
 static int bd7181x_backlight_probe(struct platform_device *pdev)
 {
 	struct bd7181_bl_data *pdata;
@@ -334,8 +381,6 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "Probe called\n");
 
 	pdata = dev_get_platdata(&pdev->dev);
-
-
 	if (!pdata && pdev->dev.of_node) {
 		pdata = get_pdata_from_dt_node(pdev);
 		if (IS_ERR(pdata))
@@ -364,9 +409,10 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	pdata->brightness.actual = 0;
 	drvdata->brightness = pdata->brightness;
 
-	//ret = sysfs_create_group(&pdev->dev.kobj, &attr_group);
-	//if (ret != 0)
-	//	return ret;
+	ret = sysfs_create_group(&pdev->dev.kobj, &attr_group);
+	if (ret != 0) {
+		return ret;
+	}
 
 	/*Set backlight interface*/
 	memset(&bl_prop, 0, sizeof(struct backlight_properties));/* Reset memory */
@@ -391,16 +437,16 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	if (pdata->init_on) {
 		struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
 		reg_data->enabled = false; // Make sure it is called
+
 		bl_dev->props.brightness = drvdata->brightness.dft; // Set initial status to default brightness
 
-		// The following code is not needed cause update is called with the last stored value on power on
-		// ret = update_brightness_status(bl_dev);
+		//ret = update_brightness_status(bl_dev);
 		//if (ret) {
 		//	dev_err(&pdev->dev, "Failed to set initial state to ON: %d\n", ret);
 		//	goto err;
 		//}
 	}
-	else{
+	else {
 		struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
 		reg_data->enabled = true;  // Make sure it is called
 		ret = backlight_power_on(bl_dev);
@@ -419,7 +465,7 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	return 0;
 
 err:
-	//sysfs_remove_group(&pdev->dev.kobj, &attr_group);
+	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
 
 	return ret;
 
@@ -428,10 +474,9 @@ err:
 static int bd7181x_backlight_remove(struct platform_device *pdev)
 {
 	struct backlight_device *bl_dev = platform_get_drvdata(pdev);
-
 	dev_info(&pdev->dev, "Removing backlight\n");
 
-	//sysfs_remove_group(&pdev->dev.kobj, &attr_group);
+	sysfs_remove_group(&pdev->dev.kobj, &attr_group);
 
 	backlight_power_off(bl_dev);
 
