@@ -30,31 +30,7 @@
 #include "bd7181x-bl.h"
 
 
-static int enable_brighntess_value = -1;
-
-
-/*static ssize_t reg_show_name(struct device *dev,
-			  struct device_attribute *attr, char *buf)
-{
-
-	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
-
-	return sprintf(buf, "%s\n", data->name);
-
-}*/
-
-/*static ssize_t reg_show_state(struct device *dev,
-			  struct device_attribute *attr, char *buf)
-{
-
-	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
-
-	if (data->enabled)
-		return sprintf(buf, "enabled\n");
-
-	return sprintf(buf, "disabled\n");
-
-}*/
+static int brighntess_value_before_disable = -1;
 
 
 static ssize_t reg_show_enabled(struct device *dev,
@@ -63,47 +39,14 @@ static ssize_t reg_show_enabled(struct device *dev,
 
 	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
 
-	if (data->enabled)
+	if (data->enabled) {
 		return sprintf(buf, "enabled\n");
+	}
 
 	return sprintf(buf, "disabled\n");
 
 }
 
-
-/*static ssize_t reg_get_current_uA(struct device *dev, struct device_attribute *attr,
-			  const char *buf, size_t count)
-{
-	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
-
-	return sprintf(buf, "%s\n", regulator_get_current_limit(data->regulator));
-}*/
-
-/*static ssize_t reg_set_current_uA(struct device *dev, struct device_attribute *attr,
-			  const char *buf, size_t count)
-{
-	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
-	long val;
-	int ret;
-
-	if (kstrtol(buf, 10, &val) != 0)
-		return count;
-
-	mutex_lock(&data->lock);
-
-	if (1) {
-		dev_info(dev, "Requesting %d uA\n", val);
-		ret = regulator_set_current_limit(data->regulator, val, val);
-		if (ret == 0)
-			ret=count;
-		else
-			dev_err(dev,"regulator_set_current_limit failed: %d\n", ret);
-	}
-
-	mutex_unlock(&data->lock);
-
-	return ret;
-}*/
 
 static int reg_set_state(struct bd7181_bl_regulator_data *reg_data, bool enabled )
 {
@@ -128,6 +71,7 @@ static int reg_set_state(struct bd7181_bl_regulator_data *reg_data, bool enabled
 	return ret;
 }
 
+
 static int backlight_power_off(struct backlight_device *bl_dev)
 {
 	struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
@@ -144,18 +88,21 @@ static int backlight_power_off(struct backlight_device *bl_dev)
 		bl_dev->props.brightness = 1;
 		ret = update_brightness_status(bl_dev); /* Set to lowest brightness */
 
-		if(ret!=0)
+		if(ret!=0) {
 			dev_err(&bl_dev->dev, "Fail to discharge backlight capacitor\n",ret);
+		}
 
 		msleep(200); /* Wait for the capacitor to discharge */
 	}
 
 	ret = reg_set_state(reg_data,false);
-	if(ret!=0)
+	if(ret!=0) {
 		dev_err(&bl_dev->dev, "Fail to poweroff backlight\n",ret);
+	}
 
 	return ret;
 }
+
 
 static int backlight_power_on(struct backlight_device *bl_dev)
 {
@@ -166,11 +113,13 @@ static int backlight_power_on(struct backlight_device *bl_dev)
 
 	ret = reg_set_state(reg_data,true);
 
-	if(ret!=0)
+	if(ret!=0) {
 		dev_err(&bl_dev->dev, "Fail to poweron backlight\n",ret);
+	}
 
 	return ret;
 }
+
 
 static ssize_t reg_set_enabled(struct device *dev,
 							   struct device_attribute *attr,
@@ -181,14 +130,19 @@ static ssize_t reg_set_enabled(struct device *dev,
 	struct bd7181_bl_regulator_data *data = bl_get_data(bl_dev);
 
 	long val;
-	if (kstrtol(buf, 10, &val) != 0)
+	if (kstrtol(buf, 10, &val) != 0) {
 		return count;
+	}
+
+	if (((data->enabled) && (val > 0)) || ((!data->enabled) && (val == 0))) {
+		return count;
+	}
 
 	if (val > 0) {
-		bl_dev->props.brightness = enable_brighntess_value;
+		bl_dev->props.brightness = brighntess_value_before_disable;
 	}
 	else {
-		enable_brighntess_value = bl_dev->props.brightness;
+		brighntess_value_before_disable = bl_dev->props.brightness;
 		bl_dev->props.brightness = 1;
 	}
 
@@ -202,13 +156,16 @@ static unsigned int brightness2uA( struct bd7181_bl_regulator_data *reg_data, in
 {
 	unsigned int micro_amps;
 
-	if(reg_data->brightness.levels)
+	if(reg_data->brightness.levels) {
 		micro_amps = reg_data->brightness.levels[brightness];
-	else
+	}
+	else {
 		return -EINVAL;
+	}
 
 	return micro_amps;
 }
+
 
 static int reg_set_current_uA(struct bd7181_bl_regulator_data *reg_data, long val )
 {
@@ -227,6 +184,7 @@ static int reg_set_current_uA(struct bd7181_bl_regulator_data *reg_data, long va
 	return ret;
 }
 
+
 static int update_brightness_status(struct backlight_device *bl_dev)
 {
 	struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
@@ -236,27 +194,32 @@ static int update_brightness_status(struct backlight_device *bl_dev)
 
 	dev_info(&bl_dev->dev, "Backlight update requested to: %d\n",brightness);
 
-	if (reg_data->brightness.actual != brightness){
+	if (reg_data->brightness.actual != brightness) {
 
 		micro_amps = brightness2uA(reg_data, brightness);
 
-		if(micro_amps > 0){
+		if(micro_amps > 0) {
 			ret = reg_set_current_uA(reg_data, micro_amps);
-			if (ret<0)
+			if (ret<0) {
 				return ret;
+			}
 			ret = backlight_power_on(bl_dev); /*No need to check if already ON, it is checked/set internally*/
 		}
-		else if (micro_amps==0)
+		else if (micro_amps==0) {
 			ret = backlight_power_off(bl_dev);/*No need to check if already OFF, it is checked/set internally*/
-		else
+		}
+		else {
 			ret = -EINVAL;
+		}
 
-		if (ret>=0)
+		if (ret>=0) {
 			reg_data->brightness.actual = brightness;
+		}
 	}
 
 	return ret;
 }
+
 
 static int get_brightness_status(struct backlight_device *bl_dev)
 {
@@ -265,11 +228,14 @@ static int get_brightness_status(struct backlight_device *bl_dev)
 
 	dev_info(&bl_dev->dev,"brightness status requested\n");
 
-	if(brightness >= 0)
+	if(brightness >= 0) {
 		return brightness;
-	else
+	}
+	else {
 		return -EINVAL;
+	}
 }
+
 
 static const struct backlight_ops reg_backlight_ops = {
 	.update_status	= update_brightness_status,
@@ -277,22 +243,19 @@ static const struct backlight_ops reg_backlight_ops = {
 };
 
 
-/*static DEVICE_ATTR(name, 0444, reg_show_name, NULL);
-static DEVICE_ATTR(state, 0644, reg_show_state, reg_set_state);
-static DEVICE_ATTR(set_current, 0664, reg_get_current_uA, reg_set_current_uA);*/
 static DEVICE_ATTR(enable, 0644, reg_show_enabled, reg_set_enabled);
 
+
 static struct attribute *attributes[] = {
-	/*&dev_attr_name.attr,
-	&dev_attr_state.attr,
-	&dev_attr_set_current.attr,*/
 	&dev_attr_enable.attr,
 	NULL,
 };
 
+
 static const struct attribute_group attr_group = {
 	.attrs	= attributes,
 };
+
 
 static struct bd7181_bl_data *get_pdata_from_dt_node(struct platform_device *pdev)
 {
@@ -303,12 +266,14 @@ static struct bd7181_bl_data *get_pdata_from_dt_node(struct platform_device *pde
 	int length;
 	int ret;
 
-	if (!np)
+	if (!np) {
 		return -ENODEV;
+	}
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
-	if (!pdata)
+	if (!pdata) {
 		return ERR_PTR(-ENOMEM);
+	}
 
 	pdata->name = of_get_property(np, "regulator-name", NULL);
 	if (!pdata->name) {
@@ -333,8 +298,9 @@ static struct bd7181_bl_data *get_pdata_from_dt_node(struct platform_device *pde
 
 	/*Get the number of brightness levels*/
 	prop = of_find_property(brightness_np, "brightness-levels", &length);
-	if (!prop)
+	if (!prop) {
 		return -EINVAL;
+	}
 
 	pdata->brightness.n_levels = length / sizeof(u32);
 
@@ -342,32 +308,32 @@ static struct bd7181_bl_data *get_pdata_from_dt_node(struct platform_device *pde
 		size_t size = sizeof(*pdata->brightness.levels) * pdata->brightness.n_levels;
 
 		pdata->brightness.levels = devm_kzalloc(&pdev->dev, size, GFP_KERNEL);
-		if (!pdata->brightness.levels)
+		if (!pdata->brightness.levels) {
 			return -ENOMEM;
+		}
 
 		ret = of_property_read_u32_array(brightness_np, "brightness-levels",
 										 pdata->brightness.levels,
 										 pdata->brightness.n_levels);
-		if (ret < 0){
+		if (ret < 0) {
 			dev_err(&pdev->dev, "brightness-levels property not found\n");
 			return ret;
 		}
 
 		ret = of_property_read_u32(brightness_np, "default-brightness-level",
 					   	   	   	   &pdata->brightness.dft);
-		if (ret < 0){
+		if (ret < 0) {
 			dev_err(&pdev->dev, "default-brightness-level property not found\n");
 			return ret;
 		}
 	}
-	else{
+	else {
 		dev_err(&pdev->dev, "too few values for brightness-levels property");
 		return -EINVAL;
 	}
 
 	return pdata;
 }
-
 
 
 static int bd7181x_backlight_probe(struct platform_device *pdev)
@@ -383,16 +349,18 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	pdata = dev_get_platdata(&pdev->dev);
 	if (!pdata && pdev->dev.of_node) {
 		pdata = get_pdata_from_dt_node(pdev);
-		if (IS_ERR(pdata))
+		if (IS_ERR(pdata)) {
 			return PTR_ERR(pdata);
+		}
 	}
-	if (!pdata){
+	if (!pdata) {
 		return -EINVAL;
 	}
 
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(struct bd7181_bl_regulator_data), GFP_KERNEL);
-	if (drvdata == NULL)
+	if (drvdata == NULL) {
 		return -ENOMEM;
+	}
 
 	drvdata->name = pdata->name;
 	drvdata->supply = pdata->supply;
@@ -418,7 +386,7 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	memset(&bl_prop, 0, sizeof(struct backlight_properties));/* Reset memory */
 	bl_prop.type = BACKLIGHT_RAW;
 
-	if(pdata->brightness.n_levels > 1) {
+	if (pdata->brightness.n_levels > 1) {
 		bl_prop.max_brightness = pdata->brightness.n_levels-1;
 	}
 	else {
@@ -456,8 +424,6 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 		}
 	}
 
-	//bl_dev->props.brightness = 100;
-
 	platform_set_drvdata(pdev, bl_dev);
 	dev_info(&pdev->dev, "Probed successfully\n");
 
@@ -470,6 +436,7 @@ err:
 	return ret;
 
 }
+
 
 static int bd7181x_backlight_remove(struct platform_device *pdev)
 {
@@ -485,12 +452,15 @@ static int bd7181x_backlight_remove(struct platform_device *pdev)
 	return 0;
 }
 
+
 static const struct of_device_id bd7181x_backlight_of_match[] = {
 	{ .compatible = "bd7181x-backlight", },
 	{/* sentinel */ }
 };
 
+
 MODULE_DEVICE_TABLE(of, bd7181x_backlight_of_match);
+
 
 static struct platform_driver bd7181x_backlight_driver = {
 	.probe		= bd7181x_backlight_probe,
@@ -500,6 +470,7 @@ static struct platform_driver bd7181x_backlight_driver = {
 		.of_match_table = bd7181x_backlight_of_match,
 	},
 };
+
 
 module_platform_driver(bd7181x_backlight_driver);
 
