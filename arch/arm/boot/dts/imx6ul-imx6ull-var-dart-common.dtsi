@@ -582,7 +582,9 @@
 				MX6UL_PAD_UART5_TX_DATA__GPIO1_IO30		0x1b0b0 /* BT_EN */
 				/*-------------------------------PCAP----------------------------------*/
 				MX6UL_PAD_ENET1_RX_ER__GPIO2_IO07		0x1b0b0 /* PCAP_RESET */
-				MX6UL_PAD_ENET1_RX_EN__GPIO2_IO02		0x1b0b0 /* PCAP_INT */
+				MX6UL_PAD_ENET1_RX_EN__GPIO2_IO02		0x1b0b0 /* PCAP_INT */	
+				/*-------------------------------SDCARD--------------------------------*/
+                MX6UL_PAD_CSI_DATA02__GPIO4_IO23                0x1b0b0 /* SD_SWITCH */
 				/*---------------------------------------------------------------------*/
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22		0x40000000 Sample to get feedback from grpio sysfs*/
 			>;			
