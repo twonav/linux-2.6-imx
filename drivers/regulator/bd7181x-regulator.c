@@ -450,8 +450,15 @@ static int bd7181x_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, pmic);
 
 	bd7181x_clear_bits(pmic->mfd, BD7181X_REG_PWRCTRL, RESTARTEN); // Disable to go to ship-mode
-	bd7181x_clear_bits(pmic->mfd, BD7181X_REG_GPO, RESTARTEN); // Turn OFF the green LED
+	//bd7181x_clear_bits(pmic->mfd, BD7181X_REG_GPO, RESTARTEN); // Turn OFF the green LED
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_CHG_SET1, CHG_EN); // Enable charger
+
+	// Twonav Specific initialization --------------------------------------------
+	bd7181x_clear_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x08); // enable control ldo4 by pin
+	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x04); //   ldo3 by default
+	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE2, 0x40); //   ldo3 by default	
+	bd7181x_reg_write(spmic->mfd, BD7181X_REG_LDO4_VOLT, 0x14); // Set LDO4 to 1.8V
+	// ----------------------------------------------------------------------------
 
 	pdata = dev_get_platdata(bd7181x->dev);
 	if (!pdata && bd7181x->dev->of_node) {
