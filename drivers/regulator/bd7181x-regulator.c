@@ -450,17 +450,15 @@ static int bd7181x_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, pmic);
 
 	bd7181x_clear_bits(pmic->mfd, BD7181X_REG_PWRCTRL, RESTARTEN); // Disable to go to ship-mode
-	// bd7181x_clear_bits(pmic->mfd, BD7181X_REG_GPO, RESTARTEN); // LDU: commented: Turn OFF the green LED
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_CHG_SET1, CHG_EN); // Enable charger
 
 	// LDU: Twonav Specific initialization --------------------------------------------
 	bd7181x_clear_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x08); // enable control ldo4 by pin
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x04); //   ldo3 by default
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE2, 0x40); //   ldo3 by default	
-	bd7181x_reg_write(pmic->mfd, BD7181X_REG_LDO4_VOLT, 0x14); // Set LDO4 to 1.8V
-	// LDU: PAY ATTENTION: BUCK5 system voltage - If we do this modification,  boards below P2X are not going to work.
-	bd7181x_reg_write(pmic->mfd, BD7181X_REG_BUCK5_VOLT, 0x18); // Set BUCK5 to 3.0V
-	
+	bd7181x_reg_write(pmic->mfd, BD7181X_REG_LDO4_VOLT, 0x14); // Set LDO4 to 1.8V	
+	bd7181x_reg_write(pmic->mfd, BD7181X_REG_BUCK5_VOLT, 0x18); // Set BUCK5 to 3.0V - // LDU: PAY ATTENTION: BUCK5 system voltage - If we do this modification,  boards below P2X are not going to work.
+	bd7181x_set_bits(pmic->mfd, BD7181X_REG_GPO, 0x01); // LDU: Turn ON leds
 	// ----------------------------------------------------------------------------
 
 	pdata = dev_get_platdata(bd7181x->dev);
