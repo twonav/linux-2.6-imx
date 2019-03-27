@@ -55,7 +55,6 @@ static ssize_t get_allow_mount(struct file *file,
 							   size_t count,
 							   loff_t *ppos)
 {
-	// only true if the usb is connected
 	char ret[10];
 	sprintf(ret,"%d", allow_mount);
 	return simple_read_from_buffer(buf, count, ppos, ret, strlen(ret));
