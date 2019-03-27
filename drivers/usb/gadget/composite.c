@@ -27,16 +27,16 @@
 
 #include "u_os_desc.h"
 
-struct dentry *twonav_dir;
-struct dentry *twonav_usb_mount;
-struct dentry *twonav_usb_connected;
+static struct dentry *twonav_dir;
+static struct dentry *twonav_usb_mount;
+static struct dentry *twonav_usb_connected;
 
-int allow_mount = 1;
-int data_usb_connected = 0;
+static int allow_mount = 1;
+static int data_usb_connected = 0;
 // FTTB usb_ gadget is the only composite device so it is "safe"
 // to store its pointer in case of more composite devices, this
 // must be adapted (check debugfs_create_file arguments)
-struct usb_composite_dev *usb_gadet_device = NULL;
+static struct usb_composite_dev *usb_gadet_device = NULL;
 
 
 static ssize_t get_usb_connected(struct file *file,
