@@ -477,8 +477,8 @@
                         };
 
                         buck5_reg: buck5 {
-                                regulator-min-microvolt = <3300000>;
-                                regulator-max-microvolt = <3300000>;
+                                regulator-min-microvolt = <3000000>;
+                                regulator-max-microvolt = <3000000>;
                                 regulator-boot-on;
                                 regulator-always-on;
                         };

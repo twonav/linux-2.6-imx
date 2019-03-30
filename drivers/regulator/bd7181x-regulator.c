@@ -497,7 +497,6 @@ static int bd7181x_probe(struct platform_device *pdev)
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x04); //   ldo3 by default
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE2, 0x40); //   ldo3 by default	
 	bd7181x_reg_write(pmic->mfd, BD7181X_REG_LDO4_VOLT, 0x14); // Set LDO4 to 1.8V	
-	bd7181x_reg_write(pmic->mfd, BD7181X_REG_BUCK5_VOLT, 0x18); // Set BUCK5 to 3.0V - // LDU: PAY ATTENTION: BUCK5 system voltage - If we do this modification,  boards below P2X are not going to work.
 	bd7181x_set_bits(pmic->mfd, BD7181X_REG_GPO, 0x01); // LDU: Turn ON leds
 	// ----------------------------------------------------------------------------
 
