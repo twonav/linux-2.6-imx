@@ -19,6 +19,13 @@
 #include <linux/mfd/bd7181x.h>
 #include <linux/delay.h>
 
+#include <linux/debugfs.h>
+#include <asm/siginfo.h>
+#include <linux/rcupdate.h>
+#include <linux/uaccess.h>
+#include <linux/sched.h>
+#include <linux/pid.h>
+
 #define TWONAV_AVENTURA
 
 #if 0
@@ -59,7 +66,7 @@
 #define INIT_COULOMB		BY_VBATLOAD_REG
 
 //VBAT Low voltage detection Threshold
-#define VBAT_LOW_TH		0x00BC // 0x00BC*16mV = 3.008V 
+#define VBAT_LOW_TH		0x00BF // 0x00BF (191) * 16mV = 3.056V
 
 //#define RS_30mOHM		/* we have 10mOhm */
 
@@ -92,6 +99,66 @@
 #define FORCE_ADJ_COULOMB_TEMP_L	15	/* 1 degrees C unit */
 
 unsigned int battery_cycle;
+
+// Variables related to low battery signal
+static struct dentry *bd7181x_dir;
+static struct dentry *related_process_pid_file;
+static int related_process_pid = 0;
+
+
+static ssize_t send_sigterm(void)
+{
+	int ret;
+	struct siginfo info;
+    struct task_struct *task;
+
+    if (related_process_pid == 0) {
+        printk(KERN_DEBUG "BD7181x-power: no pid related to send SIGTERM\n");
+        return EPERM;
+    }
+
+    memset(&info, 0, sizeof(struct siginfo));
+    info.si_signo = SIGTERM;
+    info.si_code = SI_USER;
+
+    rcu_read_lock();
+    task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
+    if(task == NULL){
+        printk(KERN_DEBUG "BD7181x-power: no such pid :%d\n",related_process_pid);
+        related_process_pid = 0;
+        rcu_read_unlock();
+        return -ENODEV;
+    }
+
+    rcu_read_unlock();
+    ret = send_sig_info(SIGTERM, &info, task);
+    if (ret < 0) {
+        printk(KERN_DEBUG "BD7181x-power: error sending signal\n");
+    }
+
+    return ret;
+}
+
+
+static ssize_t write_related_pid(struct file *file,
+								 const char __user *buf,
+								 size_t count,
+								 loff_t *ppos)
+{
+    char mybuf[10];
+    if(count > 10)
+        return -EINVAL;
+    if (copy_from_user(mybuf, buf, count))
+        return -EFAULT;
+    sscanf(mybuf, "%d", &related_process_pid);
+
+    return count;
+}
+
+static const struct file_operations related_pid_fops = {
+    .write = write_related_pid,
+};
+
 
 #ifdef TWONAV_VELO
 	static int ocv_table[] = {
@@ -1227,7 +1294,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	}
 #endif
 	if ((r & XSTB) == 0x00) {
-		printk("XXX ((r & XSTB) == 0x00)\n");
 
 	//if (r & BAT_DET) {
 		/* Init HW, when the battery is inserted. */
@@ -1258,7 +1324,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
 		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
 
-		printk("XXX BD7181X_REG_CHG_SET2, 0xD8\n");
 		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET2, 0xD8);
 		// 0xD8 -> 11011000
 		// bit 7 VF_TREG_EN 1 thermal shutdown enabled
@@ -1267,6 +1332,9 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		// bit 4 BATDET_EN 1 Enable Battery detection
 		// bit 3 INHIBIT_1(note2) 1 For ROHM factory only
 		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
+
+		// Configure Trickle and Pre-charging current
+		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
 
 		// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
 		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
@@ -1281,6 +1349,8 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		#elif defined TWONAV_AVENTURA
 			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x06); // 0.01C typical value 5000*0.01=50mA -> 100mA
 		#endif
+
+		bd7181x_set_bits(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 		// Battery over-voltage detection threshold. 4.25V
 		// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
@@ -1301,7 +1371,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* VBAT Low voltage detection Setting */ // 0x58
 		// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
 		// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
-		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.002V
+		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.056V
 
 
 		/* Mask Relax decision by PMU STATE */ // 0xE6
@@ -1469,6 +1539,7 @@ static irqreturn_t bd7181x_power_interrupt(int irq, void *pwrsys)
  */
 static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 {
+	printk(KERN_DEBUG "BD71b1x-power: bd7181x_vbat_interrupt\n");
 	int reg, r;
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
@@ -1484,8 +1555,8 @@ static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	if (reg & VBAT_MON_DET) {
-		printk("\n~~~ VBAT General Alarm Detection : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)... \n");
-		
+		printk(KERN_DEBUG "\n~~~ VBAT General Alarm Detection : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)... \n");
+		send_sigterm();
 	}
 	else if (reg & VBAT_MON_RES) {
 		printk("\n~~~ VBAT General Alarm Resume : VBAT(5Dh+5Eh) > VBAT_TH(57h+58h) ... \n");
@@ -2285,7 +2356,7 @@ static irqreturn_t bd7181x_int_vbat_mon1_interrupt(int irq, void *pwrsys)
 	else if (reg & VBAT_SHT_RES) {
 		printk("\n~~~ VBAT Short-Circuit Resume : VBAT(5Dh+5Eh) > 1.6V(typ) ... \n");
 	}
-	else if (reg & DBAT_DET) {
+	else if (reg & VBAT_DBAT_DET) {
 		printk("\n~~~ VBAT Dead-Battery Detection : VBAT(5Dh+5Eh) ≦ VBAT_LO(54h) with duration timer TIM_DBP(56h) ... \n");
 	}
 
@@ -2402,6 +2473,22 @@ static int bd7181x_enable_irq(struct platform_device *pdev,
 	return ret;
 }
 
+static int clear_all_interrupts(struct platform_device *pdev) {
+	struct bd7181x *mfd = dev_get_drvdata(pdev->dev.parent);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_01, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_02, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_03, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_04, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_05, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_06, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_07, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_08, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_09, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_10, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_11, 0xFF);
+	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_12, 0xFF);
+}
+
 static int enable_interrupts(struct platform_device *pdev) {
 	int ret;
 
@@ -2433,19 +2520,19 @@ static int enable_interrupts(struct platform_device *pdev) {
 	if (ret == -ENXIO)
 		return -ENXIO;
 
-		ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_08", bd7181x_vbat_interrupt);
+	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_08", bd7181x_vbat_interrupt);
 	if (ret == -ENXIO)
 		return -ENXIO;
 
-		ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_09", bd7181x_int_vbat_mon3_interrupt);
+	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_09", bd7181x_int_vbat_mon3_interrupt);
 	if (ret == -ENXIO)
 		return -ENXIO;
 
-		ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_10", bd7181x_int_vbat_mon4_interrupt);
+	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_10", bd7181x_int_vbat_mon4_interrupt);
 	if (ret == -ENXIO)
 		return -ENXIO;
 
-		ret = bd7181x_add_irq(pdev, "IRQ_TEMPERATURE_11", bd7181x_int_11_interrupt);
+	ret = bd7181x_add_irq(pdev, "IRQ_TEMPERATURE_11", bd7181x_int_11_interrupt);
 	if (ret == -ENXIO)
 		return -ENXIO;
 
@@ -2521,11 +2608,17 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	}
 
 	ret = enable_interrupts(pdev);
-	if (ret == -ENXIO) {
+	if (ret == -ENXIO)
 		return -ENXIO;
-	}
 
-	// TODO: read interrupts and treat/clear them on startup... maybe in INIT HW ?
+	/* Interrupts are cleared on startup acording to documentation. If special
+	 * handling is needed it should be done here. VBAT_LOW interrupt will be
+	 *  retriggered so clearing it on start-up does not create any issue.
+	*/
+
+	ret = clear_all_interrupts(pdev);
+	if (ret == -ENXIO)
+		return -ENXIO;
 
 	ret = sysfs_create_group(&pwr->bat->dev.kobj, &bd7181x_sysfs_attr_group);
 	if (ret < 0) {
@@ -2539,6 +2632,14 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	/* Schedule timer to check current status */
 	pwr->calib_current = CALIB_NORM;
 	schedule_delayed_work(&pwr->bd_work, msecs_to_jiffies(0));
+
+	// Userspace interface to register pid for signal
+	bd7181x_dir = debugfs_create_dir("bd7181x", NULL);
+	related_process_pid_file = debugfs_create_file("vbat_low_related_pid",
+			                                       0200,
+												   bd7181x_dir,
+												   NULL,
+												   &related_pid_fops);
 
 	return 0;
 
@@ -2577,12 +2678,12 @@ static int __exit bd7181x_power_remove(struct platform_device *pdev)
 
 	sysfs_remove_group(&pwr->bat->dev.kobj, &bd7181x_sysfs_attr_group);
 
-
-
 	power_supply_unregister(pwr->bat);
 	power_supply_unregister(pwr->ac);
 	platform_set_drvdata(pdev, NULL);
 	kfree(pwr);
+
+	debugfs_remove_recursive(bd7181x_dir);
 
 	return 0;
 }
