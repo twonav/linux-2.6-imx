@@ -1334,7 +1334,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
 
 		// Configure Trickle and Pre-charging current
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
+		bd7181x_reg_write16(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
 
 		// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
 		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
@@ -1350,7 +1350,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x06); // 0.01C typical value 5000*0.01=50mA -> 100mA
 		#endif
 
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
+			bd7181x_reg_write16(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 		// Battery over-voltage detection threshold. 4.25V
 		// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
