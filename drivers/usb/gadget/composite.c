@@ -45,7 +45,7 @@ static ssize_t get_usb_connected(struct file *file,
 								 loff_t *ppos)
 {
 	char ret[10];
-	sprintf(ret,"%d", data_usb_connected);
+	sprintf(ret,"%d\n", data_usb_connected);
 	return simple_read_from_buffer(buf, count, ppos, ret, strlen(ret));
 }
 
@@ -56,7 +56,7 @@ static ssize_t get_allow_mount(struct file *file,
 							   loff_t *ppos)
 {
 	char ret[10];
-	sprintf(ret,"%d", allow_mount);
+	sprintf(ret,"%d\n", allow_mount);
 	return simple_read_from_buffer(buf, count, ppos, ret, strlen(ret));
 }
 
@@ -2297,12 +2297,12 @@ int usb_composite_probe(struct usb_composite_driver *driver)
 	/* create a twonav_dir in /sys/kernel/debug */
 	twonav_dir = debugfs_create_dir("twonav", NULL);
 	twonav_usb_mount = debugfs_create_file("allow_mount",
-			                                0200,
+											S_IFREG | S_IRUGO,
 											twonav_dir,
 											NULL,
 											&twonav_running_fops);
 	twonav_usb_connected = debugfs_create_file("usb_connected",
-			                                   0200,
+											   S_IFREG | S_IRUGO,
 											   twonav_dir,
 											   NULL,
 											   &usb_connected_fops);
