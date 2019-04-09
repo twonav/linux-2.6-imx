@@ -1322,9 +1322,9 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		init_coulomb_counter(pwr);
 
 		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
 
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET2, 0xD8);
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
 		// 0xD8 -> 11011000
 		// bit 7 VF_TREG_EN 1 thermal shutdown enabled
 		// bit 6 EXTMOS_EN 1 Select External MOSFET. Change this register after CHG_EN is set to '0'
@@ -1334,39 +1334,39 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
 
 		// Configure Trickle and Pre-charging current
-		bd7181x_reg_write16(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
+		bd7181x_reg_writete(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
 
 		// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
 
 		// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
 		#ifdef TWONAV_VELO
-			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1650*0.01=16.5mA -> 20mA
+			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1650*0.01=16.5mA -> 20mA
 		#elif defined TWONAV_HORIZON
-			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1500*0.01=15mA -> 20mA
+			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1500*0.01=15mA -> 20mA
 		#elif defined TWONAV_TRAIL
-			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x05); // 0.01C typical value 4200*0.01=42mA -> 50mA
+			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x05); // 0.01C typical value 4200*0.01=42mA -> 50mA
 		#elif defined TWONAV_AVENTURA
-			bd7181x_set_bits(mfd, BD7181X_REG_CHG_IFST_TERM, 0x06); // 0.01C typical value 5000*0.01=50mA -> 100mA
+			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x06); // 0.01C typical value 5000*0.01=50mA -> 100mA
 		#endif
 
-			bd7181x_reg_write16(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
+			bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 		// Battery over-voltage detection threshold. 4.25V
 		// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
 		#ifdef TWONAV_VELO
-			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x15);
+			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x15);
 		#elif defined TWONAV_HORIZON
-			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x45);
+			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x45);
 		#elif defined TWONAV_TRAIL
-			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x15);
+			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x15);
 		#elif defined TWONAV_AVENTURA
-			bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_2, 0x15);
+			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x15);
 		#endif
 
 		// Charging Termination Battery voltage threshold for Fast Charge.
 		// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
-		bd7181x_set_bits(mfd, BD7181X_REG_BAT_SET_3, 0x62);
+		bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, 0x62);
 
 		/* VBAT Low voltage detection Setting */ // 0x58
 		// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
@@ -1376,27 +1376,27 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 		/* Mask Relax decision by PMU STATE */ // 0xE6
 		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
 
 		/* Set Battery Capacity Monitor threshold1 as 90% */
 		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, (BD7181X_BATTERY_CAP * 9 / 10));  // Interrupt CC_MON1_DET (INTB)
 		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", (BD7181X_BATTERY_CAP * 9 / 10));
 
 		/* Enable LED ON when charging */ // 0x0E
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
 
 		// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm).
 		// Note: there are 3 thresholds available
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, 0xAB); // 1100mA
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, 0xAB); // 1100mA
 
 		// Battery over-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
 
 		// Battery low-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_VM_BTMP_LO_THR, 0x32); // -5ºC
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_BTMP_LO_THR, 0x32); // -5ºC
 
 		/* WDT_FST auto set */
-		bd7181x_set_bits(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
 
 		pwr->state_machine = STAT_POWER_ON;
 	}
