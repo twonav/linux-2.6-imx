@@ -1376,14 +1376,14 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 		/* Mask Relax decision by PMU STATE */ // 0xE6
 		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
-		bd7181x_reg_write(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
 
 		/* Set Battery Capacity Monitor threshold1 as 90% */
 		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, (BD7181X_BATTERY_CAP * 9 / 10));  // Interrupt CC_MON1_DET (INTB)
 		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", (BD7181X_BATTERY_CAP * 9 / 10));
 
 		/* Enable LED ON when charging */ // 0x0E
-		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
 
 		// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm).
 		// Note: there are 3 thresholds available
