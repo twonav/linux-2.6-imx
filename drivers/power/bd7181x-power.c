@@ -1250,29 +1250,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 {
 	struct bd7181x *mfd = pwr->mfd;
 	int r;
-	/* DCIN Anti-collapse entry voltage threshold 0.0V to 20.4V range, 80 mV steps.
-	   When DCINOK = L, Anti-collapse detection is invalid.
-	   When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value. +++++++++++++++++++ !!!!!!!!!!!!!!!!!!!!!!!!!
-	   DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
- 	   If DCIN_CLPS set lower than these value, can't detect removing DCIN.
- 	*/
-#ifdef TWONAV_VELO
-	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 0x43 DCIN Anti-collapse entry voltage threshold 4.32V (80mV steps)
-#elif defined TWONAV_HORIZON
-	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x38); //  4.48
-#elif defined TWONAV_AVENTURA
-	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
-#elif defined TWONAV_TRAIL
-	r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
-#endif
-
-	// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
-
-	// VSYS voltage rising detection threshold. 0.0V to 8.128V range, 64mV steps
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MAX, 0x33); // 3.264
-	// VSYS voltage falling detection threshold. 0.0V to 8.128V range, 64mV steps.
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.072
 
 	/* XSTB
 	   Oscillator Stop Flag
@@ -1281,7 +1258,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	   The XSTB bit is used to check the status of the Real Time Clock (RTC). This bit accepts R/W for "1" and "0".
 	   If "1" is written to this bit, the XSTB bit will change value to "0" when the RTC is stopped.
 	*/
-#define XSTB		0x02 // The XSTB bit is used to check the status of the Real Time Clock (RTC)
+#define XSTB		0x02
 	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
 
 #if 0
@@ -1294,11 +1271,36 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	}
 #endif
 	if ((r & XSTB) == 0x00) {
+		printk(KERN_INFO "bd7181x-power: new battery inserted, initializing PMIC\n");
 
-	//if (r & BAT_DET) {
-		/* Init HW, when the battery is inserted. */
+		//if (r & BAT_DET) {
+			/* Init HW, when the battery is inserted. */
 
 		bd7181x_reg_write(mfd, BD7181X_REG_CONF, r | XSTB); // enable RTC
+
+		/* DCIN Anti-collapse entry voltage threshold 0.0V to 20.4V range, 80 mV steps.
+		 * When DCINOK = L, Anti-collapse detection is invalid.
+		 * When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value.
+		 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
+		 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
+		 */
+#ifdef TWONAV_VELO
+		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 0x43 DCIN Anti-collapse entry voltage threshold 4.32V (80mV steps)
+#elif defined TWONAV_HORIZON
+		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x38); //  4.48
+#elif defined TWONAV_AVENTURA
+		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
+#elif defined TWONAV_TRAIL
+		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
+#endif
+
+		// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
+		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
+
+		// VSYS voltage rising detection threshold. 0.0V to 8.128V range, 64mV steps
+		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MAX, 0x33); // 3.264
+		// VSYS voltage falling detection threshold. 0.0V to 8.128V range, 64mV steps.
+		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.072
 
 #define TEST_SEQ_00		0x00
 #define TEST_SEQ_01		0x76
@@ -1401,6 +1403,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		pwr->state_machine = STAT_POWER_ON;
 	}
 	else {
+		printk(KERN_INFO "XXX bd7181x_init_hardware OUTSIDE IF\n");
 		pwr->designed_cap = BD7181X_BATTERY_CAP;
 		pwr->full_cap = BD7181X_BATTERY_CAP;	// bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CC_BATCAP_U);
 		pwr->state_machine = STAT_INITIALIZED;	// STAT_INITIALIZED
@@ -2536,17 +2539,17 @@ static int enable_interrupts(struct platform_device *pdev) {
 	if (ret == -ENXIO)
 		return -ENXIO;
 
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_01, "BD7181X_REG_INT_EN_01", BD7181X_INT_EN_01_BUCKAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_02, "BD7181X_REG_INT_EN_02", BD7181X_INT_EN_02_DCINAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_03, "BD7181X_REG_INT_EN_03", BD7181X_INT_EN_03_DCINAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_04, "BD7181X_REG_INT_EN_04", BD7181X_INT_EN_04_VSYSAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_05, "BD7181X_REG_INT_EN_05", BD7181X_INT_EN_05_CHGAST_MASK); // Disable CHG_TRNS
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_06, "BD7181X_REG_INT_EN_06", BD7181X_INT_EN_06_BATAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_07, "BD7181X_REG_INT_EN_07", BD7181X_INT_EN_07_BMONAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_01, "BD7181X_REG_INT_EN_01", BD7181X_INT_EN_01_BUCKAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_02, "BD7181X_REG_INT_EN_02", BD7181X_INT_EN_02_DCINAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_03, "BD7181X_REG_INT_EN_03", BD7181X_INT_EN_03_DCINAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_04, "BD7181X_REG_INT_EN_04", BD7181X_INT_EN_04_VSYSAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_05, "BD7181X_REG_INT_EN_05", BD7181X_INT_EN_05_CHGAST_MASK); // Disable CHG_TRNS
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_06, "BD7181X_REG_INT_EN_06", BD7181X_INT_EN_06_BATAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_07, "BD7181X_REG_INT_EN_07", BD7181X_INT_EN_07_BMONAST_MASK);
 	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_08, "BD7181X_REG_INT_EN_08", BD7181X_INT_EN_08_BMONAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_09, "BD7181X_REG_INT_EN_09", BD7181X_INT_EN_09_BMONAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_10, "BD7181X_REG_INT_EN_10", BD7181X_INT_EN_10_BMONAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_11, "BD7181X_REG_INT_EN_11", BD7181X_INT_EN_11_TMPAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_09, "BD7181X_REG_INT_EN_09", BD7181X_INT_EN_09_BMONAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_10, "BD7181X_REG_INT_EN_10", BD7181X_INT_EN_10_BMONAST_MASK);
+	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_11, "BD7181X_REG_INT_EN_11", BD7181X_INT_EN_11_TMPAST_MASK);
 
 	return ret;
 }
