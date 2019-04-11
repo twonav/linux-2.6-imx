@@ -134,9 +134,8 @@ static ssize_t reg_set_enabled(struct device *dev,
 		return count;
 	}
 
-	if (((data->enabled) && (val > 0)) || ((!data->enabled) && (val == 0))) {
+	if ((!data->enabled) || ((val==1) && (brighntess_value_before_disable==-1)))
 		return count;
-	}
 
 	if (val > 0) {
 		bl_dev->props.brightness = brighntess_value_before_disable;
