@@ -1531,10 +1531,10 @@ int
 composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 {
 	struct usb_composite_dev *cdev = get_gadget_data(gadget);
+	data_usb_connected = 1;
 
 	if (allow_mount == 0) {
 		usb_gadet_device = cdev;
-		data_usb_connected = 1;
 		return USB_GADGET_DELAYED_STATUS;
 	}
 

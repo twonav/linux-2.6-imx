@@ -1403,7 +1403,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		pwr->state_machine = STAT_POWER_ON;
 	}
 	else {
-		printk(KERN_INFO "XXX bd7181x_init_hardware OUTSIDE IF\n");
 		pwr->designed_cap = BD7181X_BATTERY_CAP;
 		pwr->full_cap = BD7181X_BATTERY_CAP;	// bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CC_BATCAP_U);
 		pwr->state_machine = STAT_INITIALIZED;	// STAT_INITIALIZED
@@ -1450,7 +1449,6 @@ static void bd_work_callback(struct work_struct *work)
 
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
 	if (status != pwr->vbus_status) {
-		printk("DCIN_STAT CHANGED from 0x%X to 0x%X\n", pwr->vbus_status, status);
 		pwr->vbus_status = status;
 		changed = 1;
 	}
@@ -1458,14 +1456,12 @@ static void bd_work_callback(struct work_struct *work)
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_BAT_STAT);
 	status &= ~BAT_DET_DONE;
 	if (status != pwr->bat_status) {
-		printk("BAT_STAT CHANGED from 0x%X to 0x%X\n", pwr->bat_status, status);
 		pwr->bat_status = status;
 		changed = 1;
 	}
 
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
 	if (status != pwr->charge_status) {
-		printk("CHG_STATE CHANGED from 0x%X to 0x%X\n", pwr->charge_status, status);
 		pwr->charge_status = status;
 		//changed = 1;
 	}
