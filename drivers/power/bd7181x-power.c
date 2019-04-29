@@ -37,17 +37,46 @@
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
-// *********** CAPACITY FOR EACH DEVICE ***********
 #ifdef TWONAV_VELO
-	#define BD7181X_BATTERY_CAP_MAH	1650
+	#define BD7181X_BATTERY_CAP_MAH		1650 // mAh
+	#define VBAT_CHG1					0x18 // 4.2V
+	#define VBAT_CHG2					0x13 // 4.1V
+	#define VBAT_CHG3					0x10 // 4.04V
+	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
+	#define ITERM_CURRENT 				0x02 // 0.01C typical value 1650*0.01=16.5mA -> 20mA
+	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 #elif defined TWONAV_HORIZON
-	#define BD7181X_BATTERY_CAP_MAH	1500
+	#define BD7181X_BATTERY_CAP_MAH		1500 // mAh
+	#define VBAT_CHG1					0x1F // 4.34V
+	#define VBAT_CHG2					0x1A // 4.24V
+	#define VBAT_CHG3					0x15 // 4.14V
+	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x36 // 4.4V
+	#define ITERM_CURRENT 				0x02 // 0.01C typical value 1500*0.01=15mA -> 20mA
+	#define OVP_MNT_THR 				0x46 // OVP:4.4V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 #elif defined TWONAV_TRAIL
-	#define BD7181X_BATTERY_CAP_MAH	4200
+	#define BD7181X_BATTERY_CAP_MAH		4000 // mAh
+	#define VBAT_CHG1					0x18 // 4.2V
+	#define VBAT_CHG2					0x13 // 4.1V
+	#define VBAT_CHG3					0x10 // 4.04V
+	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V
+	#define ITERM_CURRENT 				0x05 // 0.01C typical value 4000*0.01=40mA -> 50mA
+	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 #elif defined TWONAV_AVENTURA
-	#define BD7181X_BATTERY_CAP_MAH	5000
+	#define BD7181X_BATTERY_CAP_MAH		5000 // mAh
+	#define VBAT_CHG1					0x18 // 4.2V
+	#define VBAT_CHG2					0x13 // 4.1V
+	#define VBAT_CHG3					0x10 // 4.04V
+	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V
+	#define ITERM_CURRENT 				0x06 // 0.01C typical value 5000*0.01=50mA -> 100mA
+	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 #else
-	#define BD7181X_BATTERY_CAP_MAH	1650
+	#define BD7181X_BATTERY_CAP_MAH		1650
+	#define VBAT_CHG1					0x18
+	#define VBAT_CHG2					0x13
+	#define VBAT_CHG3					0x10
+	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x36
+	#define ITERM_CURRENT 				0x02
+	#define OVP_MNT_THR 				0x16
 #endif
 
 #define BD7181X_BATTERY_CAP	mAh_A10s(BD7181X_BATTERY_CAP_MAH)
@@ -55,6 +84,9 @@
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	/* uA - 1A */
+#define TRICKLE_CURRENT		25000	/* uA - 1A */
+#define PRECHARGE_CURRENT	300000	/* uA - 1A */
+
 
 #define AC_NAME			"bd7181x_ac"
 #define BAT_NAME		"bd7181x_bat"
@@ -106,19 +138,19 @@ static struct dentry *related_process_pid_file;
 static int related_process_pid = 0;
 
 
-static ssize_t send_sigterm(void)
+static ssize_t send_signal(int type)
 {
 	int ret;
 	struct siginfo info;
     struct task_struct *task;
 
     if (related_process_pid == 0) {
-        printk(KERN_DEBUG "BD7181x-power: no pid related to send SIGTERM\n");
+        printk(KERN_DEBUG "BD7181x-power: no pid related to send signal type :%d\n", type);
         return EPERM;
     }
 
     memset(&info, 0, sizeof(struct siginfo));
-    info.si_signo = SIGTERM;
+    info.si_signo = type;
     info.si_code = SI_USER;
 
     rcu_read_lock();
@@ -131,7 +163,7 @@ static ssize_t send_sigterm(void)
     }
 
     rcu_read_unlock();
-    ret = send_sig_info(SIGTERM, &info, task);
+    ret = send_sig_info(type, &info, task);
     if (ret < 0) {
         printk(KERN_DEBUG "BD7181x-power: error sending signal\n");
     }
@@ -332,6 +364,7 @@ struct bd7181x_power {
 
 	int vbus_status;		/**< last vbus status */
 	int charge_status;		/**< last charge status */
+	int charge_type;
 	int bat_status;			/**< last bat status */
 
 	int	hw_ocv1;			/**< HW open charge voltage 1. Measured Battery Voltage (1st time) at boot */
@@ -631,53 +664,54 @@ static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
  */
 static int bd7181x_charge_status(struct bd7181x_power *pwr)
 {
+	// called/updated  every 3 secs (JITTER_DEFAULT)
 	u8 state;
 	int ret = 1;
 
 	state = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
 	// bd7181x_info(pwr->dev, "CHG_STATE %d\n", state);
 
+	pwr->charge_type = state;
 	switch (state) {
-	case 0x00:
+	case CHG_STATE_SUSPEND:
 		ret = 0;
 		pwr->rpt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 		pwr->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		break;
-	case 0x01: // TRICKLE
-	case 0x02: // PRE-CHARGING
-	case 0x03: // FAST-CHARGING
-	case 0x0E: // TERMINATION CURRENT REACHED
+	case CHG_STATE_TRICKLE_CHARGE: // TRICKLE
+	case CHG_STATE_PRE_CHARGE: // PRE-CHARGING
+	case CHG_STATE_FAST_CHARGE: // FAST-CHARGING
+	case CHG_STATE_TOP_OFF: // TERMINATION CURRENT REACHED
 		pwr->rpt_status = POWER_SUPPLY_STATUS_CHARGING;
 		pwr->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		break;
-	case 0x0F:
+	case CHG_STATE_DONE:
 		ret = 0;
 		pwr->rpt_status = POWER_SUPPLY_STATUS_FULL;
 		pwr->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		break;
-	case 0x10:
-	case 0x11:
-	case 0x12:
-	case 0x13:
-	case 0x14:
-	case 0x20:
-	case 0x21:
-	case 0x22:
-	case 0x23:
-	case 0x24:
+	case CHG_STATE_TEMP_ERR1:
+	case CHG_STATE_TEMP_ERR2:
+	case CHG_STATE_TEMP_ERR3:
+	case CHG_STATE_TEMP_ERR4:
+	case CHG_STATE_TEMP_ERR5:
+	case CHG_STATE_TSD1:
+	case CHG_STATE_TSD2:
+	case CHG_STATE_TSD3:
+	case CHG_STATE_TSD4:
+	case CHG_STATE_TSD5:
 		ret = 0;
 		pwr->rpt_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
 		pwr->bat_health = POWER_SUPPLY_HEALTH_OVERHEAT;
 		break;
-	case 0x30: // VSYS < VBAT
-	case 0x31:
-	case 0x32:
-	case 0x40:
+	case CHG_STATE_BATT_ASSIST1: // VSYS < VBAT
+	case CHG_STATE_BATT_ASSIST2:
+	case CHG_STATE_BATT_ASSIST3:
 		ret = 0;
 		pwr->rpt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 		pwr->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		break;
-	case 0x7f: // BATTERY ERROR
+	case CHG_STATE_BATT_ERROR: // BATTERY ERROR
 	default:
 		ret = 0;
 		pwr->rpt_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -1278,21 +1312,18 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 		bd7181x_reg_write(mfd, BD7181X_REG_CONF, r | XSTB); // enable RTC
 
-		/* DCIN Anti-collapse entry voltage threshold 0.0V to 20.4V range, 80 mV steps.
+		// Fast Charging Voltage for the temperature ranges
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
+
+		/* DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
 		 * When DCINOK = L, Anti-collapse detection is invalid.
 		 * When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value.
 		 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
 		 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
 		 */
-#ifdef TWONAV_VELO
-		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 0x43 DCIN Anti-collapse entry voltage threshold 4.32V (80mV steps)
-#elif defined TWONAV_HORIZON
-		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x38); //  4.48
-#elif defined TWONAV_AVENTURA
-		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
-#elif defined TWONAV_TRAIL
-		r = bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, 0x36); // 4.32
-#endif
+		bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, DCIN_ANTICOLAPSE_VOLTAGE); // 4.24V
 
 		// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
 		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
@@ -1320,7 +1351,12 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		pwr->designed_cap = BD7181X_BATTERY_CAP;
 		pwr->full_cap = BD7181X_BATTERY_CAP;
 
-		/* Set initial Coulomb Counter by HW OCV */
+		/* Set initial Coulomb Counter by HW OCV
+		 * This estimation is and should only be performed once, when a new battery is connected.
+		 * PRE and POST vbat registers are fixed to the same values until the battery is removed
+		 * so they cannot be used to estimate the capacity on a later stage i.e. after charge/re-charge
+		 * because the result would be based on values that do not reflect current battery state
+		 *  */
 		init_coulomb_counter(pwr);
 
 		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
@@ -1342,29 +1378,13 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
 
 		// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
-		#ifdef TWONAV_VELO
-			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1650*0.01=16.5mA -> 20mA
-		#elif defined TWONAV_HORIZON
-			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x02); // 0.01C typical value 1500*0.01=15mA -> 20mA
-		#elif defined TWONAV_TRAIL
-			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x05); // 0.01C typical value 4200*0.01=42mA -> 50mA
-		#elif defined TWONAV_AVENTURA
-			bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, 0x06); // 0.01C typical value 5000*0.01=50mA -> 100mA
-		#endif
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, ITERM_CURRENT);
 
-			bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 		// Battery over-voltage detection threshold. 4.25V
 		// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
-		#ifdef TWONAV_VELO
-			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x15);
-		#elif defined TWONAV_HORIZON
-			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x45);
-		#elif defined TWONAV_TRAIL
-			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x15);
-		#elif defined TWONAV_AVENTURA
-			bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, 0x15);
-		#endif
+		bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, OVP_MNT_THR);
 
 		// Charging Termination Battery voltage threshold for Fast Charge.
 		// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
@@ -1519,10 +1539,10 @@ static irqreturn_t bd7181x_power_interrupt(int irq, void *pwrsys)
 	if (reg & DCIN_MON_WDOGB) {
 		printk("\n~~~ WDOGB detection\n");
 	}
-	else if (reg & DCIN_MON_DET) {
+	if (reg & DCIN_MON_DET) {
 		printk("\n~~~ DCIN General Alarm Detection : DCIN(61h+62h) ≦ DCIN_TH(59h)\n");
 	}
-	else if (reg & DCIN_MON_RES) {
+	if (reg & DCIN_MON_RES) {
 		printk("\n~~~ DCIN General Alarm Resume : DCIN(61h+62h) > DCIN_TH(59h)\n");
 	}
 
@@ -1555,7 +1575,7 @@ static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 
 	if (reg & VBAT_MON_DET) {
 		printk(KERN_DEBUG "\n~~~ VBAT General Alarm Detection : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)... \n");
-		send_sigterm();
+		send_signal(SIGTERM);
 	}
 	else if (reg & VBAT_MON_RES) {
 		printk("\n~~~ VBAT General Alarm Resume : VBAT(5Dh+5Eh) > VBAT_TH(57h+58h) ... \n");
@@ -1587,10 +1607,13 @@ static irqreturn_t bd7181x_int_dcin_ov_interrupt(int irq, void *pwrsys)
 		printk("\n~~~ DCIN OVERVOLTAGE Resume DCIN <= 6.5-150mV(typ) ... \n");
 	}
 	else if (reg & DCIN_CLPS_IN) {
-		printk("\n~~~ DCIN ANTI-COLAPSE detection DCIN(61h-62h) >= DCIN_CLPS(43h) ... \n");
+		printk("\n~~~ DCIN ANTI-COLAPSE detection DCIN(61h-62h) < DCIN_CLPS(43h) ... \n");
+		if ((reg & DCIN_CLPS_OUT) == 0) {
+			send_signal(SIGUSR2);
+		}
 	}
 	else if (reg & DCIN_CLPS_OUT) {
-		printk("\n~~~ DCIN COLAPSE RESUME  DCIN(61h-62h) < DCIN_CLPS(43h)... \n");
+		printk("\n~~~ DCIN COLAPSE RESUME  DCIN(61h-62h) >= DCIN_CLPS(43h)... \n");
 	}
 	else if (reg & DCIN_RMV) {
 		printk("\n~~~ DCIN Removal ... \n");
@@ -1744,10 +1767,35 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 		val->intval = pwr->bat_health;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
-		if (pwr->rpt_status == POWER_SUPPLY_STATUS_CHARGING)
-			val->intval = POWER_SUPPLY_CHARGE_TYPE_FAST; // THIS IS NOT CORRECT TOTALLY
-		else
+		if (pwr->rpt_status == POWER_SUPPLY_STATUS_CHARGING) {
+			u8 colapse = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0); // 0x41 50mV steps starting from 100mA
+			if (colapse < 18) {
+				val->intval = POWER_SUPPLY_CHARGE_TYPE_COLAPSED;
+			}
+			else {
+				switch(pwr->charge_type) {
+					case CHG_STATE_TRICKLE_CHARGE:
+						val->intval = POWER_SUPPLY_CHARGE_TYPE_TRICKLE;
+						break;
+					case CHG_STATE_PRE_CHARGE:
+						val->intval = POWER_SUPPLY_CHARGE_TYPE_PRECHARGE;
+						break;
+					case CHG_STATE_FAST_CHARGE:
+						val->intval = POWER_SUPPLY_CHARGE_TYPE_FAST;
+						break;
+					case CHG_STATE_TOP_OFF:
+						val->intval = POWER_SUPPLY_CHARGE_TYPE_FAST;
+						break;
+					default:
+						val->intval = POWER_SUPPLY_CHARGE_TYPE_UNKNOWN;
+						break;
+				}
+				break;
+			}
+		}
+		else {
 			val->intval = POWER_SUPPLY_CHARGE_TYPE_NONE;
+		}
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		val->intval = pwr->bat_online;
@@ -1796,7 +1844,30 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 		val->intval = MIN_VOLTAGE;
 		break;
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
-		val->intval = MAX_CURRENT;
+		{
+			u8 colapse_cur = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
+			if (colapse_cur < 18)
+				val->intval = 100000 + colapse_cur * 50000;
+			else{
+				switch(pwr->charge_type) {
+					case CHG_STATE_TRICKLE_CHARGE:
+						val->intval = TRICKLE_CURRENT;
+						break;
+					case CHG_STATE_PRE_CHARGE:
+						val->intval = PRECHARGE_CURRENT;
+						break;
+					case CHG_STATE_FAST_CHARGE:
+						val->intval = MAX_CURRENT;
+						break;
+					case CHG_STATE_TOP_OFF:
+						val->intval = ITERM_CURRENT;
+						break;
+					default:
+						val->intval = MAX_CURRENT;
+						break;
+				}
+			}
+		}
 		break;
 	default:
 		return -EINVAL;
@@ -1825,12 +1896,12 @@ static enum power_supply_property bd7181x_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN,
-	POWER_SUPPLY_PROP_CURRENT_MAX,
 };
 
 static int first_offset(struct bd7181x_power *pwr)
@@ -2536,7 +2607,7 @@ static int enable_interrupts(struct platform_device *pdev) {
 		return -ENXIO;
 
 	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_01, "BD7181X_REG_INT_EN_01", BD7181X_INT_EN_01_BUCKAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_02, "BD7181X_REG_INT_EN_02", BD7181X_INT_EN_02_DCINAST_MASK);
+	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_02, "BD7181X_REG_INT_EN_02", BD7181X_INT_EN_02_DCINAST_MASK);
 	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_03, "BD7181X_REG_INT_EN_03", BD7181X_INT_EN_03_DCINAST_MASK);
 	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_04, "BD7181X_REG_INT_EN_04", BD7181X_INT_EN_04_VSYSAST_MASK);
 	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_05, "BD7181X_REG_INT_EN_05", BD7181X_INT_EN_05_CHGAST_MASK); // Disable CHG_TRNS
