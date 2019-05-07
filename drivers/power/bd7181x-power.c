@@ -83,10 +83,10 @@
 #define MAX_VOLTAGE		ocv_table[0]
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
-#define MAX_CURRENT		1000000	/* uA - 1A */
-#define TRICKLE_CURRENT		25000	/* uA - 1A */
-#define PRECHARGE_CURRENT	300000	/* uA - 1A */
-
+#define MAX_CURRENT		1000000	// uA
+#define TRICKLE_CURRENT		25000	// uA
+#define PRECHARGE_CURRENT	300000	// uA
+#define FAST_CHARGE_CURRENT 10	// 0x0A -> 1A
 
 #define AC_NAME			"bd7181x_ac"
 #define BAT_NAME		"bd7181x_bat"
@@ -1276,6 +1276,43 @@ static int bd7181x_charger_reset(struct bd7181x_power *pwr) {
 	return 0;
 }
 
+/** Init registers on every startup
+ */
+static int bd7181x_init_registers(struct bd7181x *mfd)
+{
+	// Fast Charging Voltage for the temperature ranges
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
+
+	/* DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
+	 * When DCINOK = L, Anti-collapse detection is invalid.
+	 * When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value.
+	 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
+	 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
+	 */
+	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, DCIN_ANTICOLAPSE_VOLTAGE); // 4.24V
+
+	// Configure Trickle and Pre-charging current
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
+
+	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, FAST_CHARGE_CURRENT); // 0x4C 1A (0x0A) with Ext MOSFET and Rsns=10mOhm
+
+	// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, ITERM_CURRENT);
+
+	// Battery over-voltage detection threshold. 4.25V
+	// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
+	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, OVP_MNT_THR);
+
+	// Charging Termination Battery voltage threshold for Fast Charge.
+	// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
+	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, 0x62);
+
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
+}
+
 /** @brief init bd7181x sub module charger
  * @param pwr power device
  * @return 0
@@ -1285,6 +1322,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	struct bd7181x *mfd = pwr->mfd;
 	int r;
 
+	bd7181x_init_registers(mfd);
 	/* XSTB
 	   Oscillator Stop Flag
 	   0: RTC clock has been stopped.
@@ -1312,24 +1350,12 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 		bd7181x_reg_write(mfd, BD7181X_REG_CONF, r | XSTB); // enable RTC
 
-		// Fast Charging Voltage for the temperature ranges
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
-
-		/* DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
-		 * When DCINOK = L, Anti-collapse detection is invalid.
-		 * When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value.
-		 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
-		 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
-		 */
-		bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, DCIN_ANTICOLAPSE_VOLTAGE); // 4.24V
-
 		// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
 		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
 
 		// VSYS voltage rising detection threshold. 0.0V to 8.128V range, 64mV steps
 		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MAX, 0x33); // 3.264
+
 		// VSYS voltage falling detection threshold. 0.0V to 8.128V range, 64mV steps.
 		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.072
 
@@ -1362,7 +1388,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
 		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
 
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
 		// 0xD8 -> 11011000
 		// bit 7 VF_TREG_EN 1 thermal shutdown enabled
 		// bit 6 EXTMOS_EN 1 Select External MOSFET. Change this register after CHG_EN is set to '0'
@@ -1370,31 +1395,12 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		// bit 4 BATDET_EN 1 Enable Battery detection
 		// bit 3 INHIBIT_1(note2) 1 For ROHM factory only
 		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
-
-		// Configure Trickle and Pre-charging current
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
-
-		// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, 0x0A); // 0x4C 1A with Ext MOSFET and Rsns=10mOhm
-
-		// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, ITERM_CURRENT);
-
-		bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
-
-		// Battery over-voltage detection threshold. 4.25V
-		// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
-		bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, OVP_MNT_THR);
-
-		// Charging Termination Battery voltage threshold for Fast Charge.
-		// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
-		bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, 0x62);
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
 
 		/* VBAT Low voltage detection Setting */ // 0x58
 		// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
 		// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
 		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.056V
-
 
 		/* Mask Relax decision by PMU STATE */ // 0xE6
 		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
