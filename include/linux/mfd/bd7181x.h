@@ -488,12 +488,26 @@ enum {
 
 /** @brief charge state enumuration */
 enum CHG_STATE {
-	CHG_STATE_SUSPEND = 0x0,		/**< suspend state */
-	CHG_STATE_TRICKLE_CHARGE,		/**< trickle charge state */
-	CHG_STATE_PRE_CHARGE,			/**< precharge state */
-	CHG_STATE_FAST_CHARGE,			/**< fast charge state */
-	CHG_STATE_TOP_OFF,			/**< top off state */
-	CHG_STATE_DONE,				/**< charge complete */
+	CHG_STATE_SUSPEND = 0x00,			/**< suspend state */
+	CHG_STATE_TRICKLE_CHARGE = 0x01,	/**< trickle charge state */
+	CHG_STATE_PRE_CHARGE = 0x02,		/**< precharge state */
+	CHG_STATE_FAST_CHARGE = 0x03,		/**< fast charge state */
+	CHG_STATE_TOP_OFF = 0x0E,			/**< top off state */
+	CHG_STATE_DONE = 0X0F,				/**< charge complete */
+	CHG_STATE_TEMP_ERR1 = 0x10,			/**< Out of standard temperature while in PRE CHARGE State */
+	CHG_STATE_TEMP_ERR2= 0x11,			/**< Out of standard temperature while in FAST CHARGE or TOP OFF State */
+	CHG_STATE_TEMP_ERR3 = 0x12,			/**< Out of standard temperature while in DONE State */
+	CHG_STATE_TEMP_ERR4 = 0x13,			/**< Out of standard temperature while in SUSPEND State */
+	CHG_STATE_TEMP_ERR5 = 0x14,			/**< Out of standard temperature while in PRE CHARGE State */
+	CHG_STATE_TSD1 = 0X20,				/**< Thermal Shut Down while in PRE CHARGE State */
+	CHG_STATE_TSD2 = 0X21,				/**< Thermal Shut Down while in FAST CHARGE State */
+	CHG_STATE_TSD3 = 0X22,				/**< Thermal Shut Down while in TOP OFF State */
+	CHG_STATE_TSD4 = 0X23,				/**< Thermal Shut Down while in DONE State */
+	CHG_STATE_TSD5 = 0X24,				/**< Thermal Shut Down while in TRICKLE CHARGE State */
+	CHG_STATE_BATT_ASSIST1 = 0X30,		/**< VSYS < VBAT while in FAST CHARGE State */
+	CHG_STATE_BATT_ASSIST2 = 0X31,		/**< VSYS < VBAT while in TOP OFF State */
+	CHG_STATE_BATT_ASSIST3 = 0X32,		/**< VSYS < VBAT after TOP OFF State (DONE) */
+	CHG_STATE_BATT_ERROR = 0X7F,		/**< Battery Error */
 };
 
 /** @brief rtc or alarm registers structure */
