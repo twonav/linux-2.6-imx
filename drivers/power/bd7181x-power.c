@@ -26,8 +26,6 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 
-#define TWONAV_TRAIL
-
 #if 0
 #define bd7181x_info	dev_info
 #else
