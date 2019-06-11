@@ -131,18 +131,22 @@
 		notifications_led {
 			label = "blue";
 			gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
-		};
+		};		
 	};
-	/* TBD
-	leds {
-		compatible = "gpio-leds";
 
-		d16_led {
-			gpios = <&gpio4 20 0>;
-			linux,default-trigger = "heartbeat";
+	lcd-control {
+		compatible = "gpio-leds";
+		lcd_enable {
+			label = "lcd_enable";
+			gpios = <&gpio3 5 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+		lcd_reset {
+			label = "lcd_reset";
+			gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
 		};
 	};
-	*/
 };
 
 &cpu0 {
@@ -196,11 +200,6 @@
 	display0: display {
 		bits-per-pixel = <32>;
 		bus-width = <24>;
-		
-		gpios = <
-				&gpio3 5 GPIO_ACTIVE_HIGH
-				&gpio3 4 GPIO_ACTIVE_HIGH
-				>;
 		
 		display-timings {
 			native-mode = <&timing0>;
