@@ -222,9 +222,9 @@
 	};
 };
 
-&pwm2 {
+&pwm1 {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pwm2>;
+	pinctrl-0 = <&pinctrl_pwm1>;
 	status = "okay";
 };
 
@@ -640,9 +640,9 @@
 			>;
 		};
 
-		pinctrl_pwm2: pwm2grp {
+		pinctrl_pwm1: pwm1grp {
 			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO09__PWM2_OUT		0x110b0
+				MX6UL_PAD_GPIO1_IO08__PWM1_OUT		0x110b0
 			>;
 		};
 
