@@ -459,6 +459,12 @@ extern int root_mountflags;
 
 extern bool early_boot_irqs_disabled;
 
+enum twonav_hw_types {
+	TWONAV_HW_TYPE_AVENTURA,
+	TWONAV_HW_TYPE_TRAIL,
+	TWONAV_HW_TYPE_UNKNOWN,
+};
+
 /* Values used for system_state */
 extern enum system_states {
 	SYSTEM_BOOTING,

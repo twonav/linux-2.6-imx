@@ -26,6 +26,8 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 
+extern enum twonav_hw_types twonav_hw_type;
+
 #if 0
 #define bd7181x_info	dev_info
 #else
@@ -81,10 +83,12 @@
 #define MAX_VOLTAGE		ocv_table[0]
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
-#define MAX_CURRENT		1000000	// uA
+#define MAX_CURRENT		1000000	// uA - changing this doesn't change max charger current
 #define TRICKLE_CURRENT		25000	// uA
 #define PRECHARGE_CURRENT	300000	// uA
-#define FAST_CHARGE_CURRENT 10	// 0x0A -> 1A
+#define FAST_CHARGE_CURRENT 10	// 0x0A -> 1A - 100mA steps- TOTALLY RELATED WITH MAX_CURRENT - changing this changes current value
+#define FAST_CHARGE_CURRENT_MIN_VALUE 1
+#define FAST_CHARGE_CURRENT_MAX_VALUE 10
 
 #define AC_NAME			"bd7181x_ac"
 #define BAT_NAME		"bd7181x_bat"
@@ -1255,8 +1259,10 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 #if 1
 #define BAT_OPEN	0x7
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_BAT_TEMP);
-	pwr->bat_online = (r != BAT_OPEN);
-	bd7181x_info(pwr->dev, "%s() pwr->bat_online = %d\n", __func__, pwr->bat_online);
+	if (r >= 0) {
+		pwr->bat_online = (r != BAT_OPEN);
+		bd7181x_info(pwr->dev, "%s() pwr->bat_online = %d\n", __func__, pwr->bat_online);
+	}
 #endif	
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
 	if (r >= 0) {
@@ -1267,16 +1273,21 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 	return 0;
 }
 
+/*
 static int bd7181x_charger_reset(struct bd7181x_power *pwr) {
 	int r;
 	struct bd7181x *mfd = pwr->mfd;
-	bd7181x_reg_write(mfd, BD7181X_REG_SYS_INIT, 0x02);
+	r = bd7181x_reg_write(mfd, BD7181X_REG_SYS_INIT, 0x02);
+	if (r != 0) {
+		bd7181x_info(pwr->dev, "%s() could not reset charger\n", __fund__);
+	}
 	return 0;
 }
+*/
 
 /** Init registers on every startup
  */
-static int bd7181x_init_registers(struct bd7181x *mfd)
+static void bd7181x_init_registers(struct bd7181x *mfd)
 {
 	// Fast Charging Voltage for the temperature ranges
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
@@ -1562,12 +1573,11 @@ static irqreturn_t bd7181x_power_interrupt(int irq, void *pwrsys)
  */
 static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 {
-	printk(KERN_DEBUG "BD71b1x-power: bd7181x_vbat_interrupt\n");
 	int reg, r;
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 
-	//bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
+	bd7181x_info(pwr->dev, "%s , irq: %d\n", __func__, irq);
 	
 	reg = bd7181x_reg_read(mfd, BD7181X_REG_INT_STAT_08);
 	if (reg < 0)
@@ -1621,6 +1631,7 @@ static irqreturn_t bd7181x_int_dcin_ov_interrupt(int irq, void *pwrsys)
 	}
 	else if (reg & DCIN_RMV) {
 		printk("\n~~~ DCIN Removal ... \n");
+		//
 	}
 
 	return IRQ_HANDLED;
@@ -2548,19 +2559,46 @@ static int bd7181x_enable_irq(struct platform_device *pdev,
 }
 
 static int clear_all_interrupts(struct platform_device *pdev) {
+	int r;
 	struct bd7181x *mfd = dev_get_drvdata(pdev->dev.parent);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_01, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_02, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_03, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_04, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_05, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_06, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_07, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_08, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_09, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_10, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_11, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_12, 0xFF);
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_01, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_02, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_03, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_04, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_05, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_06, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_07, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_08, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_09, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_10, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_11, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+	r = bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_12, 0xFF);
+	if (r < 0)
+		return -ENXIO;
+
+	return 0;
 }
 
 static int enable_interrupts(struct platform_device *pdev) {
@@ -2634,7 +2672,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 {
 	struct bd7181x *bd7181x = dev_get_drvdata(pdev->dev.parent);
 	struct bd7181x_power *pwr;
-	int irq, ret, reg;
+	int ret;
 	struct power_supply_config charger_cfg = {};
 
 	pwr = kzalloc(sizeof(*pwr), GFP_KERNEL);
@@ -2668,7 +2706,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	//ret = power_supply_register(&pdev->dev, &pwr->bat);
 	pwr->bat = power_supply_register(&pdev->dev, &bd7181x_bat_desc, NULL);
 	if (pwr->bat == NULL) {
-		dev_err(&pdev->dev, "failed to register usb: %d\n", ret);
+		dev_err(&pdev->dev, "failed to register bat\n");
 		goto fail_register_bat;
 	}
 
@@ -2677,7 +2715,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 
 	pwr->ac = power_supply_register(&pdev->dev, &bd7181x_ac_desc, &charger_cfg);
 	if (pwr->ac == NULL) {
-		dev_err(&pdev->dev, "failed to register ac: %d\n", ret);
+		dev_err(&pdev->dev, "failed to register ac\n");
 		goto fail_register_ac;
 	}
 

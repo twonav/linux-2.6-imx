@@ -131,6 +131,25 @@ static char *initcall_command_line;
 static char *execute_command;
 static char *ramdisk_execute_command;
 
+/* Unified-kernel: HW type detected by u-boot
+ */
+enum twonav_hw_types twonav_hw_type;
+EXPORT_SYMBOL(twonav_hw_type);
+
+static int __init set_hw_type(char *str)
+{
+	if (parse_option_str(str, "Aventura"))
+		twonav_hw_type = TWONAV_HW_TYPE_AVENTURA;
+	else if (parse_option_str(str, "Trail"))
+		twonav_hw_type = TWONAV_HW_TYPE_TRAIL;
+	else
+		twonav_hw_type = TWONAV_HW_TYPE_UNKNOWN;
+
+	return 1;
+}
+__setup("hwtype=", set_hw_type);
+
+
 /*
  * Used to generate warnings if static_key manipulation functions are used
  * before jump_label_init is called.
