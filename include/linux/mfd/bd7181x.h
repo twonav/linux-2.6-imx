@@ -460,9 +460,10 @@ enum {
 #define CCCALIB					0x20
 
 /* BD7181X_REG_CHG_SET1 bits */
-//#define WDT_AUTO				0x40
-#define WDT_AUTO				0x6F
-#define WDT_AUTO_CHG_DISABLE			0x6E
+#define WDT_AUTO				0x2F // WDT_PRE & WDT_FST are manually set
+#define WDT_AUTO_CHG_DISABLE	0x2E
+#define WDT_PRE_VALUE			0xFF // (255-1)*(64/60) = 271(min)
+#define WDT_FST_VALUE			0xFF // 255*512/60= 2176(min)
 
 /* BD7181X_REG_CC_CURCD */
 #define CURDIR_Discharging			0x8000
