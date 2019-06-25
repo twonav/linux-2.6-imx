@@ -35,7 +35,7 @@
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
-#ifdef TWONAV_VELO
+#ifdef CONFIG_TWONAV_VELO
 	#define BD7181X_BATTERY_CAP_MAH		1650 // mAh
 	#define VBAT_CHG1					0x18 // 4.2V
 	#define VBAT_CHG2					0x13 // 4.1V
@@ -43,7 +43,7 @@
 	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
 	#define ITERM_CURRENT 				0x02 // 0.01C typical value 1650*0.01=16.5mA -> 20mA
 	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#elif defined TWONAV_HORIZON
+#elif defined CONFIG_TWONAV_HORIZON
 	#define BD7181X_BATTERY_CAP_MAH		1500 // mAh
 	#define VBAT_CHG1					0x1F // 4.34V
 	#define VBAT_CHG2					0x1A // 4.24V
@@ -51,7 +51,7 @@
 	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x36 // 4.4V
 	#define ITERM_CURRENT 				0x02 // 0.01C typical value 1500*0.01=15mA -> 20mA
 	#define OVP_MNT_THR 				0x46 // OVP:4.4V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#elif defined TWONAV_TRAIL
+#elif defined CONFIG_TWONAV_TRAIL
 	#define BD7181X_BATTERY_CAP_MAH		4000 // mAh
 	#define VBAT_CHG1					0x18 // 4.2V
 	#define VBAT_CHG2					0x13 // 4.1V
@@ -59,7 +59,7 @@
 	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V
 	#define ITERM_CURRENT 				0x05 // 0.01C typical value 4000*0.01=40mA -> 50mA
 	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#elif defined TWONAV_AVENTURA
+#elif defined CONFIG_TWONAV_AVENTURA
 	#define BD7181X_BATTERY_CAP_MAH		5000 // mAh
 	#define VBAT_CHG1					0x18 // 4.2V
 	#define VBAT_CHG2					0x13 // 4.1V
@@ -190,7 +190,7 @@ static const struct file_operations related_pid_fops = {
 };
 
 
-#ifdef TWONAV_VELO
+#ifdef CONFIG_TWONAV_VELO
 	static int ocv_table[] = {
 		4200000,
 		4114000,
@@ -216,7 +216,7 @@ static const struct file_operations related_pid_fops = {
 		3343000,
 		3000000
 	};	/* unit 1 micro V */
-#elif defined TWONAV_HORIZON
+#elif defined CONFIG_TWONAV_HORIZON
 	static int ocv_table[] = {
 		4350000,
 		4270000,
@@ -242,7 +242,7 @@ static const struct file_operations related_pid_fops = {
 		3582000,
 		3000000
 	};
-#elif defined TWONAV_TRAIL
+#elif defined CONFIG_TWONAV_TRAIL
 	static int ocv_table[] = {
 		4200000,
 		4165665,
@@ -268,7 +268,7 @@ static const struct file_operations related_pid_fops = {
 		3357671,
 		3305330
 	};
-#elif defined TWONAV_AVENTURA
+#elif defined CONFIG_TWONAV_AVENTURA
 static int ocv_table[] = {
 		4200000,
 		4148000,
@@ -1282,6 +1282,12 @@ static int bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
+
+	// We manually set watch-dog timers for pre-fast charge because with colapsed
+	// charging we can reach 10hrs default limmit
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_WDT_PRE, WDT_PRE_VALUE);
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_WDT_FST, WDT_FST_VALUE);
 
 	/* DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
 	 * When DCINOK = L, Anti-collapse detection is invalid.
