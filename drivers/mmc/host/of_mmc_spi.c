@@ -132,7 +132,7 @@ struct mmc_spi_platform_data *mmc_spi_get_pdata(struct spi_device *spi)
 	if (oms->detect_irq != 0) {
 		oms->pdata.init = of_mmc_spi_init;
 		oms->pdata.exit = of_mmc_spi_exit;
-	} else {
+	} else if (!gpio_is_valid(oms->gpios[CD_GPIO])){
 		oms->pdata.caps |= MMC_CAP_NEEDS_POLL;
 	}
 
