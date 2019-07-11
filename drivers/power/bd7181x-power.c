@@ -26,8 +26,6 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 
-#define CONFIG_TWONAV_TRAIL // REMOVE IT BEFORE COMMIT
-
 #if 0
 #define bd7181x_info	dev_info
 #else
@@ -1515,7 +1513,6 @@ static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
 		dcin_online = (r & VBUS_DET) != 0;
 
 	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
-
 	condition = (!dcin_online) && (vbat < VBAT_LOW_TH_DVAL);
 	if (conditional_max_reached(&sigterm_counter, condition, SIGNAL_CONSECUTIVE_HITS))
 		send_signal(SIGTERM);
