@@ -72,7 +72,7 @@
 	#define VBAT_CHG1					0x18
 	#define VBAT_CHG2					0x13
 	#define VBAT_CHG3					0x10
-	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x36
+	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34
 	#define ITERM_CURRENT 				0x02
 	#define OVP_MNT_THR 				0x16
 #endif
@@ -86,6 +86,15 @@
 #define PRECHARGE_CURRENT	300000	// uA
 #define FAST_CHARGE_CURRENT 10	// 0x0A -> 1A
 
+#define DCIN_DETECTION_THRESHOLD 0x35 // 0x35-> 53 * (80mV) -> 4.24V
+
+#define SIGNAL_CONSECUTIVE_HITS		3
+#define COLAPSE_REG_DETECTION_VAL      18 // 100mA + 18*50mA -> 1000mA
+#define COLAPSE_THRESHOLD_DISABLE_LED	0x05 // 350mA
+
+#define GPO1_OUT_LED_OFF	0x00
+#define GPO1_OUT_LED_ON		0x01
+
 #define AC_NAME			"bd7181x_ac"
 #define BAT_NAME		"bd7181x_bat"
 #define BD7181X_BATTERY_FULL	100
@@ -97,6 +106,7 @@
 
 //VBAT Low voltage detection Threshold
 #define VBAT_LOW_TH		0x00BF // 0x00BF (191) * 16mV = 3.056V
+#define VBAT_LOW_TH_DVAL 3056
 
 //#define RS_30mOHM		/* we have 10mOhm */
 
@@ -134,7 +144,8 @@ unsigned int battery_cycle;
 static struct dentry *bd7181x_dir;
 static struct dentry *related_process_pid_file;
 static int related_process_pid = 0;
-
+static int sigterm_counter = 0;
+static int colapse_counter = 0;
 
 static ssize_t send_signal(int type)
 {
@@ -143,7 +154,7 @@ static ssize_t send_signal(int type)
     struct task_struct *task;
 
     if (related_process_pid == 0) {
-        printk(KERN_DEBUG "BD7181x-power: no pid related to send signal type :%d\n", type);
+        printk("BD7181x-power: no pid related to send signal type :%d\n", type);
         return EPERM;
     }
 
@@ -154,7 +165,7 @@ static ssize_t send_signal(int type)
     rcu_read_lock();
     task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
     if(task == NULL){
-        printk(KERN_DEBUG "BD7181x-power: no such pid :%d\n",related_process_pid);
+        printk("BD7181x-power: no such pid :%d\n",related_process_pid);
         related_process_pid = 0;
         rcu_read_unlock();
         return -ENODEV;
@@ -163,7 +174,7 @@ static ssize_t send_signal(int type)
     rcu_read_unlock();
     ret = send_sig_info(type, &info, task);
     if (ret < 0) {
-        printk(KERN_DEBUG "BD7181x-power: error sending signal\n");
+        printk("BD7181x-power: error sending signal\n");
     }
 
     return ret;
@@ -1267,16 +1278,9 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 	return 0;
 }
 
-static int bd7181x_charger_reset(struct bd7181x_power *pwr) {
-	int r;
-	struct bd7181x *mfd = pwr->mfd;
-	bd7181x_reg_write(mfd, BD7181X_REG_SYS_INIT, 0x02);
-	return 0;
-}
-
 /** Init registers on every startup
  */
-static int bd7181x_init_registers(struct bd7181x *mfd)
+static void bd7181x_init_registers(struct bd7181x *mfd)
 {
 	// Fast Charging Voltage for the temperature ranges
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
@@ -1288,6 +1292,9 @@ static int bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_WDT_PRE, WDT_PRE_VALUE);
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_WDT_FST, WDT_FST_VALUE);
+
+	// DCIN detection threshold
+	bd7181x_reg_write(mfd, BD7181X_REG_ALM_DCIN_TH, DCIN_DETECTION_THRESHOLD);
 
 	/* DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
 	 * When DCINOK = L, Anti-collapse detection is invalid.
@@ -1460,6 +1467,63 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	return 0;
 }
 
+static int conditional_max_reached(int *counter, int condition, int max) {
+	int ret = 0;
+	if (condition)
+		(*counter) += 1;
+	else
+		(*counter) -= 1;
+
+	if ((*counter) > max)
+		ret = 1;
+
+	if (ret || ((*counter) < 0))
+		(*counter) = 0;
+
+	return ret;
+}
+
+// Led Control - disable when not charging
+static void bd7181x_led_control(struct bd7181x_power *pwr) {
+	int r;
+	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
+	if (r <= COLAPSE_THRESHOLD_DISABLE_LED)
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_OFF);
+	else
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_ON);
+}
+
+static void bd7181x_colapse_check(struct bd7181x_power *pwr) {
+	int r;
+	int condition;
+	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
+	condition = (r < COLAPSE_REG_DETECTION_VAL);
+	if (conditional_max_reached(&colapse_counter, condition, SIGNAL_CONSECUTIVE_HITS))
+		send_signal(SIGUSR2);
+}
+
+static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
+	int r;
+	int condition;
+	int vbat;
+	int dcin_online = 0;
+
+	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
+	if (r >= 0)
+		dcin_online = (r & VBUS_DET) != 0;
+
+	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
+	condition = (!dcin_online) && (vbat < VBAT_LOW_TH_DVAL);
+	if (conditional_max_reached(&sigterm_counter, condition, SIGNAL_CONSECUTIVE_HITS))
+		send_signal(SIGTERM);
+}
+
+static void bd7181x_send_signals(struct bd7181x_power *pwr) {
+	bd7181x_led_control(pwr);
+	bd7181x_colapse_check(pwr);
+	bd7181x_low_batt_check(pwr);
+}
+
 /**@brief timed work function called by system
  *  read battery capacity,
  *  sense change of charge status, etc.
@@ -1521,6 +1585,8 @@ static void bd_work_callback(struct work_struct *work)
 	} else if (pwr->calib_current == CALIB_START) {
 		pwr->calib_current = CALIB_GO;
 	}
+
+	bd7181x_send_signals(pwr);
 }
 
 /**@brief bd7181x power interrupt
@@ -1568,8 +1634,8 @@ static irqreturn_t bd7181x_power_interrupt(int irq, void *pwrsys)
  */
 static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 {
-	printk(KERN_DEBUG "BD71b1x-power: bd7181x_vbat_interrupt\n");
-	int reg, r;
+	printk("BD71b1x-power: bd7181x_vbat_interrupt\n");
+	int reg, r, vbat;
 	struct device *dev = pwrsys;
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 
@@ -1583,12 +1649,12 @@ static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 	if (r)
 		return IRQ_NONE;
 
-	if (reg & VBAT_MON_DET) {
-		printk(KERN_DEBUG "\n~~~ VBAT General Alarm Detection : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)... \n");
-		send_signal(SIGTERM);
+	vbat = bd7181x_reg_read16(mfd, BD7181X_REG_VM_VBAT_U);
+	if (vbat < VBAT_LOW_TH_DVAL) {
+		printk("\n~~~ VBAT TOO LOW : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)...\n");
 	}
-	else if (reg & VBAT_MON_RES) {
-		printk("\n~~~ VBAT General Alarm Resume : VBAT(5Dh+5Eh) > VBAT_TH(57h+58h) ... \n");
+	else {
+		printk("\n~~~ VBAT General Alarm Resume : VBAT(5Dh+5Eh) > VBAT_TH(57h+58h) ...\n");
 	}
 
 	return IRQ_HANDLED;
@@ -1616,11 +1682,9 @@ static irqreturn_t bd7181x_int_dcin_ov_interrupt(int irq, void *pwrsys)
 	else if (reg & DCIN_OV_RES) {
 		printk("\n~~~ DCIN OVERVOLTAGE Resume DCIN <= 6.5-150mV(typ) ... \n");
 	}
-	else if (reg & DCIN_CLPS_IN) {
+
+	if (reg & DCIN_CLPS_IN) {
 		printk("\n~~~ DCIN ANTI-COLAPSE detection DCIN(61h-62h) < DCIN_CLPS(43h) ... \n");
-		if ((reg & DCIN_CLPS_OUT) == 0) {
-			send_signal(SIGUSR2);
-		}
 	}
 	else if (reg & DCIN_CLPS_OUT) {
 		printk("\n~~~ DCIN COLAPSE RESUME  DCIN(61h-62h) >= DCIN_CLPS(43h)... \n");
@@ -1779,7 +1843,7 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
 		if (pwr->rpt_status == POWER_SUPPLY_STATUS_CHARGING) {
 			u8 colapse = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0); // 0x41 50mV steps starting from 100mA
-			if (colapse < 18) {
+			if (colapse < COLAPSE_REG_DETECTION_VAL) {
 				val->intval = POWER_SUPPLY_CHARGE_TYPE_COLAPSED;
 			}
 			else {
@@ -1856,7 +1920,7 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		{
 			u8 colapse_cur = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
-			if (colapse_cur < 18)
+			if (colapse_cur < COLAPSE_REG_DETECTION_VAL)
 				val->intval = 100000 + colapse_cur * 50000;
 			else{
 				switch(pwr->charge_type) {
@@ -2520,8 +2584,9 @@ static int bd7181x_add_irq(struct platform_device *pdev,
 		dev_warn(&pdev->dev, "platform irq error # %d\n", irq);
 		return -ENXIO;
 	}
+
 	ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
-			thread_fn, IRQF_TRIGGER_LOW | IRQF_EARLY_RESUME,
+			thread_fn, IRQF_TRIGGER_LOW | IRQF_EARLY_RESUME, // thread_fn, IRQF_ONESHOT | IRQF_TRIGGER_FALLING,
 			dev_name(&pdev->dev), &pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "IRQ %d is not free.\n", irq);
@@ -2549,84 +2614,6 @@ static int bd7181x_enable_irq(struct platform_device *pdev,
 		dev_warn(&pdev->dev, "Read %s failed\n", reg_name);
 	}
 	dev_info(&pdev->dev, "%s=0x%x\n", reg_name, reg_val);
-
-	return ret;
-}
-
-static int clear_all_interrupts(struct platform_device *pdev) {
-	struct bd7181x *mfd = dev_get_drvdata(pdev->dev.parent);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_01, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_02, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_03, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_04, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_05, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_06, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_07, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_08, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_09, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_10, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_11, 0xFF);
-	bd7181x_reg_write(mfd, BD7181X_REG_INT_STAT_12, 0xFF);
-}
-
-static int enable_interrupts(struct platform_device *pdev) {
-	int ret;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_BUCK_01", bd7181x_int_buck_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_DCIN_02", bd7181x_int_dcin_ov_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_DCIN_03", bd7181x_power_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_VSYS_04", bd7181x_int_vsys_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_CHARGE_05", bd7181x_int_chg_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_BAT_06", bd7181x_int_bat_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_07", bd7181x_int_vbat_mon1_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_08", bd7181x_vbat_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_09", bd7181x_int_vbat_mon3_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_BAT_MON_10", bd7181x_int_vbat_mon4_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	ret = bd7181x_add_irq(pdev, "IRQ_TEMPERATURE_11", bd7181x_int_11_interrupt);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_01, "BD7181X_REG_INT_EN_01", BD7181X_INT_EN_01_BUCKAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_02, "BD7181X_REG_INT_EN_02", BD7181X_INT_EN_02_DCINAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_03, "BD7181X_REG_INT_EN_03", BD7181X_INT_EN_03_DCINAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_04, "BD7181X_REG_INT_EN_04", BD7181X_INT_EN_04_VSYSAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_05, "BD7181X_REG_INT_EN_05", BD7181X_INT_EN_05_CHGAST_MASK); // Disable CHG_TRNS
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_06, "BD7181X_REG_INT_EN_06", BD7181X_INT_EN_06_BATAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_07, "BD7181X_REG_INT_EN_07", BD7181X_INT_EN_07_BMONAST_MASK);
-	bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_08, "BD7181X_REG_INT_EN_08", BD7181X_INT_EN_08_BMONAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_09, "BD7181X_REG_INT_EN_09", BD7181X_INT_EN_09_BMONAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_10, "BD7181X_REG_INT_EN_10", BD7181X_INT_EN_10_BMONAST_MASK);
-	//bd7181x_enable_irq(pdev, BD7181X_REG_INT_EN_11, "BD7181X_REG_INT_EN_11", BD7181X_INT_EN_11_TMPAST_MASK);
 
 	return ret;
 }
@@ -2686,19 +2673,6 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to register ac: %d\n", ret);
 		goto fail_register_ac;
 	}
-
-	ret = enable_interrupts(pdev);
-	if (ret == -ENXIO)
-		return -ENXIO;
-
-	/* Interrupts are cleared on startup acording to documentation. If special
-	 * handling is needed it should be done here. VBAT_LOW interrupt will be
-	 *  retriggered so clearing it on start-up does not create any issue.
-	*/
-
-	ret = clear_all_interrupts(pdev);
-	if (ret == -ENXIO)
-		return -ENXIO;
 
 	ret = sysfs_create_group(&pwr->bat->dev.kobj, &bd7181x_sysfs_attr_group);
 	if (ret < 0) {

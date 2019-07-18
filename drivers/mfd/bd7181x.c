@@ -188,7 +188,7 @@ static struct regmap_irq_chip bd7181x_irq_chip = {
 	.irq_reg_stride = 1,
 	.status_base = BD7181X_REG_INT_STAT,
 	.mask_base = BD7181X_REG_INT_EN_01 - 1, // ??: WHAT IS THIS FOR ??
-	.mask_invert = false, // if mask_invert is set to true interrupt enable bits are not set
+	.mask_invert = true,
 	// .ack_base = BD7181X_REG_INT_STAT_00,
 };
 
