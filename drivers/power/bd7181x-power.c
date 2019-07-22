@@ -90,7 +90,7 @@
 
 #define SIGNAL_CONSECUTIVE_HITS		3
 #define COLAPSE_REG_DETECTION_VAL      18 // 100mA + 18*50mA -> 1000mA
-#define COLAPSE_THRESHOLD_DISABLE_LED	0x05 // 350mA
+#define COLAPSE_THRESHOLD_SEND_SIGNAL	8 // 500mA
 
 #define GPO1_OUT_LED_OFF	0x00
 #define GPO1_OUT_LED_ON		0x01
@@ -1487,7 +1487,10 @@ static int conditional_max_reached(int *counter, int condition, int max) {
 static void bd7181x_led_control(struct bd7181x_power *pwr) {
 	int r;
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
-	if (r <= COLAPSE_THRESHOLD_DISABLE_LED)
+
+	int avg_curr;
+	avg_curr = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_IBAT_U);
+	if (avg_curr & IBAT_SA_DIR_Discharging)
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_OFF);
 	else
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_ON);
@@ -1497,7 +1500,7 @@ static void bd7181x_colapse_check(struct bd7181x_power *pwr) {
 	int r;
 	int condition;
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
-	condition = (r < COLAPSE_REG_DETECTION_VAL);
+	condition = (r < COLAPSE_THRESHOLD_SEND_SIGNAL);
 	if (conditional_max_reached(&colapse_counter, condition, SIGNAL_CONSECUTIVE_HITS))
 		send_signal(SIGUSR2);
 }
@@ -1506,14 +1509,21 @@ static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
 	int r;
 	int condition;
 	int vbat;
+	int avg_curr;
 	int dcin_online = 0;
+
+	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
+	condition = (vbat < VBAT_LOW_TH_DVAL);
 
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
 	if (r >= 0)
 		dcin_online = (r & VBUS_DET) != 0;
 
-	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
-	condition = (!dcin_online) && (vbat < VBAT_LOW_TH_DVAL);
+	if (dcin_online && condition) {
+		avg_curr = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_IBAT_U);
+		condition = (avg_curr & IBAT_SA_DIR_Discharging);
+	}
+
 	if (conditional_max_reached(&sigterm_counter, condition, SIGNAL_CONSECUTIVE_HITS))
 		send_signal(SIGTERM);
 }
