@@ -4,7 +4,7 @@
 set -e
 
 SCRIPT_NAME=${0##*/}
-PARAM_DEVICE_TYPE="trail"
+PARAM_DEVICE_TYPE="twonav-trail-2018"
 
 
 DEFCONFIG_PREFIX="imx6ul-var-dart-"
@@ -57,7 +57,7 @@ make ARCH=arm mrproper
 # Choose defconfig
 make ARCH=arm $DEFCONFIG
 # Modify defconfig
-make ARCH=arm xconfig
+make ARCH=arm xconfig QT_X11_NO_MITSHM=1
 make ARCH=arm savedefconfig
 # Backup original defconfig
 cp arch/arm/configs/$DEFCONFIG arch/arm/configs/$DEFCONFIG$DEFCONFIG_ORIG_SUFFIX
