@@ -196,15 +196,15 @@ static ssize_t write_related_pid(struct file *file,
 								 size_t count,
 								 loff_t *ppos)
 {
-    char mybuf[10];
-    if(count > 10)
-        return -EINVAL;
-    if (copy_from_user(mybuf, buf, count))
-        return -EFAULT;
-    sscanf(mybuf, "%d", &related_process_pid);
+	char mybuf[10];
+	if(count > 10)
+		return -EINVAL;
+	if (copy_from_user(mybuf, buf, count))
+		return -EFAULT;
+	sscanf(mybuf, "%d", &related_process_pid);
 	colapse_signal_sent = 0;
 
-    return count;
+	return count;
 }
 
 static const struct file_operations related_pid_fops = {
