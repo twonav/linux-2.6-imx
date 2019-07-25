@@ -146,38 +146,48 @@ static struct dentry *related_process_pid_file;
 static int related_process_pid = 0;
 static int sigterm_counter = 0;
 static int colapse_counter = 0;
+static int colapse_signal_sent = 0;
 
 static ssize_t send_signal(int type)
 {
 	int ret;
 	struct siginfo info;
-    struct task_struct *task;
+	struct task_struct *task;
 
-    if (related_process_pid == 0) {
-        printk("BD7181x-power: no pid related to send signal type :%d\n", type);
-        return EPERM;
-    }
+	if ((colapse_signal_sent==1) && (type == SIGUSR2)) {
+		return ret;
+	}
 
-    memset(&info, 0, sizeof(struct siginfo));
-    info.si_signo = type;
-    info.si_code = SI_USER;
+	if (related_process_pid == 0) {
+		printk("BD7181x-power: no pid related to send signal type :%d\n", type);
+		return EPERM;
+	}
 
-    rcu_read_lock();
-    task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
-    if(task == NULL){
-        printk("BD7181x-power: no such pid :%d\n",related_process_pid);
-        related_process_pid = 0;
-        rcu_read_unlock();
-        return -ENODEV;
-    }
+	memset(&info, 0, sizeof(struct siginfo));
+	info.si_signo = type;
+	info.si_code = SI_USER;
 
-    rcu_read_unlock();
-    ret = send_sig_info(type, &info, task);
-    if (ret < 0) {
-        printk("BD7181x-power: error sending signal\n");
-    }
+	rcu_read_lock();
+	task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
+	if(task == NULL){
+		printk("BD7181x-power: no such pid :%d\n",related_process_pid);
+		related_process_pid = 0;
+		rcu_read_unlock();
+		return -ENODEV;
+	}
 
-    return ret;
+	rcu_read_unlock();
+	ret = send_sig_info(type, &info, task);
+	if (ret < 0) {
+		printk("BD7181x-power: error sending signal\n");
+	}
+	else {
+		if (type == SIGUSR2) {
+			colapse_signal_sent = 1;
+		}
+	}
+
+	return ret;
 }
 
 
@@ -186,14 +196,15 @@ static ssize_t write_related_pid(struct file *file,
 								 size_t count,
 								 loff_t *ppos)
 {
-    char mybuf[10];
-    if(count > 10)
-        return -EINVAL;
-    if (copy_from_user(mybuf, buf, count))
-        return -EFAULT;
-    sscanf(mybuf, "%d", &related_process_pid);
+	char mybuf[10];
+	if(count > 10)
+		return -EINVAL;
+	if (copy_from_user(mybuf, buf, count))
+		return -EFAULT;
+	sscanf(mybuf, "%d", &related_process_pid);
+	colapse_signal_sent = 0;
 
-    return count;
+	return count;
 }
 
 static const struct file_operations related_pid_fops = {
@@ -1555,6 +1566,9 @@ static void bd_work_callback(struct work_struct *work)
 	if (status != pwr->vbus_status) {
 		pwr->vbus_status = status;
 		changed = 1;
+		if ((colapse_signal_sent == 1) && ((status &  0x01) == 0)) {
+			colapse_signal_sent = 0;
+		}
 	}
 
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_BAT_STAT);
