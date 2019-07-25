@@ -929,7 +929,7 @@
 				reg = <0x02198000 0x4000>;
 				interrupts = <GIC_SPI 100 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clks IMX6UL_CLK_ADC1>;
-				num-channels = <2>;
+				num-channels = <1>;
 				clock-names = "adc";
 				status = "disabled";
                         };
