@@ -588,6 +588,8 @@
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22		0x40000000 Sample to get feedback from grpio sysfs*/
 				/*-------------------------------BD7181x--------------------------------*/
 				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12    0x1b0b0 /* PMICIO.INT_OUT */
+				/*-------------------------------audio switch--------------------------------*/				
+				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0
 			>;			
 		};
 
