@@ -146,12 +146,17 @@ static struct dentry *related_process_pid_file;
 static int related_process_pid = 0;
 static int sigterm_counter = 0;
 static int colapse_counter = 0;
+static int colapse_signal_sent = 0;
 
 static ssize_t send_signal(int type)
 {
 	int ret;
 	struct siginfo info;
     struct task_struct *task;
+
+	if ((colapse_signal_sent==1) && (type == SIGUSR2)) {
+		return ret;
+	}
 
     if (related_process_pid == 0) {
         printk("BD7181x-power: no pid related to send signal type :%d\n", type);
@@ -176,6 +181,12 @@ static ssize_t send_signal(int type)
     if (ret < 0) {
         printk("BD7181x-power: error sending signal\n");
     }
+	else {
+		if (type == SIGUSR2) {
+			colapse_signal_sent = 1;
+		}
+	}
+
 
     return ret;
 }
@@ -192,6 +203,7 @@ static ssize_t write_related_pid(struct file *file,
     if (copy_from_user(mybuf, buf, count))
         return -EFAULT;
     sscanf(mybuf, "%d", &related_process_pid);
+	colapse_signal_sent = 0;
 
     return count;
 }
@@ -1555,6 +1567,9 @@ static void bd_work_callback(struct work_struct *work)
 	if (status != pwr->vbus_status) {
 		pwr->vbus_status = status;
 		changed = 1;
+		if ((colapse_signal_sent == 1) && ((status &  0x01) == 0)) {
+			colapse_signal_sent = 0;
+		}
 	}
 
 	status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_BAT_STAT);
