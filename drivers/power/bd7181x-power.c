@@ -152,43 +152,42 @@ static ssize_t send_signal(int type)
 {
 	int ret;
 	struct siginfo info;
-    struct task_struct *task;
+	struct task_struct *task;
 
 	if ((colapse_signal_sent==1) && (type == SIGUSR2)) {
 		return ret;
 	}
 
-    if (related_process_pid == 0) {
-        printk("BD7181x-power: no pid related to send signal type :%d\n", type);
-        return EPERM;
-    }
+	if (related_process_pid == 0) {
+		printk("BD7181x-power: no pid related to send signal type :%d\n", type);
+		return EPERM;
+	}
 
-    memset(&info, 0, sizeof(struct siginfo));
-    info.si_signo = type;
-    info.si_code = SI_USER;
+	memset(&info, 0, sizeof(struct siginfo));
+	info.si_signo = type;
+	info.si_code = SI_USER;
 
-    rcu_read_lock();
-    task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
-    if(task == NULL){
-        printk("BD7181x-power: no such pid :%d\n",related_process_pid);
-        related_process_pid = 0;
-        rcu_read_unlock();
-        return -ENODEV;
-    }
+	rcu_read_lock();
+	task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
+	if(task == NULL){
+		printk("BD7181x-power: no such pid :%d\n",related_process_pid);
+		related_process_pid = 0;
+		rcu_read_unlock();
+		return -ENODEV;
+	}
 
-    rcu_read_unlock();
-    ret = send_sig_info(type, &info, task);
-    if (ret < 0) {
-        printk("BD7181x-power: error sending signal\n");
-    }
+	rcu_read_unlock();
+	ret = send_sig_info(type, &info, task);
+	if (ret < 0) {
+		printk("BD7181x-power: error sending signal\n");
+	}
 	else {
 		if (type == SIGUSR2) {
 			colapse_signal_sent = 1;
 		}
 	}
 
-
-    return ret;
+	return ret;
 }
 
 
