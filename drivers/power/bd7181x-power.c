@@ -1501,7 +1501,8 @@ static void bd7181x_led_control(struct bd7181x_power *pwr) {
 
 	int avg_curr;
 	avg_curr = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_IBAT_U);
-	if (avg_curr & IBAT_SA_DIR_Discharging)
+	if ((avg_curr & IBAT_SA_DIR_Discharging) &&
+	    (pwr->charge_type != CHG_STATE_DONE))
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_OFF);
 	else
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_ON);
