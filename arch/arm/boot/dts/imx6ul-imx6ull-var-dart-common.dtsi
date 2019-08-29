@@ -376,7 +376,7 @@
 
 #ifdef WIFI
 &i2c2 {
-	clock_frequency = <100000>;
+	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
