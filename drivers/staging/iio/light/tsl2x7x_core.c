@@ -666,8 +666,15 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 		(chip->settings.prox_diode << 4) |
 		(chip->settings.prox_power << 6);
 
-	/* set chip struct re scaling and saturation */
-	chip->als_saturation = als_count * 922; /* 90% of full scale */
+	/* set chip struct saturation */
+	if ((256-als_count) > 63) {
+		chip->als_saturation = TSL2X7X_LUX_CALC_OVER_FLOW;
+	}
+	else {
+		chip->als_saturation = 1024 * (256-als_count);
+	}
+
+	/* set chip struct re scaling */
 	chip->als_time_scale = (als_time + 25) / 50;
 
 	/*
