@@ -148,19 +148,28 @@ static int sigterm_counter = 0;
 static int colapse_counter = 0;
 static int colapse_signal_sent = 0;
 
-static ssize_t send_signal(int type)
+static int is_collapse_signal(int type) {
+	int collapse_signal = 0;
+	if (type == SIGUSR2) {
+		collapse_signal = 1;
+	}
+
+	return collapse_signal;
+}
+
+static void send_signal(int type)
 {
 	int ret;
 	struct siginfo info;
 	struct task_struct *task;
 
-	if ((colapse_signal_sent==1) && (type == SIGUSR2)) {
-		return ret;
+	if ((colapse_signal_sent==1) && is_collapse_signal(type)) {
+		return;
 	}
 
 	if (related_process_pid == 0) {
 		printk("BD7181x-power: no pid related to send signal type :%d\n", type);
-		return EPERM;
+		return;
 	}
 
 	memset(&info, 0, sizeof(struct siginfo));
@@ -173,7 +182,7 @@ static ssize_t send_signal(int type)
 		printk("BD7181x-power: no such pid :%d\n",related_process_pid);
 		related_process_pid = 0;
 		rcu_read_unlock();
-		return -ENODEV;
+		return;
 	}
 
 	rcu_read_unlock();
@@ -182,12 +191,10 @@ static ssize_t send_signal(int type)
 		printk("BD7181x-power: error sending signal\n");
 	}
 	else {
-		if (type == SIGUSR2) {
+		if (is_collapse_signal(type)) {
 			colapse_signal_sent = 1;
 		}
 	}
-
-	return ret;
 }
 
 
@@ -1480,32 +1487,45 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 static int conditional_max_reached(int *counter, int condition, int max) {
 	int ret = 0;
-	if (condition)
+	if (condition) {
 		(*counter) += 1;
-	else
+	}
+	else {
 		(*counter) -= 1;
+	}
 
-	if ((*counter) > max)
+	if ((*counter) > max) {
 		ret = 1;
+	}
 
-	if (ret || ((*counter) < 0))
+	if (ret || ((*counter) < 0)) {
 		(*counter) = 0;
+	}
 
 	return ret;
 }
 
 // Led Control - disable when not charging
 static void bd7181x_led_control(struct bd7181x_power *pwr) {
-	int r;
-	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
-
 	int avg_curr;
+	int r;
+	int dcin_online = 0;
+
+	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
+	if (r >= 0) {
+		dcin_online = (r & VBUS_DET) != 0;
+	}
+
 	avg_curr = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_IBAT_U);
-	if ((avg_curr & IBAT_SA_DIR_Discharging) &&
-	    (pwr->charge_type != CHG_STATE_DONE))
+
+	if ((dcin_online == 1) &&
+		(avg_curr & IBAT_SA_DIR_Discharging) &&
+		(pwr->charge_type != CHG_STATE_DONE)) {
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_OFF);
-	else
+	}
+	else {
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_ON);
+	}
 }
 
 static void bd7181x_colapse_check(struct bd7181x_power *pwr) {
@@ -2652,7 +2672,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 {
 	struct bd7181x *bd7181x = dev_get_drvdata(pdev->dev.parent);
 	struct bd7181x_power *pwr;
-	int irq, ret, reg;
+	int ret;
 	struct power_supply_config charger_cfg = {};
 
 	pwr = kzalloc(sizeof(*pwr), GFP_KERNEL);
