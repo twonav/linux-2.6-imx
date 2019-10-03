@@ -16,7 +16,7 @@ function usage() {
     echo "Usage:"
 	echo " ./${SCRIPT_NAME} -t device_type"
 	echo "Example:"
-    echo "       -t|--type   		-- twonav-aventura-2018/twonav-trail-2018"
+    echo "       -t|--type   		-- twonav/os-aventura/trail-2018"
 }
 
 ###### parse input arguments ##
@@ -30,7 +30,7 @@ eval set -- "$ARGS"
 
 while true; do
 	case $1 in
-		-t|--type ) # twonav-aventura/trail-2018
+		-t|--type ) # twonav/os-aventura/trail-2018
 			PARAM_DEVICE_TYPE="$2"
 			shift
 			;;
