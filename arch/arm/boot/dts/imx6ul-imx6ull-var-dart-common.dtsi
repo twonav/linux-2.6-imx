@@ -82,6 +82,8 @@
 
 	keys {
 		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_keys>;
 
 		button_tr {
 			label = "BUTTONS.T_R";
@@ -122,6 +124,41 @@
 			label = "BUTTONS.KB_B_L";
 			gpios = <&gpio5 4 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_F5>;
+			gpio-key,wakeup;
+		};
+
+		joystick_u {
+			label = "BUTTONS.JS_U";
+			gpios = <&gpio5 5 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_UP>;
+			gpio-key,wakeup;
+		};
+
+		joystick_d {
+			label = "BUTTONS.JS_D";
+			gpios = <&gpio5 6 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_DOWN>;
+			gpio-key,wakeup;
+		};
+
+		joystick_c {
+			label = "BUTTONS.JS_C";
+			gpios = <&gpio5 7 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_ENTER>;
+			gpio-key,wakeup;
+		};
+
+		joystick_r {
+			label = "BUTTONS.JS_R";
+			gpios = <&gpio5 8 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_RIGHT>;
+			gpio-key,wakeup;
+		};
+
+		joystick_l {
+			label = "BUTTONS.JS_L";
+			gpios = <&gpio5 9 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_LEFT>;
 			gpio-key,wakeup;
 		};
 	};
@@ -598,6 +635,21 @@
 				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0
 			>;			
 		};
+
+		pinctrl_keys: keys1grp {
+			fsl,pins = <
+				MX6UL_PAD_SNVS_TAMPER0__GPIO5_IO00		0x110b0
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01		0x110b0
+				MX6UL_PAD_SNVS_TAMPER2__GPIO5_IO02		0x110b0
+				MX6UL_PAD_SNVS_TAMPER3__GPIO5_IO03		0x110b0
+				MX6UL_PAD_SNVS_TAMPER4__GPIO5_IO04		0x110b0
+				MX6UL_PAD_SNVS_TAMPER5__GPIO5_IO05		0x110b0
+				MX6UL_PAD_SNVS_TAMPER6__GPIO5_IO06		0x110b0
+				MX6UL_PAD_SNVS_TAMPER7__GPIO5_IO07		0x110b0
+				MX6UL_PAD_SNVS_TAMPER8__GPIO5_IO08		0x110b0
+				MX6UL_PAD_SNVS_TAMPER9__GPIO5_IO09		0x110b0
+			>;
+		};		
 
 		pinctrl_adc1: adc1grp {
 			fsl,pins = <
