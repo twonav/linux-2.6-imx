@@ -551,6 +551,12 @@
 };
 #endif
 
+&adc1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_adc1>;
+	status = "okay";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
@@ -593,6 +599,11 @@
 			>;			
 		};
 
+		pinctrl_adc1: adc1grp {
+			fsl,pins = <
+				MX6UL_PAD_GPIO1_IO06__GPIO1_IO06 0xb0
+			>;
+		};
 
 		pinctrl_flexcan1: flexcan1grp{
 			fsl,pins = <
