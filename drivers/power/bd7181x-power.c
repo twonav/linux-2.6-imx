@@ -138,6 +138,12 @@
 #define FORCE_ADJ_COULOMB_TEMP_H	35	/* 1 degrees C unit */
 #define FORCE_ADJ_COULOMB_TEMP_L	15	/* 1 degrees C unit */
 
+#define XSTB		0x02 // RTC Enabled pin
+#define BD7181X_V_END	0xB0
+#define BAT_DET_DIFF_THRESHOLD 200 // 200mV
+#define BAT_DET_OK_USE_OCV 1
+#define BAT_DET_OK_USE_CV 2
+
 unsigned int battery_cycle;
 
 // Variables related to low battery signal
@@ -520,15 +526,22 @@ static int bd7181x_reg_read32(struct bd7181x *mfd, int reg) {
  * @param pwr power device
  * @return 0
  */
-static int bd7181x_get_init_bat_stat(struct bd7181x_power *pwr) {
+static int bd7181x_get_init_bat_stat(struct bd7181x_power *pwr, int ocv_type) {
 	struct bd7181x *mfd = pwr->mfd;
 	int vcell;
 
-	vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U) * 1000;
+	if (ocv_type == BAT_DET_OK_USE_OCV) {
+		vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U) * 1000;
+	}
+	else {
+		vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_VBAT_U) * 1000;
+	}
 	bd7181x_info(pwr->dev, "VM_OCV_PRE = %d\n", vcell);
 	pwr->hw_ocv1 = vcell;
 
-	vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PST_U) * 1000;
+	if (ocv_type == BAT_DET_OK_USE_OCV) {
+		vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PST_U) * 1000;
+	}
 	bd7181x_info(pwr->dev, "VM_OCV_PST = %d\n", vcell);
 	pwr->hw_ocv2 = vcell;
 
@@ -775,13 +788,13 @@ static int bd7181x_calib_voltage(struct bd7181x_power* pwr, int* ocv) {
  * @param pwr power device
  * @return 0
  */
-static int init_coulomb_counter(struct bd7181x_power* pwr) {
+static int init_coulomb_counter(struct bd7181x_power* pwr, int ocv_type) {
 	u32 bcap;
 	int soc, ocv;
 
 #if INIT_COULOMB == BY_VBATLOAD_REG
 	/* Get init OCV by HW */
-	bd7181x_get_init_bat_stat(pwr);
+	bd7181x_get_init_bat_stat(pwr, ocv_type);
 
 	ocv = (pwr->hw_ocv1 >= pwr->hw_ocv2)? pwr->hw_ocv1: pwr->hw_ocv2;
 	bd7181x_info(pwr->dev, "ocv %d\n", ocv);
@@ -1342,42 +1355,64 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 }
 
+
+static int detect_new_battery(struct bd7181x *mfd) {
+	int r;
+	int new_battery_detected = 0;
+
+	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
+	if ((r & XSTB) == 0x00) {
+		/* XSTB
+		Oscillator Stop Flag
+		0: RTC clock has been stopped.
+		1: RTC clock is normallyOscillator operating normally.
+		The XSTB bit is used to check the status of the Real Time Clock (RTC). This bit accepts R/W for "1" and "0".
+		If "1" is written to this bit, the XSTB bit will change value to "0" when the RTC is stopped.
+		*/
+		printk(KERN_ERR "bd7181x: RTC has been stopped, new battery detected\n");
+		new_battery_detected = BAT_DET_OK_USE_OCV;
+	}
+	else {
+		/* If the battery is replaced "fast" (<25secs) the RTC may still stay alive due to charged capacitors
+		   and very low power consumption leading to the OCV registers not beiing actualized. So we try to detect
+		   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
+		*/
+		int v_on;
+		int v_off;
+		int v_diff;
+		v_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_VBAT_U);
+		v_off = bd7181x_reg_read16(mfd, BD7181X_V_END);
+		v_diff = abs(v_on - v_off);
+		if (v_diff > BAT_DET_DIFF_THRESHOLD) {
+			printk(KERN_ERR "bd7181x: significant voltage difference, assuming new battery\n");
+			new_battery_detected = BAT_DET_OK_USE_CV;
+		}
+	}
+
+	return new_battery_detected;
+}
+
+
 /** @brief init bd7181x sub module charger
- * @param pwr power device
- * @return 0
+ *  @param pwr power device
+ *  @return 0
  */
 static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 {
 	struct bd7181x *mfd = pwr->mfd;
-	int r;
+	int new_battery_detected;
 
 	bd7181x_init_registers(mfd);
-	/* XSTB
-	   Oscillator Stop Flag
-	   0: RTC clock has been stopped.
-	   1: RTC clock is normallyOscillator operating normally.
-	   The XSTB bit is used to check the status of the Real Time Clock (RTC). This bit accepts R/W for "1" and "0".
-	   If "1" is written to this bit, the XSTB bit will change value to "0" when the RTC is stopped.
-	*/
-#define XSTB		0x02
-	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
 
-#if 0
-	for (i = 0; i < 300; i++) {
-		r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_BAT_STAT);
-		if (r >= 0 && (r & BAT_DET_DONE)) {
-			break;
-		}
-		msleep(5);
-	}
-#endif
-	if ((r & XSTB) == 0x00) {
-		printk(KERN_INFO "bd7181x-power: new battery inserted, initializing PMIC\n");
+	new_battery_detected = detect_new_battery(mfd);
+
+	if (new_battery_detected) {
+		printk(KERN_ERR "bd7181x-power: new battery inserted, initializing PMIC\n");
 
 		//if (r & BAT_DET) {
 			/* Init HW, when the battery is inserted. */
 
-		bd7181x_reg_write(mfd, BD7181X_REG_CONF, r | XSTB); // enable RTC
+		bd7181x_reg_write(mfd, BD7181X_REG_CONF, XSTB);//r | XSTB); // enable RTC
 
 		// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
 		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
@@ -1412,7 +1447,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		 * so they cannot be used to estimate the capacity on a later stage i.e. after charge/re-charge
 		 * because the result would be based on values that do not reflect current battery state
 		 *  */
-		init_coulomb_counter(pwr);
+		init_coulomb_counter(pwr, new_battery_detected);
 
 		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
 		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
@@ -1566,6 +1601,12 @@ static void bd7181x_send_signals(struct bd7181x_power *pwr) {
 	bd7181x_low_batt_check(pwr);
 }
 
+static void store_end_voltage(struct bd7181x_power *pwr) {
+	int vbat;
+	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
+	bd7181x_reg_write16(pwr->mfd, BD7181X_V_END, vbat);
+}
+
 /**@brief timed work function called by system
  *  read battery capacity,
  *  sense change of charge status, etc.
@@ -1632,6 +1673,7 @@ static void bd_work_callback(struct work_struct *work)
 	}
 
 	bd7181x_send_signals(pwr);
+	store_end_voltage(pwr);
 }
 
 /**@brief bd7181x power interrupt
