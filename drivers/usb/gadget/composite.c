@@ -22,85 +22,7 @@
 #include <linux/usb/otg.h>
 #include <asm/unaligned.h>
 
-#include <linux/uaccess.h>
-#include <linux/debugfs.h>
-
 #include "u_os_desc.h"
-
-static struct dentry *twonav_dir;
-static struct dentry *twonav_usb_mount;
-static struct dentry *twonav_usb_connected;
-
-static int allow_mount = 1;
-static int data_usb_connected = 0;
-// FTTB usb_ gadget is the only composite device so it is "safe"
-// to store its pointer in case of more composite devices, this
-// must be adapted (check debugfs_create_file arguments)
-static struct usb_composite_dev *usb_gadet_device = NULL;
-
-
-static ssize_t get_usb_connected(struct file *file,
-								 char __user *buf,
-								 size_t count,
-								 loff_t *ppos)
-{
-	char ret[10];
-	sprintf(ret,"%d\n", data_usb_connected);
-	return simple_read_from_buffer(buf, count, ppos, ret, strlen(ret));
-}
-
-
-static ssize_t get_allow_mount(struct file *file,
-							   char __user *buf,
-							   size_t count,
-							   loff_t *ppos)
-{
-	char ret[10];
-	sprintf(ret,"%d\n", allow_mount);
-	return simple_read_from_buffer(buf, count, ppos, ret, strlen(ret));
-}
-
-
-static ssize_t set_allow_mount(struct file *file,
-							   const char __user *buf,
-							   size_t count,
-							   loff_t *ppos)
-{
-	int allow = 0;
-    char mybuf[10];
-    /* read the value from user space */
-    if(count > 10) {
-        return -EINVAL;
-    }
-    if (copy_from_user(mybuf, buf, count)) {
-        return -EFAULT;
-    }
-    sscanf(mybuf, "%d", &allow);
-
-    if (allow == 1) {
-        allow_mount = 1;
-        if ((data_usb_connected == 1) &&
-            (usb_gadet_device != NULL)) {
-            usb_composite_setup_continue(usb_gadet_device);
-        }
-    }
-    else {
-        allow_mount = 0;
-    }
-
-    return count;
-}
-
-
-static const struct file_operations twonav_running_fops = {
-		.write = set_allow_mount,
-		.read = get_allow_mount,
-};
-
-
-static const struct file_operations usb_connected_fops = {
-		.read = get_usb_connected,
-};
 
 /**
  * struct usb_os_string - represents OS String to be reported by a gadget
@@ -1530,14 +1452,7 @@ static int fill_ext_prop(struct usb_configuration *c, int interface, u8 *buf)
 int
 composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 {
-	struct usb_composite_dev *cdev = get_gadget_data(gadget);
-	data_usb_connected = 1;
-
-	if (allow_mount == 0) {
-		usb_gadet_device = cdev;
-		return USB_GADGET_DELAYED_STATUS;
-	}
-
+	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_request		*req = cdev->req;
 	int				value = -EOPNOTSUPP;
 	int				status = 0;
@@ -1948,7 +1863,6 @@ done:
 
 void composite_disconnect(struct usb_gadget *gadget)
 {
-	data_usb_connected = 0;
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	unsigned long			flags;
 
@@ -2294,19 +2208,6 @@ int usb_composite_probe(struct usb_composite_driver *driver)
 	gadget_driver->driver.name = driver->name;
 	gadget_driver->max_speed = driver->max_speed;
 
-	/* create a twonav_dir in /sys/kernel/debug */
-	twonav_dir = debugfs_create_dir("twonav", NULL);
-	twonav_usb_mount = debugfs_create_file("allow_mount",
-											S_IFREG | S_IRUGO,
-											twonav_dir,
-											NULL,
-											&twonav_running_fops);
-	twonav_usb_connected = debugfs_create_file("usb_connected",
-											   S_IFREG | S_IRUGO,
-											   twonav_dir,
-											   NULL,
-											   &usb_connected_fops);
-
 	return usb_gadget_probe_driver(gadget_driver);
 }
 EXPORT_SYMBOL_GPL(usb_composite_probe);
@@ -2320,7 +2221,6 @@ EXPORT_SYMBOL_GPL(usb_composite_probe);
  */
 void usb_composite_unregister(struct usb_composite_driver *driver)
 {
-	debugfs_remove_recursive(twonav_dir);
 	usb_gadget_unregister_driver(&driver->gadget_driver);
 }
 EXPORT_SYMBOL_GPL(usb_composite_unregister);
