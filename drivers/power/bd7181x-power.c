@@ -60,12 +60,12 @@
 	#define ITERM_CURRENT 				0x05 // 0.01C typical value 4000*0.01=40mA -> 50mA
 	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 #elif defined CONFIG_TWONAV_AVENTURA
-	#define BD7181X_BATTERY_CAP_MAH		5000 // mAh
+	#define BD7181X_BATTERY_CAP_MAH		6000 // mAh
 	#define VBAT_CHG1					0x18 // 4.2V
 	#define VBAT_CHG2					0x13 // 4.1V
 	#define VBAT_CHG3					0x10 // 4.04V
 	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V
-	#define ITERM_CURRENT 				0x06 // 0.01C typical value 5000*0.01=50mA -> 100mA
+	#define ITERM_CURRENT 				0x06 // 0.01C typical value 6000*0.01=60mA -> 100mA
 	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 #else
 	#define BD7181X_BATTERY_CAP_MAH		1650
@@ -306,27 +306,27 @@ static const struct file_operations related_pid_fops = {
 #elif defined CONFIG_TWONAV_AVENTURA
 static int ocv_table[] = {
 		4200000,
-		4148000,
-		4104000,
-		4055000,
-		4011000,
-		3972000,
-		3940000,
-		3909000,
-		3880000,
-		3845000,
-		3811000,
-		3792000,
-		3772000,
-		3762000,
-		3753000,
-		3748000,
-		3733000,
-		3719000,
-		3694000,
-		3665000,
-		3645000,
-		3372000,
+		4191700,
+		4133100,
+		4078000,
+		4040400,
+		3993600,
+		3959200,
+		3927400,
+		3891600,
+		3860500,
+		3829400,
+		3810400,
+		3798600,
+		3786900,
+		3775100,
+		3763300,
+		3744900,
+		3726300,
+		3698300,
+		3671200,
+		3635200,
+		3444900,
 		2850000
 	};	/* unit 1 micro V */
 #else
