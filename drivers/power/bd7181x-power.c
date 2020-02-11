@@ -138,8 +138,10 @@
 #define FORCE_ADJ_COULOMB_TEMP_L	15	/* 1 degrees C unit */
 
 #define XSTB		0x02 // RTC Enabled pin
-#define BD7181X_V_END	0xB0
-#define BAT_DET_DIFF_THRESHOLD 200 // 200mV
+#define BD7181X_CHG_STATE_END	0xB2
+#define BD7181X_VBAT_END	0xB0
+#define BAT_DET_DIFF_THRESHOLD_SAME_STATE 200 // 200mV
+#define BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE 500 // 500mV
 #define BAT_DET_OK_USE_OCV 1
 #define BAT_DET_OK_USE_CV_SA 2
 
@@ -1408,13 +1410,26 @@ static int detect_new_battery(struct bd7181x *mfd) {
 		   and very low power consumption leading to the OCV registers not beiing actualized. So we try to detect
 		   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
 		*/
-		int volt_on, volt_off, volt_diff;
-		volt_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U); // SA: Simple Average
-		volt_off = bd7181x_reg_read16(mfd, BD7181X_V_END);
+		int charge_state_on, charge_state_off, volt_on, volt_off, volt_diff;
+		charge_state_on =  bd7181x_reg_read(mfd, BD7181X_REG_CHG_STATE);
+		if (charge_state_on > 0) charge_state_on = 1;
+		charge_state_off = bd7181x_reg_read(mfd, BD7181X_CHG_STATE_END);
+		if (charge_state_off > 0) charge_state_off = 1;
+		volt_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U);
+		volt_off = bd7181x_reg_read16(mfd, BD7181X_VBAT_END);
 		volt_diff = abs(volt_on - volt_off);
-		if (volt_diff > BAT_DET_DIFF_THRESHOLD) {
-			printk(KERN_ERR "bd7181x: significant voltage difference between start&stop :%d, assuming new battery\n",volt_diff);
-			new_battery_detected = BAT_DET_OK_USE_CV_SA;
+
+		if (!(charge_state_on ^ charge_state_off)) { // same conditions
+			if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
+				printk(KERN_ERR "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
+				new_battery_detected = BAT_DET_OK_USE_CV_SA;
+			}
+		}
+		else {
+			if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
+				printk(KERN_ERR "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
+				new_battery_detected = BAT_DET_OK_USE_CV_SA;
+			}
 		}
 	}
 
@@ -1630,10 +1645,12 @@ static void bd7181x_send_signals(struct bd7181x_power *pwr) {
 	bd7181x_low_batt_check(pwr);
 }
 
-static void store_end_voltage(struct bd7181x_power *pwr) {
-	int vbat;
+static void store_state(struct bd7181x_power *pwr) {
+	int charge_state, vbat;
+	charge_state = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
 	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_VBAT_U);
-	bd7181x_reg_write16(pwr->mfd, BD7181X_V_END, vbat);
+	bd7181x_reg_write(pwr->mfd, BD7181X_CHG_STATE_END, charge_state);
+	bd7181x_reg_write16(pwr->mfd, BD7181X_VBAT_END, vbat);
 }
 
 /**@brief timed work function called by system
@@ -1702,7 +1719,7 @@ static void bd_work_callback(struct work_struct *work)
 	}
 
 	bd7181x_send_signals(pwr);
-	store_end_voltage(pwr);
+	store_state(pwr);
 }
 
 /**@brief bd7181x power interrupt
