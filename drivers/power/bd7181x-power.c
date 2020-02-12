@@ -1419,7 +1419,7 @@ static int detect_new_battery(struct bd7181x *mfd) {
 		volt_off = bd7181x_reg_read16(mfd, BD7181X_VBAT_END);
 		volt_diff = abs(volt_on - volt_off);
 
-		if (!(charge_state_on ^ charge_state_off)) { // same conditions
+		if (charge_state_on == charge_state_of)) {
 			if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
 				printk(KERN_ERR "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
 				new_battery_detected = BAT_DET_OK_USE_CV_SA;
