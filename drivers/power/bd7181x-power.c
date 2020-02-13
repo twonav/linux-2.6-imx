@@ -99,16 +99,15 @@
 #define BAT_NAME		"bd7181x_bat"
 #define BD7181X_BATTERY_FULL	100
 
-// used to set initial coulomb counter CC based on battery voltage OCV
-#define BY_BAT_VOLT		0
-#define BY_VBATLOAD_REG		1
-#define INIT_COULOMB		BY_VBATLOAD_REG
-
 //VBAT Low voltage detection Threshold
 #define VBAT_LOW_TH		0x00BF // 0x00BF (191) * 16mV = 3.056V
 #define VBAT_LOW_TH_DVAL 3056
 
 //#define RS_30mOHM		/* we have 10mOhm */
+
+#define VBAT_OCV_DIFF 50 // ESTIMATION: OCV is aproximatelly 0.05V higher than CV
+#define VBAT_PRE_CHARGE_DIFF 50
+#define VBAT_FAST_CHARGE_DIFF 100
 
 #ifdef RS_30mOHM
 #define A10s_mAh(s)		((s) * 1000 / (360 * 3))
@@ -139,10 +138,12 @@
 #define FORCE_ADJ_COULOMB_TEMP_L	15	/* 1 degrees C unit */
 
 #define XSTB		0x02 // RTC Enabled pin
-#define BD7181X_V_END	0xB0
-#define BAT_DET_DIFF_THRESHOLD 200 // 200mV
+#define BD7181X_CHG_STATE_END	0xB2
+#define BD7181X_VBAT_END	0xB0
+#define BAT_DET_DIFF_THRESHOLD_SAME_STATE 200 // 200mV
+#define BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE 500 // 500mV
 #define BAT_DET_OK_USE_OCV 1
-#define BAT_DET_OK_USE_CV 2
+#define BAT_DET_OK_USE_CV_SA 2
 
 unsigned int battery_cycle;
 
@@ -329,6 +330,33 @@ static int ocv_table[] = {
 		3444900,
 		2850000
 	};	/* unit 1 micro V */
+/* 6000mAh curve with -200mA, not used FTTB
+static int discharge_table_200mA[] = {
+		4200000,
+		4170000,
+		4101800,
+		4052500,
+		4008200,
+		3963200,
+		3929400,
+		3896900,
+		3862800,
+		3824400,
+		3795800,
+		3777200,
+		3762700,
+		3751200,
+		3742500,
+		3734400,
+		3719300,
+		3698200,
+		3665600,
+		3640200,
+		3568900,
+		3000000,
+		2850000
+	};
+*/
 #else
 	static int ocv_table[] = {
 		4200000,
@@ -521,33 +549,26 @@ static int bd7181x_reg_read32(struct bd7181x *mfd, int reg) {
 	return be32_to_cpu(u.long_type);
 }
 
-#if INIT_COULOMB == BY_VBATLOAD_REG
 /** @brief get initial battery Open Circuit Voltages at PMIC boot
  * @param pwr power device
  * @return 0
  */
-static int bd7181x_get_init_bat_stat(struct bd7181x_power *pwr, int ocv_type) {
+static int bd7181x_get_init_bat_stat(struct bd7181x_power *pwr) {
 	struct bd7181x *mfd = pwr->mfd;
 	int vcell;
 
-	if (ocv_type == BAT_DET_OK_USE_OCV) {
-		vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U) * 1000;
-	}
-	else {
-		vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_VBAT_U) * 1000;
-	}
+	vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U) * 1000;
 	bd7181x_info(pwr->dev, "VM_OCV_PRE = %d\n", vcell);
 	pwr->hw_ocv1 = vcell;
 
-	if (ocv_type == BAT_DET_OK_USE_OCV) {
-		vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PST_U) * 1000;
-	}
+	vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PST_U) * 1000;
 	bd7181x_info(pwr->dev, "VM_OCV_PST = %d\n", vcell);
 	pwr->hw_ocv2 = vcell;
+	printk(KERN_ERR "bd7181x_get_init_bat_stat OCV :%d\n",vcell);
 
 	return 0;
 }
-#endif
+
 
 /** @brief get battery average current
  * @param pwr power device
@@ -766,23 +787,32 @@ static int bd7181x_charge_status(struct bd7181x_power *pwr)
 	return ret;
 }
 
-#if INIT_COULOMB == BY_BAT_VOLT
 static int bd7181x_calib_voltage(struct bd7181x_power* pwr, int* ocv) {
 	int r, curr, volt;
 
 	bd7181x_get_vbat_curr(pwr, &volt, &curr);
 
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
-	if (r >= 0 && curr > 0) {
-		// voltage increment caused by battery inner resistor
-		if (r == 3) volt -= 100 * 1000;
-		else if (r == 2) volt -= 50 * 1000;
+	if (r >= 0) { // charging
+		if (curr > 0) {
+			// voltage increment caused by battery inner resistor
+			if (r == 3) {
+				volt -= VBAT_FAST_CHARGE_DIFF * 1000;
+			}
+			else if (r == 2) {
+				volt -= VBAT_PRE_CHARGE_DIFF * 1000;
+			}
+		}
+		else {
+			volt += VBAT_OCV_DIFF * 1000;
+		}
 	}
+
 	*ocv = volt;
 
 	return 0;
 }
-#endif
+
 
 /** @brief set initial coulomb counter value from battery voltage
  * @param pwr power device
@@ -792,15 +822,18 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, int ocv_type) {
 	u32 bcap;
 	int soc, ocv;
 
-#if INIT_COULOMB == BY_VBATLOAD_REG
-	/* Get init OCV by HW */
-	bd7181x_get_init_bat_stat(pwr, ocv_type);
+	if (ocv_type == BAT_DET_OK_USE_OCV) {
+		/* Get init OCV by HW */
+		bd7181x_get_init_bat_stat(pwr);
 
-	ocv = (pwr->hw_ocv1 >= pwr->hw_ocv2)? pwr->hw_ocv1: pwr->hw_ocv2;
-	bd7181x_info(pwr->dev, "ocv %d\n", ocv);
-#elif INIT_COULOMB == BY_BAT_VOLT
-	bd7181x_calib_voltage(pwr, &ocv);
-#endif
+		ocv = (pwr->hw_ocv1 >= pwr->hw_ocv2)? pwr->hw_ocv1: pwr->hw_ocv2;
+		bd7181x_info(pwr->dev, "INIT coulomb Counter with REAL OCV value: %d\n", ocv);
+	}
+	else {
+		/* Aproximate OCV by Current Voltage (Simple Average) */
+		bd7181x_calib_voltage(pwr, &ocv);
+		bd7181x_info(pwr->dev, "INIT coulomb Counter with ESTIMATED OCV value: %d\n", ocv);
+	}
 
 	/* Get init soc from ocv/soc table */
 	soc = bd7181x_voltage_to_capacity(ocv);
@@ -1377,15 +1410,26 @@ static int detect_new_battery(struct bd7181x *mfd) {
 		   and very low power consumption leading to the OCV registers not beiing actualized. So we try to detect
 		   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
 		*/
-		int v_on;
-		int v_off;
-		int v_diff;
-		v_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_VBAT_U);
-		v_off = bd7181x_reg_read16(mfd, BD7181X_V_END);
-		v_diff = abs(v_on - v_off);
-		if (v_diff > BAT_DET_DIFF_THRESHOLD) {
-			printk(KERN_ERR "bd7181x: significant voltage difference, assuming new battery\n");
-			new_battery_detected = BAT_DET_OK_USE_CV;
+		int charge_state_on, charge_state_off, volt_on, volt_off, volt_diff;
+		charge_state_on =  bd7181x_reg_read(mfd, BD7181X_REG_CHG_STATE);
+		if (charge_state_on > 0) charge_state_on = 1;
+		charge_state_off = bd7181x_reg_read(mfd, BD7181X_CHG_STATE_END);
+		if (charge_state_off > 0) charge_state_off = 1;
+		volt_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U);
+		volt_off = bd7181x_reg_read16(mfd, BD7181X_VBAT_END);
+		volt_diff = abs(volt_on - volt_off);
+
+		if (charge_state_on == charge_state_off) {
+			if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
+				printk(KERN_ERR "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
+				new_battery_detected = BAT_DET_OK_USE_CV_SA;
+			}
+		}
+		else {
+			if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
+				printk(KERN_ERR "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
+				new_battery_detected = BAT_DET_OK_USE_CV_SA;
+			}
 		}
 	}
 
@@ -1579,7 +1623,7 @@ static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
 	int avg_curr;
 	int dcin_online = 0;
 
-	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
+	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_VBAT_U);
 	condition = (vbat < VBAT_LOW_TH_DVAL);
 
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
@@ -1601,10 +1645,12 @@ static void bd7181x_send_signals(struct bd7181x_power *pwr) {
 	bd7181x_low_batt_check(pwr);
 }
 
-static void store_end_voltage(struct bd7181x_power *pwr) {
-	int vbat;
-	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_VBAT_U);
-	bd7181x_reg_write16(pwr->mfd, BD7181X_V_END, vbat);
+static void store_state(struct bd7181x_power *pwr) {
+	int charge_state, vbat;
+	charge_state = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
+	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_VBAT_U);
+	bd7181x_reg_write(pwr->mfd, BD7181X_CHG_STATE_END, charge_state);
+	bd7181x_reg_write16(pwr->mfd, BD7181X_VBAT_END, vbat);
 }
 
 /**@brief timed work function called by system
@@ -1673,7 +1719,7 @@ static void bd_work_callback(struct work_struct *work)
 	}
 
 	bd7181x_send_signals(pwr);
-	store_end_voltage(pwr);
+	store_state(pwr);
 }
 
 /**@brief bd7181x power interrupt
@@ -2729,7 +2775,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	if (battery_cycle <= 0) {
 		battery_cycle = 0;
 	}
-	dev_err(pwr->dev, "battery_cycle = %d\n", battery_cycle);
+	dev_err(pwr->dev, "XXXXXX battery_cycle = %d\n", battery_cycle);
 
 	/* If the product often power up/down and the power down time is long, the Coulomb Counter may have a drift. */
 	/* If so, it may be better accuracy to enable Coulomb Counter using following commented out code */
