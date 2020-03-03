@@ -175,7 +175,7 @@
 		compatible = "gpio-leds";
 		lcd_enable {
 			label = "lcd_enable";
-			gpios = <&gpio3 5 GPIO_ACTIVE_HIGH>;
+			gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
 		lcd_reset {
@@ -207,11 +207,13 @@
 	assigned-clock-rates = <812851200>;
 };
 
+/*
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	status = "okay";
 };
+*/
 
 &flexcan2 {
 	pinctrl-names = "default";
@@ -241,14 +243,14 @@
 		display-timings {
 			native-mode = <&timing0>;
 			timing0: timing0 {
-				clock-frequency =<24000000>;
+				clock-frequency =<24570000>;
 				hactive = <480>;
-				vactive = <640>;
-				hfront-porch = <10>;
-				hback-porch = <8>;
+				vactive = <800>;
+				hfront-porch = <8>;
+				hback-porch = <10>;
 				hsync-len = <32>;
-				vback-porch = <13>;
-				vfront-porch = <13>;
+				vback-porch = <2>;
+				vfront-porch = <2>;
 				vsync-len = <5>;
 				hsync-active = <0>;
 				vsync-active = <0>;
@@ -280,6 +282,22 @@
         status = "okay";
 };
 
+/*
+&ecspi1 {
+	fsl,spi-num-chipselects = <1>;
+	cs-gpios = <&gpio4 26 0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi1>;
+	status = "okay";
+
+	spidev@0x00 {
+        compatible = "spidev";
+        spi-max-frequency = <1000000>;
+        reg = <0>;
+    };
+};
+*/
+
 /* Console UART */
 &uart1 {
 	pinctrl-names = "default";
@@ -301,8 +319,6 @@
 	pinctrl-0 = <&pinctrl_uart3>;
 	status = "okay";
 };
-
-
 
 /* ttymxc4 UART [ANT]*/
 &uart5 {
@@ -658,12 +674,25 @@
 			>;
 		};
 
+/*
+		pinctrl_ecspi1: ecspi1grp {
+			fsl,pins = <
+				MX6UL_PAD_CSI_DATA07__ECSPI1_MISO   0x100b1
+				MX6UL_PAD_CSI_DATA06__ECSPI1_MOSI	0x100b1
+				MX6UL_PAD_CSI_DATA04__ECSPI1_SCLK	0x100b1
+				MX6UL_PAD_CSI_DATA05__GPIO4_IO26    0x100b1
+			>;
+		};
+*/
+
+/*
 		pinctrl_flexcan1: flexcan1grp{
 			fsl,pins = <
 				MX6UL_PAD_LCD_DATA09__FLEXCAN1_RX	0x1b020
 				MX6UL_PAD_LCD_DATA08__FLEXCAN1_TX	0x1b020
 			>;
 		};
+*/
 
 		pinctrl_flexcan2: flexcan2grp{
 			fsl,pins = <
@@ -674,18 +703,24 @@
 
 		pinctrl_lcdif_dat: lcdifdatgrp {
 			fsl,pins = <
+				MX6UL_PAD_LCD_DATA00__LCDIF_DATA00	0x79
+				MX6UL_PAD_LCD_DATA01__LCDIF_DATA01	0x79
 				MX6UL_PAD_LCD_DATA02__LCDIF_DATA02	0x79
 				MX6UL_PAD_LCD_DATA03__LCDIF_DATA03	0x79
 				MX6UL_PAD_LCD_DATA04__LCDIF_DATA04	0x79
 				MX6UL_PAD_LCD_DATA05__LCDIF_DATA05	0x79
 				MX6UL_PAD_LCD_DATA06__LCDIF_DATA06	0x79
 				MX6UL_PAD_LCD_DATA07__LCDIF_DATA07	0x79
+				MX6UL_PAD_LCD_DATA08__LCDIF_DATA08	0x79
+				MX6UL_PAD_LCD_DATA09__LCDIF_DATA09	0x79
 				MX6UL_PAD_LCD_DATA10__LCDIF_DATA10	0x79
 				MX6UL_PAD_LCD_DATA11__LCDIF_DATA11	0x79
 				MX6UL_PAD_LCD_DATA12__LCDIF_DATA12	0x79
 				MX6UL_PAD_LCD_DATA13__LCDIF_DATA13	0x79
 				MX6UL_PAD_LCD_DATA14__LCDIF_DATA14	0x79
 				MX6UL_PAD_LCD_DATA15__LCDIF_DATA15	0x79
+				MX6UL_PAD_LCD_DATA16__LCDIF_DATA16	0x79
+				MX6UL_PAD_LCD_DATA17__LCDIF_DATA17	0x79
 				MX6UL_PAD_LCD_DATA18__LCDIF_DATA18	0x79
 				MX6UL_PAD_LCD_DATA19__LCDIF_DATA19	0x79
 				MX6UL_PAD_LCD_DATA20__LCDIF_DATA20	0x79
@@ -701,8 +736,7 @@
 				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x79
 				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x79
 				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x79
-				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x1b0b1
-				MX6UL_PAD_LCD_DATA00__GPIO3_IO05	0x1b0b1
+				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x1b0b1				
 			>;
 		};
 
@@ -888,14 +922,14 @@
 		};
 #endif
 
-		pinctrl_sai1: sai1grp {
+		/*pinctrl_sai1: sai1grp {
 			fsl,pins = <
 				MX6UL_PAD_CSI_DATA05__SAI1_TX_BCLK	0x11088
 				MX6UL_PAD_CSI_DATA04__SAI1_TX_SYNC	0x17088
 				MX6UL_PAD_CSI_DATA06__SAI1_RX_DATA	0x11088
 				MX6UL_PAD_CSI_DATA07__SAI1_TX_DATA	0x11088
 			>;
-		};
+		};*/
 
 		pinctrl_sai2: sai2grp {
 			fsl,pins = <
