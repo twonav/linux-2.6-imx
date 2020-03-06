@@ -36,17 +36,25 @@
 
 &ecspi1 {
 	fsl,spi-num-chipselects = <1>;
-	cs-gpios = <&gpio4 26 0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi1_1>;
 	status = "okay";
+	gpio-sck = <&gpio4 25 0>;
+	cs-gpios = <&gpio4 26 0>;
+	gpio-mosi = <&gpio4 27 0>;
+	//gpio-miso = <&gpio4 28 0>; // not connected - not used
+	//num-chipselects = <1>; // unknown
 
-	spidev@0x00 {
-        compatible = "spidev";
-        spi-max-frequency = <1000000>;
-        reg = <0>;
-    };
-	
+	hx8363: hx8363@0 {
+			compatible = "himax,hx8363";
+			reg = <0>;
+			spi-max-frequency = <100000>;
+			spi-cpol;
+			spi-cpha;
+			gpios-reset = <&gpio3 4 0>;
+		};
+
+
 	/*mmc-slot@3{
 		compatible = "mmc-spi-slot";
         	spi-max-frequency = <50000000>;
