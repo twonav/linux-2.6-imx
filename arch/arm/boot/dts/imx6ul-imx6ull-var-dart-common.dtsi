@@ -178,6 +178,11 @@
 			gpios = <&gpio3 1 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
+		display_switch {
+			label = "display_switch";
+			gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+        };
 	};
 };
 
@@ -243,14 +248,14 @@
 				vactive = <800>;
 				hfront-porch = <8>;
 				hback-porch = <10>;
-				hsync-len = <60>; // no visible effect ...
 				vback-porch = <2>;
 				vfront-porch = <2>;
-				vsync-len = <5>; // no visible effect ...
-				hsync-active = <1>; // no visible effect ...
-				vsync-active = <0>; // 1: display does not work
-				de-active = <1>; // 0: display does not work
-				pixelclk-active = <1>; // 0: visible antialiazing artifacts
+				hsync-len = <10>;
+				vsync-len = <2>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <1>;
 			};
 		};
 	};
