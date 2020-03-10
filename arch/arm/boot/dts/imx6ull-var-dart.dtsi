@@ -53,15 +53,6 @@
 			spi-cpha;
 			gpios-reset = <&gpio3 4 0>;
 		};
-
-
-	/*mmc-slot@3{
-		compatible = "mmc-spi-slot";
-        	spi-max-frequency = <50000000>;
-		voltage-ranges = <3300 3300>;
-		reg = <0>;
-		gpios = <&gpio4 24 GPIO_ACTIVE_LOW>;
-	};*/
 };
 
 &iomuxc_snvs {
