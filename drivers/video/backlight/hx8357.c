@@ -166,7 +166,7 @@ static u8 hx8363_seq_power[] = {
 };
 
 static u8 hx8363_seq_address_mode[] = {
-	HX8357_SET_ADDRESS_MODE, 0x00,
+	HX8357_SET_ADDRESS_MODE, 0x03,
 };
 
 static u8 hx8363_seq_pixel_format[] = {
