@@ -35,50 +35,6 @@
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
-#ifdef CONFIG_TWONAV_VELO
-	#define BD7181X_BATTERY_CAP_MAH		1650 // mAh
-	#define VBAT_CHG1					0x18 // 4.2V
-	#define VBAT_CHG2					0x13 // 4.1V
-	#define VBAT_CHG3					0x10 // 4.04V
-	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
-	#define ITERM_CURRENT 				0x02 // 0.01C typical value 1650*0.01=16.5mA -> 20mA
-	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#elif defined CONFIG_TWONAV_HORIZON
-	#define BD7181X_BATTERY_CAP_MAH		1500 // mAh
-	#define VBAT_CHG1					0x1F // 4.34V
-	#define VBAT_CHG2					0x1A // 4.24V
-	#define VBAT_CHG3					0x15 // 4.14V
-	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x36 // 4.4V
-	#define ITERM_CURRENT 				0x02 // 0.01C typical value 1500*0.01=15mA -> 20mA
-	#define OVP_MNT_THR 				0x46 // OVP:4.4V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#elif defined CONFIG_TWONAV_TRAIL
-	#define BD7181X_BATTERY_CAP_MAH		4000 // mAh
-	#define VBAT_CHG1					0x18 // 4.2V
-	#define VBAT_CHG2					0x13 // 4.1V
-	#define VBAT_CHG3					0x10 // 4.04V
-	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V
-	#define ITERM_CURRENT 				0x05 // 0.01C typical value 4000*0.01=40mA -> 50mA
-	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#elif defined CONFIG_TWONAV_AVENTURA
-	#define BD7181X_BATTERY_CAP_MAH		6000 // mAh
-	#define VBAT_CHG1					0x18 // 4.2V
-	#define VBAT_CHG2					0x13 // 4.1V
-	#define VBAT_CHG3					0x10 // 4.04V
-	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V
-	#define ITERM_CURRENT 				0x06 // 0.01C typical value 6000*0.01=60mA -> 100mA
-	#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
-#else
-	#define BD7181X_BATTERY_CAP_MAH		1650
-	#define VBAT_CHG1					0x18
-	#define VBAT_CHG2					0x13
-	#define VBAT_CHG3					0x10
-	#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34
-	#define ITERM_CURRENT 				0x02
-	#define OVP_MNT_THR 				0x16
-#endif
-
-#define BD7181X_BATTERY_CAP	mAh_A10s(BD7181X_BATTERY_CAP_MAH)
-#define MAX_VOLTAGE		ocv_table[0]
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	// uA
@@ -144,6 +100,106 @@
 #define BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE 500 // 500mV
 #define BAT_DET_OK_USE_OCV 1
 #define BAT_DET_OK_USE_CV_SA 2
+
+static char *hwtype = "Trail";
+module_param(hwtype, charp, 0644);
+
+static bool isAventura(void) {
+	return (strcmp(hwtype, "Aventura") == 0);
+}
+
+static bool isAventura2(void) {
+	return (strcmp(hwtype, "Aventura2") == 0);
+}
+
+static bool isHorizon(void) {
+	return (strcmp(hwtype, "Horizon") == 0);
+}
+
+static bool isTrail(void) {
+	return (strcmp(hwtype, "Trail") == 0);
+}
+
+static bool isVelo(void) {
+	return (strcmp(hwtype, "Velo") == 0);
+}
+
+static int get_battery_capacity(void) {
+	int capacity = 1650; // mAh
+	if (isAventura()) {
+		capacity = 5000;
+	}
+	if (isAventura2()) {
+		capacity = 6000;
+	}
+	else if (isHorizon()) {
+		capacity = 1500;
+	}
+	else if (isTrail()) {
+		capacity = 4000;
+	}
+	else if (isVelo()) {
+		capacity = 1650;
+	}
+	return mAh_A10s(capacity);
+}
+
+static int get_vbat_chg1(void) {
+	int vchg1 = 0x18; // 4.2V
+	if (isHorizon()) {
+		vchg1 = 0x1F; // 4.34V
+	}
+	return vchg1;
+}
+
+static int get_vbat_chg2(void) {
+	int vchg2 = 0x13; // 4.1V
+	if (isHorizon()) {
+		vchg2 = 0x1A; //  4.24V
+	}
+	return vchg2;
+}
+
+static int get_vbat_chg3(void) {
+	int vchg3 = 0x10; // 4.04V
+	if (isHorizon()) {
+		vchg3 = 0x15; //  4.14V
+	}
+	return vchg3;
+}
+
+static int get_dcin_anticollapse_voltage(void) {
+	int anticollapse_voltage = 0x34; // 4.24V - register 0x43 (80mV steps)
+	if (isHorizon()) {
+		anticollapse_voltage = 0x36; // 4.4V
+	}
+	return anticollapse_voltage;
+}
+
+static int get_iterm_current(void) {
+	int term_current = 0x02;
+	if (isAventura() || isAventura2()) {
+		term_current = 0x06; // 0.01C typical value 6000*0.01=60mA -> 100mA
+	}
+	else if (isHorizon()) {
+		term_current = 0x02; // 0.01C typical value 1500*0.01=15mA -> 20mA
+	}
+	else if (isTrail()) {
+		term_current = 0x05; // 0.01C typical value 4000*0.01=40mA -> 50mA
+	}
+	else if (isVelo()) {
+		term_current = 0x02; // 0.01C typical value 1650*0.01=16.5mA -> 20mA
+	}
+	return term_current;
+}
+
+static int get_over_voltage_threshold(void) {
+	int ovp_threshold = 0x16; // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
+	if (isHorizon()) {
+		ovp_threshold = 0x46; // OVP:4.4V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
+	}
+	return ovp_threshold;
+}
 
 unsigned int battery_cycle;
 
@@ -225,111 +281,110 @@ static const struct file_operations related_pid_fops = {
     .write = write_related_pid,
 };
 
+static int velo_ocv_table[] = {
+	4200000,
+	4114000,
+	4070000,
+	4016000,
+	3977000,
+	3943000,
+	3899000,
+	3865000,
+	3831000,
+	3797000,
+	3767000,
+	3743000,
+	3728000,
+	3719000,
+	3709000,
+	3699000,
+	3675000,
+	3640000,
+	3587000,
+	3518000,
+	3470000,
+	3343000,
+	3000000
+};
 
-#ifdef CONFIG_TWONAV_VELO
-	static int ocv_table[] = {
-		4200000,
-		4114000,
-		4070000,
-		4016000,
-		3977000,
-		3943000,
-		3899000,
-		3865000,
-		3831000,
-		3797000,
-		3767000,
-		3743000,
-		3728000,
-		3719000,
-		3709000,
-		3699000,
-		3675000,
-		3640000,
-		3587000,
-		3518000,
-		3470000,
-		3343000,
-		3000000
-	};	/* unit 1 micro V */
-#elif defined CONFIG_TWONAV_HORIZON
-	static int ocv_table[] = {
-		4350000,
-		4270000,
-		4202000,
-		4148000,
-		4099000,
-		4050000,
-		4011000,
-		3948000,
-		3914000,
-		3875000,
-		3845000,
-		3816000,
-		3792000,
-		3772000,
-		3753000,
-		3743000,
-		3728000,
-		3714000,
-		3694000,
-		3665000,
-		3645000,
-		3582000,
-		3000000
-	};
-#elif defined CONFIG_TWONAV_TRAIL
-	static int ocv_table[] = {
-		4200000,
-		4165665,
-		4136689,
-		4069218,
-		4008334,
-		3953394,
-		3903754,
-		3858772,
-		3817803,
-		3780204,
-		3745332,
-		3712543,
-		3681193,
-		3650640,
-		3620240,
-		3589350,
-		3557325,
-		3523523,
-		3487300,
-		3448012,
-		3405017,
-		3357671,
-		3305330
-	};
-#elif defined CONFIG_TWONAV_AVENTURA
-static int ocv_table[] = {
-		4200000,
-		4191700,
-		4133100,
-		4078000,
-		4040400,
-		3993600,
-		3959200,
-		3927400,
-		3891600,
-		3860500,
-		3829400,
-		3810400,
-		3798600,
-		3786900,
-		3775100,
-		3763300,
-		3744900,
-		3726300,
-		3698300,
-		3671200,
-		3635200,
-		3444900,
-		2850000
-	};	/* unit 1 micro V */
+static int horizon_ocv_table[] = {
+	4350000,
+	4270000,
+	4202000,
+	4148000,
+	4099000,
+	4050000,
+	4011000,
+	3948000,
+	3914000,
+	3875000,
+	3845000,
+	3816000,
+	3792000,
+	3772000,
+	3753000,
+	3743000,
+	3728000,
+	3714000,
+	3694000,
+	3665000,
+	3645000,
+	3582000,
+	3000000
+};
+
+static int trail_ocv_table[] = {
+	4200000,
+	4165665,
+	4136689,
+	4069218,
+	4008334,
+	3953394,
+	3903754,
+	3858772,
+	3817803,
+	3780204,
+	3745332,
+	3712543,
+	3681193,
+	3650640,
+	3620240,
+	3589350,
+	3557325,
+	3523523,
+	3487300,
+	3448012,
+	3405017,
+	3357671,
+	3305330
+};
+
+static int aventura_ocv_table[] = {
+	4200000,
+	4191700,
+	4133100,
+	4078000,
+	4040400,
+	3993600,
+	3959200,
+	3927400,
+	3891600,
+	3860500,
+	3829400,
+	3810400,
+	3798600,
+	3786900,
+	3775100,
+	3763300,
+	3744900,
+	3726300,
+	3698300,
+	3671200,
+	3635200,
+	3444900,
+	2850000
+};
+
 /* 6000mAh curve with -200mA, not used FTTB
 static int discharge_table_200mA[] = {
 		4200000,
@@ -357,34 +412,21 @@ static int discharge_table_200mA[] = {
 		2850000
 	};
 */
-#else
-	static int ocv_table[] = {
-		4200000,
-		4167456,
-		4109781,
-		4065242,
-		4025618,
-		3989877,
-		3958031,
-		3929302,
-		3900935,
-		3869637,
-		3838475,
-		3815196,
-		3799778,
-		3788385,
-		3779627,
-		3770675,
-		3755368,
-		3736049,
-		3713545,
-		3685118,
-		3645278,
-		3465599,
-		2830610
-	};	/* unit 1 micro V */
 
-#endif
+static int* get_ocv_table(void) {
+	if (isAventura() || isAventura2())
+		return aventura_ocv_table;
+	else if (isHorizon())
+		return horizon_ocv_table;
+	else if (isTrail())
+		return trail_ocv_table;
+	else if (isVelo())
+		return velo_ocv_table;
+}
+
+static int get_ocv_max_voltage(void) {
+	return get_ocv_table()[0];
+}
 
 static int soc_table[] = {
 	1000,
@@ -683,13 +725,15 @@ static int bd7181x_voltage_to_capacity(int ocv) {
 	int i = 0;
 	int soc;
 
-	if (ocv > ocv_table[0]) {
+	if (ocv > get_ocv_table()[0]) {
 		soc = soc_table[0];
 	} else {
 		i = 0;
 		while (soc_table[i] != -50) {
-			if ((ocv <= ocv_table[i]) && (ocv > ocv_table[i+1])) {
-				soc = (soc_table[i] - soc_table[i+1]) * (ocv - ocv_table[i+1]) / (ocv_table[i] - ocv_table[i+1]);
+			if ((ocv <= get_ocv_table()[i]) && (ocv > get_ocv_table()[i+1])) {
+				soc = (soc_table[i] - soc_table[i+1]) *
+					  (ocv - get_ocv_table()[i+1]) /
+					  (get_ocv_table()[i] - get_ocv_table()[i+1]);
 				soc += soc_table[i+1];
 				break;
 			}
@@ -1185,22 +1229,24 @@ int bd7181x_get_ocv(struct bd7181x_power* pwr, int dsoc) {
 	int ocv = 0;
 
 	if (dsoc > soc_table[0]) {
-		ocv = MAX_VOLTAGE;
+		ocv = get_ocv_max_voltage();
 	}
 	else if (dsoc == 0) {
-			ocv = ocv_table[21];
+			ocv = get_ocv_table()[21];
 	}
 	else {
 		i = 0;
 		while (i < 22) {
 			if ((dsoc <= soc_table[i]) && (dsoc > soc_table[i+1])) {
-				ocv = (ocv_table[i] - ocv_table[i+1]) * (dsoc - soc_table[i+1]) / (soc_table[i] - soc_table[i+1]) + ocv_table[i+1];
+				ocv = (get_ocv_table()[i] - get_ocv_table()[i+1]) *
+					  (dsoc - soc_table[i+1]) /
+					  (soc_table[i] - soc_table[i+1]) + get_ocv_table()[i+1];
 				break;
 			}
 			i++;
 		}
 		if (i == 22)
-			ocv = ocv_table[22];
+			ocv = get_ocv_table()[22];
 	}
 	bd7181x_info(pwr->dev, "%s() ocv = %d\n", __func__, ocv);
 	return ocv;
@@ -1231,7 +1277,7 @@ static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
 			bd7181x_info(pwr->dev, "%s() dsoc = %d\n", __func__, dsoc);
 			ocv = bd7181x_get_ocv(pwr, dsoc);
 			for (i = 1; i < 23; i++) {
-				ocv_table_load[i] = ocv_table[i] - (ocv - pwr->vsys_min);
+				ocv_table_load[i] = get_ocv_table()[i] - (ocv - pwr->vsys_min);
 				if (ocv_table_load[i] <= MIN_VOLTAGE) {
 					bd7181x_info(pwr->dev, "%s() ocv_table_load[%d] = %d\n", __func__, i, ocv_table_load[i]);
 					break;
@@ -1347,9 +1393,9 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 static void bd7181x_init_registers(struct bd7181x *mfd)
 {
 	// Fast Charging Voltage for the temperature ranges
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, get_vbat_chg1()); // ROOM
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, get_vbat_chg2()); // HOT1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, get_vbat_chg3()); // HOT2 & COLD1
 
 	// We manually set watch-dog timers for pre-fast charge because with colapsed
 	// charging we can reach 10hrs default limmit
@@ -1366,7 +1412,7 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
 	 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
 	 */
-	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, DCIN_ANTICOLAPSE_VOLTAGE); // 4.24V
+	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, get_dcin_anticollapse_voltage());
 
 	// Configure Trickle and Pre-charging current
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
@@ -1375,11 +1421,11 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, FAST_CHARGE_CURRENT); // 0x4C 1A (0x0A) with Ext MOSFET and Rsns=10mOhm
 
 	// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, ITERM_CURRENT);
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, get_iterm_current());
 
 	// Battery over-voltage detection threshold. 4.25V
 	// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
-	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, OVP_MNT_THR);
+	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, get_over_voltage_threshold());
 
 	// Charging Termination Battery voltage threshold for Fast Charge.
 	// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
@@ -1482,8 +1528,8 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		bd7181x_clear_bits(mfd, BD7181X_REG_CC_CTRL, CCNTRST); // Release reset
 
 		/* Set default Battery Capacity */
-		pwr->designed_cap = BD7181X_BATTERY_CAP;
-		pwr->full_cap = BD7181X_BATTERY_CAP;
+		pwr->designed_cap = get_battery_capacity();
+		pwr->full_cap = get_battery_capacity();
 
 		/* Set initial Coulomb Counter by HW OCV
 		 * This estimation is and should only be performed once, when a new battery is connected.
@@ -1515,8 +1561,9 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
 
 		/* Set Battery Capacity Monitor threshold1 as 90% */
-		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, (BD7181X_BATTERY_CAP * 9 / 10));  // Interrupt CC_MON1_DET (INTB)
-		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", (BD7181X_BATTERY_CAP * 9 / 10));
+		int cc_batcap1_th = get_battery_capacity() * 9 / 10;
+		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, cc_batcap1_th);  // Interrupt CC_MON1_DET (INTB)
+		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", cc_batcap1_th);
 
 		/* Enable LED ON when charging */ // 0x0E
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
@@ -1537,8 +1584,8 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		pwr->state_machine = STAT_POWER_ON;
 	}
 	else {
-		pwr->designed_cap = BD7181X_BATTERY_CAP;
-		pwr->full_cap = BD7181X_BATTERY_CAP;	// bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CC_BATCAP_U);
+		pwr->designed_cap = get_battery_capacity();
+		pwr->full_cap = get_battery_capacity();	// bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CC_BATCAP_U);
 		pwr->state_machine = STAT_INITIALIZED;	// STAT_INITIALIZED
 	}
 
@@ -2045,7 +2092,7 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 		val->intval = pwr->temp * 10; /* 0.1 degrees C unit */
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
-		val->intval = MAX_VOLTAGE;
+		val->intval = get_ocv_max_voltage();
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN:
 		val->intval = MIN_VOLTAGE;
@@ -2067,7 +2114,7 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 						val->intval = MAX_CURRENT;
 						break;
 					case CHG_STATE_TOP_OFF:
-						val->intval = ITERM_CURRENT;
+						val->intval = get_iterm_current();
 						break;
 					default:
 						val->intval = MAX_CURRENT;
@@ -2775,7 +2822,6 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	if (battery_cycle <= 0) {
 		battery_cycle = 0;
 	}
-	dev_err(pwr->dev, "XXXXXX battery_cycle = %d\n", battery_cycle);
 
 	/* If the product often power up/down and the power down time is long, the Coulomb Counter may have a drift. */
 	/* If so, it may be better accuracy to enable Coulomb Counter using following commented out code */
@@ -2901,7 +2947,6 @@ static void __exit bd7181x_power_exit(void)
 module_exit(bd7181x_power_exit);
 
 module_param(battery_cycle, uint, S_IWUSR | S_IRUGO);
-
 MODULE_PARM_DESC(battery_parameters, "battery_cycle:battery charge/discharge cycles");
 
 MODULE_AUTHOR("Tony Luo <luofc@embest-tech.com>");
