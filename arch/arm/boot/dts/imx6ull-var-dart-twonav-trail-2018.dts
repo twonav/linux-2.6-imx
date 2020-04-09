@@ -1,0 +1,16 @@
+/*
+ * Copyright (C) 2020 CompeGPS Team S.L.
+ * All rights reserved
+ *
+ */
+ 
+#define WIFI
+#define EMMC
+
+#include "trail-2018-common.dtsi"
+
+/ {
+	model = "TwoNav Stonehenge i.MX6 Trail 2";
+	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
+};
+

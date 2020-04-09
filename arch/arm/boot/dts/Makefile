@@ -446,7 +446,13 @@ dtb-$(CONFIG_SOC_IMX6ULL) += \
 	imx6ull-var-dart-5g-nand_wifi.dtb \
 	imx6ull-var-dart-5g-emmc_wifi.dtb \
 	imx6ull-var-dart-sd_nand.dtb \
-	imx6ull-var-dart-sd_emmc.dtb
+	imx6ull-var-dart-sd_emmc.dtb \
+	imx6ull-var-dart-twonav-trail-2018.dtb \
+	imx6ull-var-dart-twonav-aventura-2018.dtb \
+	imx6ull-var-dart-twonav-crosstop-2018.dtb \
+	imx6ull-var-dart-os-trail-2018.dtb \
+	imx6ull-var-dart-os-aventura-2018.dtb \
+	imx6ull-var-dart-os-crosstop-2018.dtb
 dtb-$(CONFIG_SOC_IMX6SLL) += \
 	imx6sll-lpddr2-arm2.dtb \
 	imx6sll-lpddr3-arm2.dtb \
