@@ -4,19 +4,16 @@
 set -e
 
 SCRIPT_NAME=${0##*/}
-PARAM_DEVICE_TYPE="twonav-trail-2018"
-
 
 DEFCONFIG_PREFIX="imx6ul-var-dart-"
 DEFCONFIG_SUFFIX="_defconfig"
 DEFCONFIG_ORIG_SUFFIX=".orig"
+PARAM_DEVICE_TYPE="twonav-2018"
 
 ### usage ###
 function usage() {
     echo "Usage:"
-	echo " ./${SCRIPT_NAME} -t device_type"
-	echo "Example:"
-    echo "       -t|--type   		-- twonav/os-aventura/trail-2018"
+	echo " ./${SCRIPT_NAME}"
 }
 
 ###### parse input arguments ##
@@ -29,11 +26,7 @@ ARGS=$(getopt -s bash --options ${SHORTOPTS}  \
 eval set -- "$ARGS"
 
 while true; do
-	case $1 in
-		-t|--type ) # twonav/os-aventura/trail-2018
-			PARAM_DEVICE_TYPE="$2"
-			shift
-			;;
+	case $1 in		
 		-h|--help ) # get help
 			usage
 			exit 0;

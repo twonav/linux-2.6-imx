@@ -1,27 +1,27 @@
 # Makefile for the Linux logos
 
-obj-$(CONFIG_LOGO)							+= logo.o
-obj-$(CONFIG_LOGO_LINUX_MONO)				+= logo_linux_mono.o
-obj-$(CONFIG_LOGO_LINUX_VGA16)				+= logo_linux_vga16.o
-obj-$(CONFIG_LOGO_LINUX_CLUT224)			+= logo_linux_clut224.o
-obj-$(CONFIG_LOGO_VARISCITE_CLUT224)		+= logo_variscite_clut224.o
-obj-$(CONFIG_LOGO_FLASHER_BIG_CLUT224)		+= logo_flasher_big_clut224.o 
-obj-$(CONFIG_LOGO_FLASHER_SMALL_CLUT224)	+= logo_flasher_small_clut224.o
-obj-$(CONFIG_LOGO_TWONAV_BIG_CLUT224)		+= logo_twonav_big_clut224.o 
-obj-$(CONFIG_LOGO_TWONAV_SMALL_CLUT224)		+= logo_twonav_small_clut224.o 
-obj-$(CONFIG_LOGO_OS_SMALL_CLUT224)			+= logo_os_small_clut224.o 
-obj-$(CONFIG_LOGO_OS_BIG_CLUT224)			+= logo_os_big_clut224.o 
-obj-$(CONFIG_LOGO_BLACKFIN_CLUT224)			+= logo_blackfin_clut224.o
-obj-$(CONFIG_LOGO_BLACKFIN_VGA16)			+= logo_blackfin_vga16.o
-obj-$(CONFIG_LOGO_DEC_CLUT224)				+= logo_dec_clut224.o
-obj-$(CONFIG_LOGO_MAC_CLUT224)				+= logo_mac_clut224.o
-obj-$(CONFIG_LOGO_PARISC_CLUT224)			+= logo_parisc_clut224.o
-obj-$(CONFIG_LOGO_SGI_CLUT224)				+= logo_sgi_clut224.o
-obj-$(CONFIG_LOGO_SUN_CLUT224)				+= logo_sun_clut224.o
-obj-$(CONFIG_LOGO_SUPERH_MONO)				+= logo_superh_mono.o
-obj-$(CONFIG_LOGO_SUPERH_VGA16)				+= logo_superh_vga16.o
-obj-$(CONFIG_LOGO_SUPERH_CLUT224)			+= logo_superh_clut224.o
-obj-$(CONFIG_LOGO_M32R_CLUT224)				+= logo_m32r_clut224.o
+obj-$(CONFIG_LOGO)								+= logo.o
+obj-$(CONFIG_LOGO_LINUX_MONO)					+= logo_linux_mono.o
+obj-$(CONFIG_LOGO_LINUX_VGA16)					+= logo_linux_vga16.o
+obj-$(CONFIG_LOGO_LINUX_CLUT224)				+= logo_linux_clut224.o
+obj-$(CONFIG_LOGO_VARISCITE_CLUT224)			+= logo_variscite_clut224.o
+obj-$(CONFIG_LOGO_FLASHER_BIG_CLUT224)			+= logo_flasher_big_clut224.o 
+obj-$(CONFIG_LOGO_FLASHER_SMALL_CLUT224)		+= logo_flasher_small_clut224.o
+obj-$(CONFIG_LOGO_TWONAV_TRAIL_AVENTURA_CLUT224)+= logo_twonav_trail_aventura_clut224.o 
+obj-$(CONFIG_LOGO_OS_TRAIL_AVENTURA_CLUT224)	+= logo_os_trail_aventura_clut224.o 
+obj-$(CONFIG_LOGO_TWONAV_CROSSTOP_CLUT224)		+= logo_twonav_crosstop_clut224.o 
+obj-$(CONFIG_LOGO_OS_CROSSTOP_CLUT224)			+= logo_os_crosstop_clut224.o 
+obj-$(CONFIG_LOGO_BLACKFIN_CLUT224)				+= logo_blackfin_clut224.o
+obj-$(CONFIG_LOGO_BLACKFIN_VGA16)				+= logo_blackfin_vga16.o
+obj-$(CONFIG_LOGO_DEC_CLUT224)					+= logo_dec_clut224.o
+obj-$(CONFIG_LOGO_MAC_CLUT224)					+= logo_mac_clut224.o
+obj-$(CONFIG_LOGO_PARISC_CLUT224)				+= logo_parisc_clut224.o
+obj-$(CONFIG_LOGO_SGI_CLUT224)					+= logo_sgi_clut224.o
+obj-$(CONFIG_LOGO_SUN_CLUT224)					+= logo_sun_clut224.o
+obj-$(CONFIG_LOGO_SUPERH_MONO)					+= logo_superh_mono.o
+obj-$(CONFIG_LOGO_SUPERH_VGA16)					+= logo_superh_vga16.o
+obj-$(CONFIG_LOGO_SUPERH_CLUT224)				+= logo_superh_clut224.o
+obj-$(CONFIG_LOGO_M32R_CLUT224)					+= logo_m32r_clut224.o
 
 obj-$(CONFIG_SPU_BASE)						+= logo_spe_clut224.o
 

@@ -35,6 +35,8 @@
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
+// TODO: TRAIL, AVENTURA, CROSSTOP with struct initialization with platform data
+
 #ifdef CONFIG_TWONAV_VELO
 	#define BD7181X_BATTERY_CAP_MAH		1650 // mAh
 	#define VBAT_CHG1					0x18 // 4.2V

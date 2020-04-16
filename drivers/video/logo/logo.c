@@ -121,17 +121,19 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 #ifdef CONFIG_LOGO_FLASHER_SMALL_CLUT224
 		logo = &logo_flasher_small_clut224;
 #endif
-#ifdef CONFIG_LOGO_TWONAV_BIG_CLUT224
-		logo = &logo_twonav_big_clut224;
+
+// TODO: Change this with platform data
+#ifdef CONFIG_LOGO_TWONAV_TRAIL_AVENTURA_CLUT224
+		logo = &logo_twonav_trail_aventura_clut224;
 #endif
-#ifdef CONFIG_LOGO_TWONAV_SMALL_CLUT224
-		logo = &logo_twonav_small_clut224;
+#ifdef CONFIG_LOGO_OS_TRAIL_AVENTURA_CLUT224
+		logo = &logo_os_trail_aventura_clut224;
 #endif
-#ifdef CONFIG_LOGO_OS_BIG_CLUT224
-		logo = &logo_os_big_clut224;
+#ifdef CONFIG_LOGO_TWONAV_CROSSTOP_CLUT224
+		logo = &logo_twonav_crosstop_clut224;
 #endif
-#ifdef CONFIG_LOGO_OS_SMALL_CLUT224
-		logo = &logo_os_small_clut224;
+#ifdef CONFIG_LOGO_OS_CROSSTOP_CLUT224
+		logo = &logo_os_crosstop_clut224;
 #endif
 	}
 	return logo;
