@@ -156,6 +156,48 @@ static u8 hx8357_seq_display_mode[] = {
 	HX8357_SET_DISPLAY_MODE_RGB_INTERFACE,
 };
 
+static u8 hx8363_seq_extension_command[] = {
+	HX8369_SET_EXTENSION_COMMAND, 0xff, 0x83, 0x63,
+};
+
+static u8 hx8363_seq_power[] = {
+	HX8369_SET_POWER, 0x81, 0x24, 0x04, 0x02, 0x02, 0x03, 0x10, 0x10,
+	0x34, 0x3C, 0x3f, 0x3f,
+};
+
+static u8 hx8363_seq_address_mode[] = {
+	HX8357_SET_ADDRESS_MODE, 0x03,
+};
+
+static u8 hx8363_seq_pixel_format[] = {
+	HX8357_SET_PIXEL_FORMAT, 0x70,
+};
+
+static u8 hx8363_seq_power2[] = {
+	HX8369_SET_POWER, 0x78, 0x24, 0x04, 0x02, 0x02, 0x03, 0x10, 0x10,
+	0x34, 0x3C, 0x3f, 0x3f,
+};
+
+static u8 hx8363_seq_RGB_related_register[] = {
+	0xb3, 0x01,
+};
+
+static u8 hx8363_seq_panel_waveform_cycle[] = {
+	HX8369_SET_DISPLAY_WAVEFORM_CYC, 0x00, 0x08, 0x56, 0x07, 0x01,
+	0x01, 0x4d, 0x01, 0x42,
+};
+
+static u8 hx8363_seq_panel[] = {
+	0xcc, 0x0b,
+};
+
+static u8 hx8363_seq_gamma_curve_related[] = {
+	HX8369_SET_GAMMA_CURVE_RELATED, 0x01, 0x48, 0x4d, 0x4e, 0x58, 0xf6,
+	0x0b, 0x4e, 0x12, 0xd5, 0x15, 0x95, 0x55, 0x8e, 0x11, 0x01, 0x48,
+	0x4d, 0x55, 0x5f, 0xfd, 0x0a, 0x4e, 0x51, 0xd3, 0x17, 0x95, 0x96,
+	0x4e, 0x11,
+};
+
 static u8 hx8369_seq_write_CABC_min_brightness[] = {
 	HX8369_WRITE_CABC_MIN_BRIGHTNESS, 0x00,
 };
@@ -444,6 +486,76 @@ static int hx8357_lcd_init(struct lcd_device *lcdev)
 	return 0;
 }
 
+static int hx8363_lcd_init(struct lcd_device *lcdev)
+{
+	int ret;
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_extension_command,
+				ARRAY_SIZE(hx8363_seq_extension_command));
+	if (ret < 0)
+		return ret;
+
+	usleep_range(10000, 12000);
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_power,
+				ARRAY_SIZE(hx8363_seq_power));
+	if (ret < 0)
+		return ret;
+	msleep(5);
+
+	ret = hx8357_spi_write_byte(lcdev, HX8357_EXIT_SLEEP_MODE);
+	if (ret < 0)
+		return ret;
+	msleep(5);
+
+	ret = hx8357_spi_write_byte(lcdev, HX8357_EXIT_INVERSION_MODE);
+	if (ret < 0)
+		return ret;
+	msleep(5);
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_address_mode,
+				ARRAY_SIZE(hx8363_seq_address_mode));
+	if (ret < 0)
+		return ret;
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_pixel_format,
+				ARRAY_SIZE(hx8363_seq_pixel_format));
+	if (ret < 0)
+		return ret;
+	msleep(120);
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_power2,
+				ARRAY_SIZE(hx8363_seq_power2));
+	if (ret < 0)
+		return ret;
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_RGB_related_register,
+				ARRAY_SIZE(hx8363_seq_RGB_related_register));
+	if (ret < 0)
+		return ret;
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_panel_waveform_cycle,
+				ARRAY_SIZE(hx8363_seq_panel_waveform_cycle));
+	if (ret < 0)
+		return ret;
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_panel,
+				ARRAY_SIZE(hx8363_seq_panel));
+	if (ret < 0)
+		return ret;
+
+	ret = hx8357_spi_write_array(lcdev, hx8363_seq_gamma_curve_related,
+				ARRAY_SIZE(hx8363_seq_gamma_curve_related));
+	if (ret < 0)
+		return ret;
+	msleep(5);
+
+	ret = hx8357_spi_write_byte(lcdev, HX8357_SET_DISPLAY_ON);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
 static int hx8369_lcd_init(struct lcd_device *lcdev)
 {
 	int ret;
@@ -572,11 +684,16 @@ static const struct of_device_id hx8357_dt_ids[] = {
 		.data = hx8357_lcd_init,
 	},
 	{
+		.compatible = "himax,hx8363",
+		.data = hx8363_lcd_init,
+	},
+	{
 		.compatible = "himax,hx8369",
 		.data = hx8369_lcd_init,
 	},
 	{},
 };
+
 MODULE_DEVICE_TABLE(of, hx8357_dt_ids);
 
 static int hx8357_probe(struct spi_device *spi)
@@ -652,6 +769,7 @@ static int hx8357_probe(struct spi_device *spi)
 		ret = PTR_ERR(lcdev);
 		return ret;
 	}
+
 	spi_set_drvdata(spi, lcdev);
 
 	hx8357_lcd_reset(lcdev);
@@ -678,5 +796,6 @@ static struct spi_driver hx8357_driver = {
 module_spi_driver(hx8357_driver);
 
 MODULE_AUTHOR("Maxime Ripard <maxime.ripard@free-electrons.com>");
+MODULE_AUTHOR("Theodoros Paschidis <tpaschidis@twonav.com>");
 MODULE_DESCRIPTION("Himax HX-8357 LCD Driver");
 MODULE_LICENSE("GPL");
