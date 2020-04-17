@@ -58,6 +58,15 @@
         };
 	};
 	
+	// TODO: Remove when cross protos are not used (reduces power consumption by now)
+	audio-amp {		
+		compatible = "gpio-leds";
+		amp-switch {
+			label = "amp-switch";
+			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};		
+	};
 };
 
 &lcdif {
@@ -115,8 +124,15 @@
 
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_1>;
+	pinctrl-0 = <&pinctrl_hog_1 &pinctrl_hog_2>;
 	imx6ul-evk {
+		// TODO: Remove when cross protos are not used (reduces power consumption by now)
+		pinctrl_hog_2: hoggrp-2 {
+			fsl,pins = <												
+				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0 // audio	
+			>;			
+		};
+
 		pinctrl_lcdif_ctrl: lcdifctrlgrp {
 			fsl,pins = <
 				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x79
