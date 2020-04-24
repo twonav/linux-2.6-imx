@@ -703,16 +703,6 @@ config SOC_LS1021A
 
 endif
 
-config TWONAV_AVENTURA
-	bool "Enable Support for TwoNav Aventura"
-	help
-	  Use Aventura product configuration
-
-config TWONAV_TRAIL
-	bool "Enable Support for TwoNav Trail"
-	help
-	  Use Trail product configuration
-
 source "arch/arm/mach-imx/devices/Kconfig"
 
 endif
