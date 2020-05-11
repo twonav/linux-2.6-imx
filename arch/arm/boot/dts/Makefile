@@ -420,9 +420,10 @@ dtb-$(CONFIG_SOC_IMX6ULL) += \
 	imx6ull-var-dart-twonav-trail-2018.dtb \
 	imx6ull-var-dart-twonav-aventura-2018.dtb \
 	imx6ull-var-dart-twonav-crosstop-2018.dtb \
+	imx6ull-var-dart-twonav-crosskyo-2018.dtb \
+	imx6ull-var-dart-twonav-crosstia-2018.dtb \
 	imx6ull-var-dart-os-trail-2018.dtb \
-	imx6ull-var-dart-os-aventura-2018.dtb \
-	imx6ull-var-dart-os-crosstop-2018.dtb
+	imx6ull-var-dart-os-aventura-2018.dtb	
 	#imx6ull-14x14-ddr3-arm2.dtb \
 	#imx6ull-14x14-ddr3-arm2-adc.dtb \
 	#imx6ull-14x14-ddr3-arm2-cs42888.dtb \

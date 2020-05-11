@@ -1,0 +1,104 @@
+/*
+ * Copyright (C) 2020 CompeGPS Team S.L.
+ * All rights reserved
+ *
+ */
+
+#include <dt-bindings/input/input.h>
+#include "imx6ull.dtsi"
+#include "imx6ul-imx6ull-var-dart-common.dtsi"
+
+/ {
+	keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_keys>;
+
+		button_tr {
+			label = "BUTTONS.T_R";
+			gpios = <&gpio2 0 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F1>;
+			gpio-key,wakeup;
+		};
+
+		button_tl {
+			label = "BUTTONS.T_L";
+			gpios = <&gpio2 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F2>;
+			gpio-key,wakeup;
+		};
+
+		button_br {
+			label = "BUTTONS.B_R";
+			gpios = <&gpio5 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F4>;
+			gpio-key,wakeup;
+		};
+
+		button_bl {
+			label = "BUTTONS.B_L";
+			gpios = <&gpio5 2 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F3>;
+			gpio-key,wakeup;
+		};	
+	};
+
+	lcd-control {
+		compatible = "gpio-leds";
+		lcd_enable {
+			label = "lcd_enable";
+			gpios = <&gpio3 1 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+		display_switch {
+			label = "display_switch";
+			gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+        };
+	};
+	
+	// TODO: Remove when cross protos are not used (reduces power consumption by now)
+	audio-amp {		
+		compatible = "gpio-leds";
+		amp-switch {
+			label = "amp-switch";
+			gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
+			default-state = "on";
+		};		
+	};
+
+	codec: max98357a@0 {
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio1 11 0>;
+	};
+
+	sound {
+		compatible = "fsl,imx-max98357a-audio";
+		ssi-controller = <&sai2>;
+		codec = <&codec>;
+	};
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1 &pinctrl_hog_2>;
+	imx6ul-evk {
+		// TODO: Remove when cross protos are not used (reduces power consumption by now)
+		pinctrl_hog_2: hoggrp-2 {
+			fsl,pins = <				
+				/*-------------------------------audio switch--------------------------------*/									
+				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0 // audio					
+			>;			
+		};
+
+		pinctrl_keys: keys1grp {
+			fsl,pins = <
+				MX6UL_PAD_ENET1_RX_DATA1__GPIO2_IO01	0x1b0b0 
+				MX6UL_PAD_ENET1_RX_DATA0__GPIO2_IO00	0x1b0b0 
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01		0x110b0
+				MX6UL_PAD_SNVS_TAMPER2__GPIO5_IO02		0x110b0				
+			>;
+		};	
+	};
+};	
+

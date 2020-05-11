@@ -111,18 +111,15 @@ static char *hwtype = "twonav-trail-2018";
 module_param(hwtype, charp, 0644);
 
 static bool isTrail2(void) {
-	return ((strcmp(hwtype, "twonav-trail-2018") == 0) ||
-			(strcmp(hwtype, "os-trail-2018") == 0));
+	return (strstr(hwtype, "trail") != NULL);			
 }
 
 static bool isAventura2(void) {
-	return ((strcmp(hwtype, "twonav-aventura-2018") == 0) || 
-			(strcmp(hwtype, "os-aventura-2018") == 0));
+	return (strstr(hwtype, "aventura") != NULL);			
 }
 
 static bool isCross(void) {
-	return ((strcmp(hwtype, "twonav-crosstop-2018") == 0) ||
-			(strcmp(hwtype, "os-crosstop-2018") == 0));
+	return (strstr(hwtype, "cross") != NULL);			
 }
 
 static int get_iterm_current(void) {

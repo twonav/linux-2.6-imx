@@ -230,6 +230,7 @@ $(obj)/.tmp_qtcheck:
 	      moc="\$$(shell pkg-config $$pkg --variable=prefix)/bin/moc"; \
 	      dir="$$(pkg-config $$pkg --variable=prefix)"; \
 	    else \
+	       echo >&2 "* Finding in $$QTDIR"; \
 	      for d in $$QTDIR /usr/share/qt* /usr/lib/qt*; do \
 	        if [ -f $$d/include/qconfig.h ]; then dir=$$d; break; fi; \
 	      done; \

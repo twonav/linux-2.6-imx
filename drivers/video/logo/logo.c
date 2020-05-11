@@ -40,8 +40,16 @@ static bool isOSTrail2(void) {
 	return (strcmp(hwtype, "os-trail-2018") == 0);
 }
 
-static bool isTwoNavCross(void) {
+static bool isTwoNavCrossTop(void) {
 	return (strcmp(hwtype, "twonav-crosstop-2018") == 0);
+}
+
+static bool isTwoNavCrossTia(void) {
+	return (strcmp(hwtype, "twonav-crosstia-2018") == 0);
+}
+
+static bool isTwoNavCrossKyo(void) {
+	return (strcmp(hwtype, "twonav-crosskyo-2018") == 0);
 }
 
 /*
@@ -151,9 +159,13 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		else if (isOSAventura2() || isOSTrail2()) {
 			logo = &logo_os_trail_aventura_clut224;
 		}
-		else if (isTwoNavCross()) {
+		else if (isTwoNavCrossTop()) {
 			logo = &logo_twonav_crosstop_clut224;
 		}
+		else if (isTwoNavCrossTia() || isTwoNavCrossKyo()) {
+			logo = &logo_twonav_trail_aventura_clut224; //TODO: ppm's for crosstia, crosstop
+		}
+		
 	}
 	return logo;
 }

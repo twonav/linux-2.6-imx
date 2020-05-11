@@ -7,10 +7,10 @@
 #define WIFI
 #define EMMC
 
-#include "crosstop-2018-common.dtsi"
+#include "crosstia-2018-specific.dtsi"
 
 / {
-	model = "OS Stonehenge i.MX6 CrossTop";
+	model = "TwoNav Stonehenge i.MX6 Cross Tianma";
 	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
 };
 

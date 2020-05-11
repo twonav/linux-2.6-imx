@@ -7,10 +7,10 @@
 #define WIFI
 #define EMMC
 
-#include "crosstop-2018-specific.dtsi"
+#include "crosskyo-2018-specific.dtsi"
 
 / {
-	model = "TwoNav Stonehenge i.MX6 CrossTop";
+	model = "TwoNav Stonehenge i.MX6 Cross Kyocera";
 	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
 };
 
