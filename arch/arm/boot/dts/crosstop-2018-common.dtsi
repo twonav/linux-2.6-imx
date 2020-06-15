@@ -56,27 +56,7 @@
 			gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
         };
-	};
-	
-	// TODO: Remove when cross protos are not used (reduces power consumption by now)
-	audio-amp {		
-		compatible = "gpio-leds";
-		amp-switch {
-			label = "amp-switch";
-			gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
-			default-state = "on";
-		};		
-	};
 
-	codec: max98357a@0 {
-		compatible = "maxim,max98357a";
-		sdmode-gpios = <&gpio1 11 0>;
-	};
-
-	sound {
-		compatible = "fsl,imx-max98357a-audio";
-		ssi-controller = <&sai2>;
-		codec = <&codec>;
 	};
 };
 
@@ -133,18 +113,11 @@
 	};
 };
 
+
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_hog_1 &pinctrl_hog_2>;
-	imx6ul-evk {
-		// TODO: Remove when cross protos are not used (reduces power consumption by now)
-		pinctrl_hog_2: hoggrp-2 {
-			fsl,pins = <				
-				/*-------------------------------audio switch--------------------------------*/									
-				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0 // audio					
-			>;			
-		};
-
+	pinctrl-0 = <&pinctrl_hog_1>;
+	imx6ul-evk {		
 		pinctrl_lcdif_ctrl: lcdifctrlgrp {
 			fsl,pins = <
 				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x79
@@ -152,6 +125,7 @@
 				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x79
 				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x79
 				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x1b0b1
+				MX6UL_PAD_ENET2_TX_CLK__GPIO2_IO14	0x1b0b0 /* DISPLAY_SWITCH */
 			>;
 		};
 

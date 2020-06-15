@@ -98,18 +98,6 @@
 	assigned-clock-rates = <812851200>;
 };
 
-&flexcan1 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan1>;
-	status = "okay";
-};
-
-&flexcan2 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_flexcan2>;
-	status = "disabled";
-};
-
 &gpc {
 	fsl,cpu_pupscr_sw2iso = <0x2>;
 	fsl,cpu_pupscr_sw = <0x1>;
@@ -425,6 +413,30 @@
 };
 #endif
 
+
+&iomuxc_snvs {
+	pinctrl-names = "default_snvs";
+	pinctrl-0 = <&pinctrl_hog_snvs>;
+	imx6ul-evk {
+		pinctrl_hog_snvs: hoggrp-snvs {
+			fsl,pins = <
+				MX6ULL_PAD_SNVS_TAMPER0__GPIO5_IO00	0x1b0b0
+#ifdef WIFI
+				MX6ULL_PAD_SNVS_TAMPER4__GPIO5_IO04	0x1b0b0	/* BT Enable */
+				MX6ULL_PAD_SNVS_TAMPER6__GPIO5_IO06	0x03029	/* WLAN enable */
+#endif
+			>;
+		};
+
+		pinctrl_rtc: rtcgrp {
+			fsl,pins = <
+				MX6ULL_PAD_SNVS_TAMPER7__GPIO5_IO07	0x1b0b0 /* RTC alarm IRQ */
+			>;
+		};
+
+	};
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;
@@ -454,20 +466,6 @@
 				/*-------------------------------BD7181x--------------------------------*/
 				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12    0x1b0b0 /* PMICIO.INT_OUT */				
 			>;			
-		};
-
-		pinctrl_flexcan1: flexcan1grp{
-			fsl,pins = <
-				MX6UL_PAD_LCD_DATA09__FLEXCAN1_RX	0x1b020
-				MX6UL_PAD_LCD_DATA08__FLEXCAN1_TX	0x1b020
-			>;
-		};
-
-		pinctrl_flexcan2: flexcan2grp{
-			fsl,pins = <
-				MX6UL_PAD_UART2_RTS_B__FLEXCAN2_RX	0x1b020
-				MX6UL_PAD_UART2_CTS_B__FLEXCAN2_TX	0x1b020
-			>;
 		};
 
 		pinctrl_pwm1: pwm1grp {
@@ -638,15 +636,6 @@
 			>;
 		};
 #endif
-
-		pinctrl_sai1: sai1grp {
-			fsl,pins = <
-				MX6UL_PAD_CSI_DATA05__SAI1_TX_BCLK	0x11088
-				MX6UL_PAD_CSI_DATA04__SAI1_TX_SYNC	0x17088
-				MX6UL_PAD_CSI_DATA06__SAI1_RX_DATA	0x11088
-				MX6UL_PAD_CSI_DATA07__SAI1_TX_DATA	0x11088
-			>;
-		};
 
 		pinctrl_sai2: sai2grp {
 			fsl,pins = <
