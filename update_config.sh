@@ -50,7 +50,7 @@ make ARCH=arm mrproper
 # Choose defconfig
 make ARCH=arm $DEFCONFIG
 # Modify defconfig
-make ARCH=arm xconfig QT_X11_NO_MITSHM=1
+make ARCH=arm menuconfig #xconfig QT_X11_NO_MITSHM=1
 make ARCH=arm savedefconfig
 # Backup original defconfig
 cp arch/arm/configs/$DEFCONFIG arch/arm/configs/$DEFCONFIG$DEFCONFIG_ORIG_SUFFIX
