@@ -36,10 +36,10 @@ static int brighntess_value_before_disable = -1;
 static ssize_t reg_show_enabled(struct device *dev,
 			  struct device_attribute *attr, char *buf)
 {
+    struct backlight_device *bl_dev = dev_get_drvdata(dev);
+    struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
 
-	struct bd7181_bl_regulator_data *data = dev_get_drvdata(dev);
-
-	if (data->enabled) {
+	if (reg_data->enabled) {
 		return sprintf(buf, "enabled\n");
 	}
 
@@ -134,8 +134,9 @@ static ssize_t reg_set_enabled(struct device *dev,
 		return count;
 	}
 
-	if ((!data->enabled) || ((val==1) && (brighntess_value_before_disable==-1)))
+	if ((!data->enabled) || ((val==1) && (brighntess_value_before_disable==-1))) {
 		return count;
+	}
 
 	if (val > 0) {
 		bl_dev->props.brightness = brighntess_value_before_disable;
@@ -375,6 +376,7 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 
 	pdata->brightness.actual = 0;
 	drvdata->brightness = pdata->brightness;
+	
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &attr_group);
 	if (ret != 0) {
@@ -403,19 +405,20 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 
 	if (pdata->init_on) {
 		struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
-		reg_data->enabled = false; // Make sure it is called
+		reg_data->enabled = false; // Make sure it is called (so that it turns on)
 
 		bl_dev->props.brightness = drvdata->brightness.dft; // Set initial status to default brightness
+		ret = update_brightness_status(bl_dev);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to set initial state to ON: %d\n", ret);
+			goto err;
+		}
 
-		//ret = update_brightness_status(bl_dev);
-		//if (ret) {
-		//	dev_err(&pdev->dev, "Failed to set initial state to ON: %d\n", ret);
-		//	goto err;
-		//}
 	}
 	else {
 		struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
 		reg_data->enabled = true;  // Make sure it is called
+		bl_dev->props.brightness = drvdata->brightness.dft;
 		ret = backlight_power_on(bl_dev);
 		if (ret) {
 			dev_err(&pdev->dev, "Failed to set initial state to OFF: %d\n", ret);
