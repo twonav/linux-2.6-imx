@@ -241,9 +241,25 @@ static void cyttsp5_get_mt_touches(struct cyttsp5_mt_data *md,
 
 		sig = MT_PARAM_SIGNAL(md, CY_ABS_ID_OST);
 		if (sig != CY_IGNORE_VALUE) {
-			if (md->mt_function.input_report)
-				md->mt_function.input_report(md->input, sig,
-						t, tch->abs[CY_TCH_O]);
+			if (md->mt_function.input_report) {
+				/* Area bellow 800 is virtual keys area */
+				if (tch->abs[CY_TCH_Y] >= 800) {
+					u8 key_value;
+					if (tch->abs[CY_TCH_X] <= 240)
+						key_value = KEY_F5;
+					else
+						key_value = KEY_F6;
+
+					input_report_key(md->input, key_value, 1);
+					mdelay(10);
+					input_report_key(md->input, key_value, 0);
+					input_sync(md->input);
+					return;
+				} 
+				else {
+					md->mt_function.input_report(md->input, sig, t, tch->abs[CY_TCH_O]);
+				}
+			}
 			__set_bit(t, ids);
 		}
 
@@ -262,7 +278,7 @@ static void cyttsp5_get_mt_touches(struct cyttsp5_mt_data *md,
 			if (!si->tch_abs[j].report)
 				continue;
 			cyttsp5_report_event(md, CY_ABS_X_OST + j,
-					tch->abs[CY_TCH_X + j]);
+							tch->abs[CY_TCH_X + j]);
 		}
 
 		/* Get the extended touch fields */
@@ -270,7 +286,7 @@ static void cyttsp5_get_mt_touches(struct cyttsp5_mt_data *md,
 			if (!si->tch_abs[CY_ABS_MAJ_OST + j].report)
 				continue;
 			cyttsp5_report_event(md, CY_ABS_MAJ_OST + j,
-					tch->abs[CY_TCH_MAJ + j]);
+							tch->abs[CY_TCH_MAJ + j]);
 		}
 		if (md->mt_function.input_sync)
 			md->mt_function.input_sync(md->input);
@@ -616,6 +632,9 @@ static int cyttsp5_setup_input_device(struct device *dev)
 			__func__, rc);
 	else
 		md->input_device_registered = true;
+
+	input_set_capability(md->input, EV_KEY, KEY_F5);
+	input_set_capability(md->input, EV_KEY, KEY_F6);
 
 #ifdef EASYWAKE_TSG6
 	input_set_capability(md->input, EV_KEY, KEY_F1);
