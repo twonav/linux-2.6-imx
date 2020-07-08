@@ -374,6 +374,33 @@ static void hx8357_lcd_reset(struct lcd_device *lcdev)
 	msleep(120);
 }
 
+
+static int hx8357_enter_sleep(struct lcd_device *lcdev)
+{
+	int ret;
+
+	ret = hx8357_spi_write_byte(lcdev, HX8357_ENTER_SLEEP_MODE);
+	if (ret < 0)
+		return ret;
+
+	msleep(5);
+
+	return 0;
+}
+
+static int hx8357_exit_sleep(struct lcd_device *lcdev)
+{
+	int ret;
+
+	ret = hx8357_spi_write_byte(lcdev, HX8357_EXIT_SLEEP_MODE);
+	if (ret < 0)
+		return ret;
+
+	msleep(5);
+
+	return 0;
+}
+
 static int hx8357_lcd_init(struct lcd_device *lcdev)
 {
 	struct hx8357_data *lcd = lcd_get_data(lcdev);
@@ -653,15 +680,41 @@ static int hx8357_set_power(struct lcd_device *lcdev, int power)
 	struct hx8357_data *lcd = lcd_get_data(lcdev);
 	int ret = 0;
 
-	if (POWER_IS_ON(power) && !POWER_IS_ON(lcd->state))
-		ret = hx8357_exit_standby(lcdev);
-	else if (!POWER_IS_ON(power) && POWER_IS_ON(lcd->state))
-		ret = hx8357_enter_standby(lcdev);
+	if ((power != 0) && (power != lcd->state)) {
+		if (power == 1) {
+			ret = hx8357_exit_standby(lcdev);
+		}
+		else if (power == 2) {
+			ret = hx8357_enter_standby(lcdev);
+		}
+		else if (power == 3) {
+			ret = hx8363_lcd_init(lcdev);
+		}
+		else if (power == 4) {
+			hx8357_lcd_reset(lcdev);
+		}
+		else if (power == 5) {
+			ret = hx8357_spi_write_byte(lcdev, HX8357_ENTER_INVERSION_MODE);
+		}
+		else if (power == 6) {
+			ret = hx8357_spi_write_byte(lcdev, HX8357_EXIT_INVERSION_MODE);
+		}
+		else if (power == 7) {
+			ret = hx8357_spi_write_byte(lcdev, HX8357_ENTER_SLEEP_MODE);
+		}
+		else if (power == 8) {
+			ret = hx8357_spi_write_byte(lcdev, HX8357_EXIT_SLEEP_MODE);
+		}
+		else if (power == 9) {
+			ret = hx8357_spi_write_array(lcdev, hx8363_seq_address_mode,
+										 ARRAY_SIZE(hx8363_seq_address_mode));
+		}
 
-	if (ret == 0)
-		lcd->state = power;
-	else
-		dev_warn(&lcdev->dev, "failed to set power mode %d\n", power);
+		if (ret == 0)
+			lcd->state = power;
+		else
+			dev_warn(&lcdev->dev, "failed to set power mode %d\n", power);
+	}
 
 	return ret;
 }
