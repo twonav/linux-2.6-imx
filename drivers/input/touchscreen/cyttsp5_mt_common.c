@@ -36,6 +36,13 @@
 #define MT_PARAM_FUZZ(md, sig_ost) PARAM_FUZZ(md->pdata->frmwrk, sig_ost)
 #define MT_PARAM_FLAT(md, sig_ost) PARAM_FLAT(md->pdata->frmwrk, sig_ost)
 
+#define VK_Y_POS_START 840
+#define VK_LEFT_X_POS_START 80
+#define VK_LEFT_X_POS_END 160
+#define VK_RIGHT_X_POS_START 320
+#define VK_RIGHT_X_POS_END 400
+
+
 static void cyttsp5_mt_lift_all(struct cyttsp5_mt_data *md)
 {
 	int max = md->si->tch_abs[CY_TCH_T].max;
@@ -242,18 +249,30 @@ static void cyttsp5_get_mt_touches(struct cyttsp5_mt_data *md,
 		sig = MT_PARAM_SIGNAL(md, CY_ABS_ID_OST);
 		if (sig != CY_IGNORE_VALUE) {
 			if (md->mt_function.input_report) {
-				/* Area bellow 800 is virtual keys area */
+				/* Area bellow 800 is designated to virtual keys */
 				if (tch->abs[CY_TCH_Y] >= 800) {
-					u8 key_value;
-					if (tch->abs[CY_TCH_X] <= 240)
-						key_value = KEY_F5;
-					else
-						key_value = KEY_F6;
+					/* Area between 800 & VK_Y_POS_START is inactive*/
+					if (tch->abs[CY_TCH_Y] >= VK_Y_POS_START) {
+						u8 key_value;
+						if ((tch->abs[CY_TCH_X] >= VK_LEFT_X_POS_START) &&
+							(tch->abs[CY_TCH_X] <= VK_LEFT_X_POS_END)) {
+							key_value = KEY_F5;
+						}
+						else if ((tch->abs[CY_TCH_X] >= VK_RIGHT_X_POS_START) &&
+								 (tch->abs[CY_TCH_X] <= VK_RIGHT_X_POS_END)) {
+							key_value = KEY_F6;
+						}
+						else {
+							key_value = 0;
+						}
 
-					input_report_key(md->input, key_value, 1);
-					mdelay(10);
-					input_report_key(md->input, key_value, 0);
-					input_sync(md->input);
+						if (key_value) {
+							input_report_key(md->input, key_value, 1);
+							mdelay(10);
+							input_report_key(md->input, key_value, 0);
+							input_sync(md->input);
+						}
+					}
 					return;
 				} 
 				else {
