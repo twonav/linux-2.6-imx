@@ -36,6 +36,14 @@
 #define MT_PARAM_FUZZ(md, sig_ost) PARAM_FUZZ(md->pdata->frmwrk, sig_ost)
 #define MT_PARAM_FLAT(md, sig_ost) PARAM_FLAT(md->pdata->frmwrk, sig_ost)
 
+#define VK_Y_POS_START 840
+#define VK_LEFT_X_POS_START 80
+#define VK_LEFT_X_POS_END 160
+#define VK_RIGHT_X_POS_START 320
+#define VK_RIGHT_X_POS_END 400
+
+static u8 virtual_key_value = 0;
+
 static void cyttsp5_mt_lift_all(struct cyttsp5_mt_data *md)
 {
 	int max = md->si->tch_abs[CY_TCH_T].max;
@@ -230,6 +238,10 @@ static void cyttsp5_get_mt_touches(struct cyttsp5_mt_data *md,
 		if (tch->abs[CY_TCH_E] == CY_EV_LIFTOFF) {
 			parade_debug(dev, DEBUG_LEVEL_1, "%s: t=%d e=%d lift-off\n",
 				__func__, t, tch->abs[CY_TCH_E]);
+			if (virtual_key_value > 0) {
+				input_report_key(md->input, virtual_key_value, 0);
+				virtual_key_value = 0;
+			}
 			goto cyttsp5_get_mt_touches_pr_tch;
 		}
 
@@ -242,19 +254,28 @@ static void cyttsp5_get_mt_touches(struct cyttsp5_mt_data *md,
 		sig = MT_PARAM_SIGNAL(md, CY_ABS_ID_OST);
 		if (sig != CY_IGNORE_VALUE) {
 			if (md->mt_function.input_report) {
-				/* Area bellow 800 is virtual keys area */
+				/* Area bellow 800 is designated to virtual keys */
 				if (tch->abs[CY_TCH_Y] >= 800) {
-					u8 key_value;
-					if (tch->abs[CY_TCH_X] <= 240)
-						key_value = KEY_F5;
-					else
-						key_value = KEY_F6;
+					/* Area between 800 & VK_Y_POS_START is inactive*/
+					if ((virtual_key_value == 0) && (tch->abs[CY_TCH_Y] >= VK_Y_POS_START)) {
+						if ((tch->abs[CY_TCH_X] >= VK_LEFT_X_POS_START) &&
+							(tch->abs[CY_TCH_X] <= VK_LEFT_X_POS_END)) {
+							virtual_key_value = KEY_F5;
+						}
+						else if ((tch->abs[CY_TCH_X] >= VK_RIGHT_X_POS_START) &&
+								 (tch->abs[CY_TCH_X] <= VK_RIGHT_X_POS_END)) {
+							virtual_key_value = KEY_F6;
+						}
+						else {
+							virtual_key_value = 0;
+						}
 
-					input_report_key(md->input, key_value, 1);
-					mdelay(10);
-					input_report_key(md->input, key_value, 0);
-					input_sync(md->input);
-					return;
+						if (virtual_key_value) {
+							input_report_key(md->input, virtual_key_value, 1);
+						}
+					}
+					//return; // Uncomment this line if we want long press for virtual keys
+					goto cyttsp5_get_mt_touches_pr_tch;
 				} 
 				else {
 					md->mt_function.input_report(md->input, sig, t, tch->abs[CY_TCH_O]);
@@ -307,9 +328,10 @@ cyttsp5_get_mt_touches_pr_tch:
 			tch->abs[CY_TCH_TIP]);
 	}
 
-	if (md->mt_function.final_sync)
+	if (md->mt_function.final_sync) {
 		md->mt_function.final_sync(md->input,
 				si->tch_abs[CY_TCH_T].max, mt_sync_count, ids);
+	}
 
 	md->num_prv_rec = num_cur_tch;
 }
