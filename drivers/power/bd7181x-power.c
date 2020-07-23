@@ -133,8 +133,8 @@ static int get_iterm_current(void) {
 	else if (isTrail2()) {
 		term_current = 0x05; // 0.01C typical value 4000*0.01=40mA -> 50mA
 	}
-	else if (isCross()) { // TODO: ADAPT
-		term_current = 0x02; // 0.01C typical value 2900*0.01=29mA -> 20mA
+	else if (isCross()) {
+		term_current = 0x06; // 0.02C typical value 3300*0.02=66mA -> 100mA
 	}
 	return term_current;
 }
@@ -148,7 +148,7 @@ static int get_battery_capacity(void) {
 		capacity = 4000;
 	}
 	else if (isCross()) {
-		capacity = 2900;
+		capacity = 3300;
 	}
 	return mAh_A10s(capacity);
 }
@@ -315,28 +315,28 @@ static int discharge_table_200mA[] = {
 
 static int cross_ocv_table[] = {
 	4200000,
-	4167456,
-	4109781,
-	4065242,
-	4025618,
-	3989877,
-	3958031,
-	3929302,
-	3900935,
-	3869637,
-	3838475,
-	3815196,
-	3799778,
-	3788385,
-	3779627,
-	3770675,
-	3755368,
-	3736049,
-	3713545,
-	3685118,
-	3645278,
-	3465599,
-	2830610
+	4191400,
+	4123958,
+	4075519,
+	4028416,
+	3983900,
+	3951586,
+	3918684,
+	3883977,
+	3852362,
+	3824257,
+	3803355,
+	3791131,
+	3778908,
+	3766684,
+	3754364,
+	3733662,
+	3712959,
+	3693141,
+	3671895,
+	3429700,
+	3000000,
+	2850000
 };	/* unit 1 micro V */
 
 static int* get_ocv_table(void) {
