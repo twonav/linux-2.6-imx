@@ -1,0 +1,103 @@
+Cycle LED Trigger
+=================
+
+This is a LED trigger useful for headless system where the LEDs are the only
+way to reflect system status.
+
+Currently, none of available triggers supports playing with the LED brightness
+level.  The cycle trigger provides a way to define custom brightness cycle.
+For example, it is easy to customize the cycle to mock up the rhythm of human
+breathing which is a nice cycle to tell the user the system is doing something.
+
+This trigger is meant to be usable for waiting an event to happen, for example
+when the system gets ready.  Those cycles may be used to reflect well known
+system status (e.g. idle mode, startup...).
+
+The application simply has to initialize some trigger parameters:
+ - the preset cycle (brightness plot),
+ - the constant interval of time between each brightness change and
+ - the number of repeat (0 for an infinite loop).
+Then, the application controls the life of the cycle using the commands below:
+ - "start"/"stop" to control the cycle,
+ - "reset" to clear the repeat counter,
+ - "pause"/"resume" to suspend or recover the cycle.
+
+The trigger can be activated from user space on led class devices as shown
+below:
+
+  echo cycle > trigger
+
+This adds the following sysfs attributes to the LED:
+
+  plot - specifies the brightness level cycle (from LED_OFF to LED_FULL).
+         Every values are separated by an end of line (0x0a).
+         Default is a triangular cycle from LED_FULL to LED_OFF and LED_OFF to
+         LED_FULL.
+
+  rawplot - same as plot except the plot are given in binary format (array of
+            bytes). Each bytes must be positive and range from LED_OFF to
+            LED_FULL.
+
+  interval - specifies the time elapsed between every brightness change.
+             This interval remains constant along the cycle unless a change
+             happened during the cycle execution.
+             Default to 100 ms.
+
+  repeat - specifies the number of cycles the trigger has to run.
+           Set the repeat value to 0 will let the led repeats the same cycle
+           till the end of time.
+           Default to 0.
+
+  count - get the current number of cycles. The counter is incrementing even
+          for an infinite loop.
+
+  control - tells the trigger what action to do.
+            "start" will start a new number of cycles from 0 to repeat.
+            "stop" will stop the cycle. The brightness level is left untouched
+            and the number of cycles is reset to 0.
+            "reset" will clear the number of cycles.
+            "pause"/"resume" will pause/resume the cycle.
+
+Cycle duration is determine by sizeof("plot") * "interval" ms.
+
+Example use-case: headless system initialization with network device.
+It runs the cycle till the device has received a IP from the DHCP server.
+
+  echo cycle > trigger   # set trigger for this led
+  echo 0 > repeat        # set loop forever
+  echo 50 > interval     # set 50 ms between each brightness change
+
+then program the plot
+
+  cat << EOF > plot
+255
+254
+254
+253
+...
+2
+1
+1
+0
+EOF                      # customize the cycle with a smoother one (sinus)
+
+or....
+
+do it with rawplot
+
+  printf "\x01\x00" >/sys/class/leds/blue/rawplot
+
+
+  echo start > control   # starts the cycle trigger
+
+dhcp lease bound or renewed: stop cycle and turn led on.
+
+  echo stop > control   # halt the cycle
+  echo 255 > brightness # and turn led on roughly
+or
+  echo 1 > count     # let the cycle to terminate
+  echo 10 > interval # and accelerate the end of cycle smoothly end the cycle
+
+dhcp lease lost or being renewed: restart cycle.
+
+  echo start > control

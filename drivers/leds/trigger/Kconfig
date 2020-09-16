@@ -59,6 +59,16 @@ config LEDS_TRIGGER_BACKLIGHT
 
 	  If unsure, say N.
 
+config LEDS_TRIGGER_CYCLE
+	tristate "LED Cycle Trigger"
+	depends on LEDS_TRIGGERS
+	help
+	  This allows LEDs to follow a cycle where the brightness level vary all
+	  along the cycle. This cycle can be set up and controlled using sysfs.
+	  For more details read Documentation/leds/ledtrig-cycle.txt.
+
+	  If unsure, say N.
+	  
 config LEDS_TRIGGER_CPU
 	bool "LED CPU Trigger"
 	depends on LEDS_TRIGGERS
