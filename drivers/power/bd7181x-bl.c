@@ -44,12 +44,12 @@ static ssize_t reg_show_enabled(struct device *dev,
 	}
 
 	return sprintf(buf, "disabled\n");
-
 }
 
 
 static int reg_set_state(struct bd7181_bl_regulator_data *reg_data, bool enabled )
 {
+
 	int ret=0;
 	mutex_lock(&reg_data->lock);
 	if (enabled != reg_data->enabled) { // on _probe this is always true
@@ -62,7 +62,6 @@ static int reg_set_state(struct bd7181_bl_regulator_data *reg_data, bool enabled
 
 		if (ret == 0) {
 			reg_data->enabled = enabled;
-			ret=0;
 		}
 	}
 
@@ -84,6 +83,7 @@ static int backlight_power_off(struct backlight_device *bl_dev)
 	 * state, it will "flash" for around 200 msec, depending on the capacitor. It is necessary to set the lowest brightness
 	 * for this time.
 	 *  */
+
 	if (reg_data->brightness.actual>1 && bl_dev->props.max_brightness > 0){
 		bl_dev->props.brightness = 1;
 		ret = update_brightness_status(bl_dev); /* Set to lowest brightness */
@@ -109,12 +109,12 @@ static int backlight_power_on(struct backlight_device *bl_dev)
 	struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
 	int ret=0;
 
-	dev_info(&bl_dev->dev, "Backlight poweron requested\n");
+	dev_info(&bl_dev->dev, "Backlight power on requested\n");
 
 	ret = reg_set_state(reg_data,true);
 
 	if(ret!=0) {
-		dev_err(&bl_dev->dev, "Fail to poweron backlight\n",ret);
+		dev_err(&bl_dev->dev, "Fail to power on backlight\n",ret);
 	}
 
 	return ret;
@@ -199,14 +199,17 @@ static int update_brightness_status(struct backlight_device *bl_dev)
 		micro_amps = brightness2uA(reg_data, brightness);
 
 		if(micro_amps > 0) {
+			if (reg_data->brightness.actual == 0) {
+				ret = backlight_power_on(bl_dev);
+			}
+
 			ret = reg_set_current_uA(reg_data, micro_amps);
 			if (ret<0) {
 				return ret;
 			}
-			ret = backlight_power_on(bl_dev); /*No need to check if already ON, it is checked/set internally*/
 		}
 		else if (micro_amps==0) {
-			ret = backlight_power_off(bl_dev);/*No need to check if already OFF, it is checked/set internally*/
+			ret = backlight_power_off(bl_dev);
 		}
 		else {
 			ret = -EINVAL;
@@ -374,9 +377,8 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	pdata->brightness.actual = 0;
+	pdata->brightness.actual = 1;
 	drvdata->brightness = pdata->brightness;
-	
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &attr_group);
 	if (ret != 0) {
@@ -401,14 +403,22 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 
 	msleep(10);
 
-	printk("DEBUG-mark1\n");
-
 	if (pdata->init_on) {
 		struct bd7181_bl_regulator_data *reg_data = bl_get_data(bl_dev);
 		reg_data->enabled = false; // Make sure it is called (so that it turns on)
+		ret = backlight_power_on(bl_dev);
+
+		/* Restore from posible hard reset */
+		bl_dev->props.brightness = 0;
+		ret = update_brightness_status(bl_dev);
+
+		/* High value (>19) has to be set to recuperate from "low brightness" mode */
+		bl_dev->props.brightness = 20;
+		ret = update_brightness_status(bl_dev);
 
 		bl_dev->props.brightness = drvdata->brightness.dft; // Set initial status to default brightness
 		ret = update_brightness_status(bl_dev);
+
 		if (ret) {
 			dev_err(&pdev->dev, "Failed to set initial state to ON: %d\n", ret);
 			goto err;
@@ -429,7 +439,6 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, bl_dev);
 	dev_info(&pdev->dev, "Probed successfully\n");
 
-	printk("DEBUG-mark2\n");
 	return 0;
 
 err:
