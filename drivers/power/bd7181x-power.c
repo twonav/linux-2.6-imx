@@ -1360,62 +1360,6 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, 0x62);
 
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
-
-	//if (r & BAT_DET) {
-		/* Init HW, when the battery is inserted. */
-
-	bd7181x_reg_write(mfd, BD7181X_REG_CONF, XSTB);//r | XSTB); // enable RTC
-
-	// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
-
-	// VSYS voltage rising detection threshold. 0.0V to 8.128V range, 64mV steps
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MAX, 0x33); // 3.264
-
-	// VSYS voltage falling detection threshold. 0.0V to 8.128V range, 64mV steps.
-	bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.072
-
-	/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
-
-	// 0xD8 -> 11011000
-	// bit 7 VF_TREG_EN 1 thermal shutdown enabled
-	// bit 6 EXTMOS_EN 1 Select External MOSFET. Change this register after CHG_EN is set to '0'
-	// bit 5 REBATDET 0  Trigger for re-trial of Battery detection
-	// bit 4 BATDET_EN 1 Enable Battery detection
-	// bit 3 INHIBIT_1(note2) 1 For ROHM factory only
-	// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
-
-	/* VBAT Low voltage detection Setting */ // 0x58
-	// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
-	// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
-	bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.056V
-
-	/* Mask Relax decision by PMU STATE */ // 0xE6
-	// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
-	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
-
-	/* Set Battery Capacity Monitor threshold1 as 90% */
-	int cc_batcap1_th = get_battery_capacity() * 9 / 10;
-	bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, cc_batcap1_th);  // Interrupt CC_MON1_DET (INTB)
-	//bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", cc_batcap1_th);
-
-	/* Enable LED ON when charging */ // 0x0E
-	bd7181x_set_bits(mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
-
-	// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm).
-	// Note: there are 3 thresholds available
-	bd7181x_reg_write(mfd, BD7181X_REG_VM_OCUR_THR_1, 0xAB); // 1100mA
-
-	// Battery over-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
-	bd7181x_reg_write(mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
-
-	// Battery low-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
-	bd7181x_reg_write(mfd, BD7181X_REG_VM_BTMP_LO_THR, 0x32); // -5ºC
-
-	/* WDT_FST auto set */
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
 }
 
 
@@ -1483,6 +1427,20 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	if (new_battery_detected) {
 		printk(KERN_ERR "bd7181x-power: new battery inserted, initializing PMIC\n");
 
+		//if (r & BAT_DET) {
+			/* Init HW, when the battery is inserted. */
+
+		bd7181x_reg_write(mfd, BD7181X_REG_CONF, XSTB);//r | XSTB); // enable RTC
+
+		// VSYS_REG_Register VSYS regulation voltage setting. 4.2V to 5.25V range, 50mV step.
+		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_REG, 0x0B); // 4.75V (ask Joaquin)
+
+		// VSYS voltage rising detection threshold. 0.0V to 8.128V range, 64mV steps
+		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MAX, 0x33); // 3.264
+
+		// VSYS voltage falling detection threshold. 0.0V to 8.128V range, 64mV steps.
+		bd7181x_reg_write(mfd, BD7181X_REG_VSYS_MIN, 0x30); // 3.072
+
 #define TEST_SEQ_00		0x00
 #define TEST_SEQ_01		0x76
 #define TEST_SEQ_02		0x66
@@ -1508,6 +1466,48 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		 * because the result would be based on values that do not reflect current battery state
 		 *  */
 		init_coulomb_counter(pwr, new_battery_detected);
+
+		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
+
+		// 0xD8 -> 11011000
+		// bit 7 VF_TREG_EN 1 thermal shutdown enabled
+		// bit 6 EXTMOS_EN 1 Select External MOSFET. Change this register after CHG_EN is set to '0'
+		// bit 5 REBATDET 0  Trigger for re-trial of Battery detection
+		// bit 4 BATDET_EN 1 Enable Battery detection
+		// bit 3 INHIBIT_1(note2) 1 For ROHM factory only
+		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
+
+		/* VBAT Low voltage detection Setting */ // 0x58
+		// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
+		// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
+		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.056V
+
+		/* Mask Relax decision by PMU STATE */ // 0xE6
+		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
+
+		/* Set Battery Capacity Monitor threshold1 as 90% */
+		int cc_batcap1_th = get_battery_capacity() * 9 / 10;
+		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, cc_batcap1_th);  // Interrupt CC_MON1_DET (INTB)
+		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", cc_batcap1_th);
+
+		/* Enable LED ON when charging */ // 0x0E
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
+
+		// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm).
+		// Note: there are 3 thresholds available
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, 0xAB); // 1100mA
+
+		// Battery over-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
+
+		// Battery low-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_BTMP_LO_THR, 0x32); // -5ºC
+
+		/* WDT_FST auto set */
+		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO);
 
 		pwr->state_machine = STAT_POWER_ON;
 	}
