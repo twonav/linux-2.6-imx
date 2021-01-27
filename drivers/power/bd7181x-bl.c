@@ -412,8 +412,8 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 		bl_dev->props.brightness = 0;
 		ret = update_brightness_status(bl_dev);
 
-		/* High value (>19) has to be set to recuperate from "low brightness" mode */
-		bl_dev->props.brightness = 20;
+		/* High value (>=22) has to be set to recuperate from "low brightness" mode */
+		bl_dev->props.brightness = 22;
 		ret = update_brightness_status(bl_dev);
 
 		bl_dev->props.brightness = drvdata->brightness.dft; // Set initial status to default brightness
