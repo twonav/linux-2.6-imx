@@ -10,7 +10,7 @@
 #include "trail-2018-common.dtsi"
 
 / {
-	model = "OS Stonehenge i.MX6 Trail 2";
+	model = "os-trail-2018";
 	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
 };
 

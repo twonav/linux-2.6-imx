@@ -10,7 +10,7 @@
 #include "aventura-2018-common.dtsi"
 
 / {
-	model = "OS Stonehenge i.MX6 Aventura 2";
+	model = "os-aventura-2018";
 	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
 };
 

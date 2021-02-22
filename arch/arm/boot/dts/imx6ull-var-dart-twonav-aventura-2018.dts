@@ -10,6 +10,6 @@
 #include "aventura-2018-common.dtsi"
 
 / {
-	model = "TwoNav Stonehenge i.MX6 Aventura 2";
+	model = "twonav-aventura-2018";
 	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
 };
