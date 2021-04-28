@@ -32,6 +32,9 @@
 #define bd7181x_info(...)
 #endif
 
+#define USE_INTERRUPTIONS	0			// Interrupts are not being handled. Unused code
+
+
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
@@ -50,7 +53,8 @@
 
 #define DCIN_DETECTION_THRESHOLD 0x35 // 0x35-> 53 * (80mV) -> 4.24V
 
-#define SIGNAL_CONSECUTIVE_HITS		3
+#define SIGNAL_CONSECUTIVE_HITS					3 	// hits are produced every JITTER_DEFAULT period
+#define EMERGENCY_SIGNAL_CONSECUTIVE_HITS		30		
 #define COLAPSE_REG_DETECTION_VAL      18 // 100mA + 18*50mA -> 1000mA
 #define COLAPSE_THRESHOLD_SEND_SIGNAL	8 // 500mA
 
@@ -62,8 +66,9 @@
 #define BD7181X_BATTERY_FULL	100
 
 //VBAT Low voltage detection Threshold
-#define VBAT_LOW_TH		0x00BF // 0x00BF (191) * 16mV = 3.056V
-#define VBAT_LOW_TH_DVAL 3056
+#define VBAT_LOW_STEP		16
+#define VBAT_LOW_TH			0x00BF // 0x00BF (191) * 16mV = 3.056V
+#define VBAT_LOW_TH_CROSS	0x00D6 // 0x00D6 (214) * 16mV = 3.4297V
 
 //#define RS_30mOHM		/* we have 10mOhm */
 
@@ -153,36 +158,44 @@ static int get_battery_capacity(void) {
 	return mAh_A10s(capacity);
 }
 
+
+
+static int get_lowbatt_voltage_th(void) {
+	
+	int low_voltage_th = VBAT_LOW_TH; // mAh
+	if (isCross()) {
+		low_voltage_th = VBAT_LOW_TH_CROSS;
+	}
+
+	return low_voltage_th; // mAh/16
+}
+
+static int get_lowbatt_voltage(void) {
+	
+	int low_voltage = get_lowbatt_voltage_th() * VBAT_LOW_STEP;
+	return low_voltage; // mAh	
+}
+
 unsigned int battery_cycle;
 
 // Variables related to low battery signal
 static struct dentry *bd7181x_dir;
-static struct dentry *related_process_pid_file;
-static int related_process_pid = 0;
+static struct dentry *vbat_low_related_pid_file;
+static struct dentry *vbat_emergency_pid_file;
+static int vbat_low_related_pid = 0;
+static int vbat_emergency_pid = 0;
+static int emergency_counter = 0;
 static int sigterm_counter = 0;
 static int colapse_counter = 0;
 static int colapse_signal_sent = 0;
 
-static int is_collapse_signal(int type) {
-	int collapse_signal = 0;
-	if (type == SIGUSR2) {
-		collapse_signal = 1;
-	}
-
-	return collapse_signal;
-}
-
-static void send_signal(int type)
+static int send_signal(int type, int* pid)
 {
 	int ret;
 	struct siginfo info;
 	struct task_struct *task;
 
-	if ((colapse_signal_sent==1) && is_collapse_signal(type)) {
-		return;
-	}
-
-	if (related_process_pid == 0) {
+	if (!pid || *pid == 0) {
 		printk("BD7181x-power: no pid related to send signal type :%d\n", type);
 		return;
 	}
@@ -192,45 +205,63 @@ static void send_signal(int type)
 	info.si_code = SI_USER;
 
 	rcu_read_lock();
-	task = pid_task(find_pid_ns(related_process_pid, &init_pid_ns), PIDTYPE_PID);
+	task = pid_task(find_pid_ns(*pid, &init_pid_ns), PIDTYPE_PID);
 	if(task == NULL){
-		printk("BD7181x-power: no such pid :%d\n",related_process_pid);
-		related_process_pid = 0;
+		printk("BD7181x-power: no such pid :%d\n", *pid);
+		*pid = 0;
 		rcu_read_unlock();
-		return;
+		return -EINVAL;
 	}
 
 	rcu_read_unlock();
 	ret = send_sig_info(type, &info, task);
 	if (ret < 0) {
-		printk("BD7181x-power: error sending signal\n");
+		printk("BD7181x-power: error sending signal to pid: %d\n", *pid);
 	}
-	else {
-		if (is_collapse_signal(type)) {
-			colapse_signal_sent = 1;
-		}
-	}
+
+	return ret;	
 }
 
 
-static ssize_t write_related_pid(struct file *file,
-								 const char __user *buf,
-								 size_t count,
-								 loff_t *ppos)
+static ssize_t write_pid(struct file *file, 
+						const char __user *buf, 
+						size_t count, 
+						loff_t *ppos, 
+						int* pid) 
 {
 	char mybuf[10];
-	if(count > 10)
+	if(count > 10) {
 		return -EINVAL;
-	if (copy_from_user(mybuf, buf, count))
+	}
+	if (copy_from_user(mybuf, buf, count)) {
 		return -EFAULT;
-	sscanf(mybuf, "%d", &related_process_pid);
-	colapse_signal_sent = 0;
-
+	}
+	sscanf(mybuf, "%d", pid);
 	return count;
 }
 
-static const struct file_operations related_pid_fops = {
-    .write = write_related_pid,
+static ssize_t write_vbat_low_related_pid(struct file *file, 
+										const char __user *buf, 
+										size_t count, 
+										loff_t *ppos)
+{
+	colapse_signal_sent = 0;
+	return write_pid(file, buf, count, ppos, &vbat_low_related_pid);
+}
+
+static ssize_t write_vbat_emergency_pid(struct file *file,
+												 const char __user *buf,
+												 size_t count,
+												 loff_t *ppos)
+{	
+	return write_pid(file, buf, count, ppos, &vbat_emergency_pid);
+}
+
+static const struct file_operations vbat_low_related_pid_fops = {
+	.write = write_vbat_low_related_pid,
+};
+static const struct file_operations vbat_emergency_pid_fops = {
+    .write = write_vbat_emergency_pid,
 };
 
 
@@ -284,59 +315,33 @@ static int aventura_ocv_table[] = {
 	3635200,
 	3444900,
 	2850000
-};	/* unit 1 micro V */
-/* 6000mAh curve with -200mA, not used FTTB
-static int discharge_table_200mA[] = {
-		4200000,
-		4170000,
-		4101800,
-		4052500,
-		4008200,
-		3963200,
-		3929400,
-		3896900,
-		3862800,
-		3824400,
-		3795800,
-		3777200,
-		3762700,
-		3751200,
-		3742500,
-		3734400,
-		3719300,
-		3698200,
-		3665600,
-		3640200,
-		3568900,
-		3000000,
-		2850000
-	};
-*/
+};	
 
+// preview changed values. adapt curve.
 static int cross_ocv_table[] = {
 	4200000,
 	4191400,
-	4123958,
-	4075519,
-	4028416,
-	3983900,
-	3951586,
-	3918684,
-	3883977,
-	3852362,
-	3824257,
-	3803355,
-	3791131,
-	3778908,
-	3766684,
-	3754364,
-	3733662,
-	3712959,
-	3693141,
-	3671895,
-	3429700,
-	3000000,
-	2850000
+	4143958,
+	4095519,
+	4040416,
+	3995900,
+	3970586,
+	3930684,
+	3890977,
+	3856362,
+	3829257,
+	3810355,
+	3797131,
+	3782908,
+	3769684,
+	3759364,
+	3743662,
+	3722959,	//20
+	3703141,	//15
+	3681895,	//10
+	3529700,	//5
+	3429700,	//0
+	3000000	 //-5
 };	/* unit 1 micro V */
 
 static int* get_ocv_table(void) {
@@ -349,6 +354,8 @@ static int* get_ocv_table(void) {
 	else if (isCross()) {
 		return cross_ocv_table;
 	}
+
+	return NULL;
 }
 
 static int get_ocv_max_voltage(void) {
@@ -1479,11 +1486,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
 		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
 
-		/* VBAT Low voltage detection Setting */ // 0x58
-		// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
-		// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
-		bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, VBAT_LOW_TH); // 3.056V
-
 		/* Mask Relax decision by PMU STATE */ // 0xE6
 		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
@@ -1516,6 +1518,11 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		pwr->full_cap = get_battery_capacity();	// bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CC_BATCAP_U);
 		pwr->state_machine = STAT_INITIALIZED;	// STAT_INITIALIZED
 	}
+
+	/* VBAT Low voltage detection Setting */ // 0x58
+	// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
+	// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
+	bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, get_lowbatt_voltage_th());
 
 	pwr->temp = bd7181x_get_temp(pwr);
 	bd7181x_info(pwr->dev, "Temperature = %d\n", pwr->temp);
@@ -1587,8 +1594,11 @@ static void bd7181x_colapse_check(struct bd7181x_power *pwr) {
 	int condition;
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
 	condition = (r < COLAPSE_THRESHOLD_SEND_SIGNAL);
-	if (conditional_max_reached(&colapse_counter, condition, SIGNAL_CONSECUTIVE_HITS))
-		send_signal(SIGUSR2);
+	if (conditional_max_reached(&colapse_counter, condition, SIGNAL_CONSECUTIVE_HITS) &&
+		colapse_signal_sent==0) 
+	{			
+		colapse_signal_sent = (send_signal(SIGUSR2, &vbat_low_related_pid) >= 0);			
+	}
 }
 
 static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
@@ -1599,19 +1609,25 @@ static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
 	int dcin_online = 0;
 
 	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_VBAT_U);
-	condition = (vbat < VBAT_LOW_TH_DVAL);
-
+	condition = (vbat < get_lowbatt_voltage());
+	
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
 	if (r >= 0)
 		dcin_online = (r & VBUS_DET) != 0;
 
 	if (dcin_online && condition) {
 		avg_curr = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_IBAT_U);
-		condition = (avg_curr & IBAT_SA_DIR_Discharging);
+		condition = (avg_curr & IBAT_SA_DIR_Discharging);		
 	}
 
-	if (conditional_max_reached(&sigterm_counter, condition, SIGNAL_CONSECUTIVE_HITS))
-		send_signal(SIGTERM);
+	if (conditional_max_reached(&emergency_counter, condition, EMERGENCY_SIGNAL_CONSECUTIVE_HITS)) {
+		printk("BD7181x-power: sending SIGTERM signal to vbat_emergency_pid\n");
+		send_signal(SIGTERM, &vbat_emergency_pid);
+	}
+	else if (conditional_max_reached(&sigterm_counter, condition, SIGNAL_CONSECUTIVE_HITS)) {
+		printk("BD7181x-power: sending SIGTERM signal to vbat_low_related_pid\n");
+		send_signal(SIGTERM, &vbat_low_related_pid);
+	}
 }
 
 static void bd7181x_send_signals(struct bd7181x_power *pwr) {
@@ -1697,6 +1713,8 @@ static void bd_work_callback(struct work_struct *work)
 	store_state(pwr);
 }
 
+#if USE_INTERRUPTIONS
+
 /**@brief bd7181x power interrupt
  * @param irq system irq
  * @param pwrsys bd7181x power device of system
@@ -1758,7 +1776,7 @@ static irqreturn_t bd7181x_vbat_interrupt(int irq, void *pwrsys)
 		return IRQ_NONE;
 
 	vbat = bd7181x_reg_read16(mfd, BD7181X_REG_VM_VBAT_U);
-	if (vbat < VBAT_LOW_TH_DVAL) {
+	if (vbat < get_lowbatt_voltage()) {
 		printk("\n~~~ VBAT TOO LOW : VBAT(5Dh+5Eh) ≦ VBAT_TH(57h+58h)...\n");
 	}
 	else {
@@ -1855,6 +1873,8 @@ static irqreturn_t bd7181x_int_11_interrupt(int irq, void *pwrsys)
 
 	return IRQ_HANDLED;
 }
+
+#endif
 
 /** @brief get property of power supply ac
  *  @param psy power supply deivce
@@ -2422,6 +2442,8 @@ static const struct power_supply_desc bd7181x_ac_desc = {
 	.get_property	= bd7181x_charger_get_property,
 };
 
+#if USE_INTERRUPTIONS
+
 static irqreturn_t bd7181x_int_buck_interrupt(int irq, void *pwrsys)
 {
 	struct device *dev = pwrsys;
@@ -2680,6 +2702,7 @@ static irqreturn_t bd7181x_int_vbat_mon4_interrupt(int irq, void *pwrsys)
 	return IRQ_HANDLED;
 }
 
+
 static int bd7181x_add_irq(struct platform_device *pdev,
 						   const char* irq_name,
 						   irq_handler_t thread_fn)
@@ -2725,6 +2748,7 @@ static int bd7181x_enable_irq(struct platform_device *pdev,
 
 	return ret;
 }
+#endif 
 
 /** @brief probe pwr device 
  * @param pdev platform deivce of bd7181x_power
@@ -2797,11 +2821,16 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 
 	// Userspace interface to register pid for signal
 	bd7181x_dir = debugfs_create_dir("bd7181x", NULL);
-	related_process_pid_file = debugfs_create_file("vbat_low_related_pid",
+	vbat_low_related_pid_file = debugfs_create_file("vbat_low_related_pid",
 			                                       0200,
 												   bd7181x_dir,
 												   NULL,
-												   &related_pid_fops);
+												   &vbat_low_related_pid_fops);
+	vbat_emergency_pid_file = debugfs_create_file("vbat_emergency_pid",
+			                                       0200,
+			                                       bd7181x_dir,
+			                                       NULL,
+			                                       &vbat_emergency_pid_fops);
 
 	return 0;
 
