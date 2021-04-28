@@ -162,18 +162,18 @@ static int get_battery_capacity(void) {
 
 static int get_lowbatt_voltage_th(void) {
 	
-	int low_voltage_th = VBAT_LOW_TH; // mAh
+	int low_voltage_th = VBAT_LOW_TH; // mV
 	if (isCross()) {
 		low_voltage_th = VBAT_LOW_TH_CROSS;
 	}
 
-	return low_voltage_th; // mAh/16
+	return low_voltage_th; // mV/16
 }
 
 static int get_lowbatt_voltage(void) {
 	
 	int low_voltage = get_lowbatt_voltage_th() * VBAT_LOW_STEP;
-	return low_voltage; // mAh	
+	return low_voltage; // mV	
 }
 
 unsigned int battery_cycle;
@@ -317,31 +317,30 @@ static int aventura_ocv_table[] = {
 	2850000
 };	
 
-// preview changed values. adapt curve.
 static int cross_ocv_table[] = {
 	4200000,
-	4191400,
-	4143958,
-	4095519,
-	4040416,
-	3995900,
-	3970586,
-	3930684,
-	3890977,
-	3856362,
-	3829257,
-	3810355,
-	3797131,
-	3782908,
-	3769684,
-	3759364,
-	3743662,
-	3722959,	//20
-	3703141,	//15
-	3681895,	//10
-	3529700,	//5
-	3429700,	//0
-	3000000	 //-5
+	4194870,
+	4119010,
+	4077064,
+	4041160,
+	4002180,
+	3960721,
+	3920908,
+	3886594,
+	3859514,
+	3838919,
+	3822260,
+	3806457,
+	3789310,
+	3770600,
+	3752420,
+	3738298,
+	3730658,
+	3726155,
+	3708454,
+	3637984,
+	3438226,
+	3000000	 
 };	/* unit 1 micro V */
 
 static int* get_ocv_table(void) {
