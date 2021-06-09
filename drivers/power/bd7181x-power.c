@@ -2907,6 +2907,7 @@ module_param(battery_cycle, uint, S_IWUSR | S_IRUGO);
 
 MODULE_PARM_DESC(battery_parameters, "battery_cycle:battery charge/discharge cycles");
 
+MODULE_SOFTDEP("pre: bd7181x");
 MODULE_AUTHOR("Tony Luo <luofc@embest-tech.com>");
 MODULE_AUTHOR("Peter Yang <yanglsh@embest-tech.com>");
 MODULE_DESCRIPTION("BD71815/BD71817 Battery Charger Power driver");

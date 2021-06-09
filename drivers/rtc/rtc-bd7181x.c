@@ -412,6 +412,7 @@ static void __exit bd7181x_rtc_exit(void)
 }
 module_exit(bd7181x_rtc_exit);
 
+MODULE_SOFTDEP("pre: bd7181x");
 MODULE_AUTHOR("Peter Yang <yanglsh@embest-tech.com>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("platform:bd7181x-rtc");
