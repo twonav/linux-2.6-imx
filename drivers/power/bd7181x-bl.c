@@ -485,6 +485,8 @@ static struct platform_driver bd7181x_backlight_driver = {
 
 module_platform_driver(bd7181x_backlight_driver);
 
+MODULE_SOFTDEP("pre: bd7181x");
+MODULE_SOFTDEP("pre: bd7181x_regulator");
 MODULE_AUTHOR("Joaquin Jimenez Lorenzo <jjimenez@twonav.com>");
 MODULE_AUTHOR("Theodoros Paschidis <tpaschidis@twonav.com>");
 MODULE_DESCRIPTION("Backlight for bd7181 PMIC");

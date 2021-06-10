@@ -448,6 +448,7 @@ config BD7181X_POWER
 config BD7181X_BACKLIGHT
         tristate "ROHM BD71815/BD71817 Backlight"
         depends on MFD_BD7181X
+        depends on REGULATOR_BD7181X
         help
           Say Y to enable support for the BD71815/BD71817 backlight.
 

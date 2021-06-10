@@ -437,6 +437,8 @@ static int bd7181x_probe(struct platform_device *pdev)
 	struct of_regulator_match *matches = NULL;
 	int i, err;
 
+	printk("bd7181x-regulator probe called");
+
 	pmic = kzalloc(sizeof(*pmic), GFP_KERNEL);
 	if (!pmic) {
 		dev_err(&pdev->dev, "Memory allocation failed for pmic\n");
@@ -548,7 +550,7 @@ static int __init bd7181x_init(void)
 {
 	return platform_driver_register(&bd7181x_driver);
 }
-subsys_initcall(bd7181x_init);
+module_init(bd7181x_init);
 
 /**@brief module deinitialize function */
 static void __exit bd7181x_cleanup(void)
@@ -557,6 +559,7 @@ static void __exit bd7181x_cleanup(void)
 }
 module_exit(bd7181x_cleanup);
 
+MODULE_SOFTDEP("pre: bd7181x");
 MODULE_AUTHOR("Tony Luo <luofc@embedinfo.com>");
 MODULE_DESCRIPTION("BD71815/BD71817 voltage regulator driver");
 MODULE_LICENSE("GPL v2");
