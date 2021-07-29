@@ -1,0 +1,166 @@
+/*
+ * Copyright (C) 2020 CompeGPS Team S.L.
+ * All rights reserved
+ *
+ */
+/dts-v1/;
+
+#include <dt-bindings/input/input.h>
+#include "imx6ull.dtsi"
+#include "imx6ul-imx6ull-var-dart-common.dtsi"
+
+/ {
+	keys {
+		compatible = "gpio-keys";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_keys>;
+
+		button_tr {
+			label = "BUTTONS.T_R";
+			gpios = <&gpio2 0 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F1>;
+			gpio-key,wakeup;
+		};
+
+		button_tl {
+			label = "BUTTONS.T_L";
+			gpios = <&gpio2 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F2>;
+			gpio-key,wakeup;
+		};
+
+		button_br {
+			label = "BUTTONS.B_R";
+			gpios = <&gpio5 1 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F4>;
+			gpio-key,wakeup;
+		};
+
+		button_bl {
+			label = "BUTTONS.B_L";
+			gpios = <&gpio5 2 GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_F3>;
+			gpio-key,wakeup;
+		};	
+	};
+
+	lcd-control {
+		compatible = "gpio-leds";
+		lcd_enable {
+			label = "lcd_enable";
+			gpios = <&gpio3 5 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+		lcd_reset {
+			label = "lcd_reset";
+			gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+	};
+
+	//TODO Review codec THEO!
+/*
+	codec: max98357a@0 {
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio1 11 0>;
+	};
+
+	sound {	
+		compatible = "fsl,imx-max98357a-audio";
+		ssi-controller = <&sai2>;
+		codec = <&codec>;
+	};
+*/
+};
+
+&lcdif {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcdif_dat
+		     &pinctrl_lcdif_ctrl>;
+	display = <&display0>;
+	status = "okay";
+
+	display0: display {
+		bits-per-pixel = <32>;
+		bus-width = <24>;
+		
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: timing0 {
+				clock-frequency =<24000000>;
+				hactive = <480>;
+				vactive = <640>;
+				hfront-porch = <10>;
+				hback-porch = <8>;
+				hsync-len = <32>;
+				vback-porch = <13>;
+				vfront-porch = <13>;
+				vsync-len = <5>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <1>;
+				pixelclk-active = <0>;
+			};
+		};
+	};
+};
+
+
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hog_1>;
+	imx6ul-evk {	
+		pinctrl_hog_2: hoggrp-2 {
+			fsl,pins = <				
+				/*-------------------------------audio switch--------------------------------*/				
+				// TODO: Review audio switch pin (THEO)!						
+				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0
+			>;			
+		};	
+		
+		pinctrl_lcdif_ctrl: lcdifctrlgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_CLK__LCDIF_CLK		0x79
+				MX6UL_PAD_LCD_ENABLE__LCDIF_ENABLE	0x79
+				MX6UL_PAD_LCD_HSYNC__LCDIF_HSYNC	0x79
+				MX6UL_PAD_LCD_VSYNC__LCDIF_VSYNC	0x79
+				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x1b0b1
+				MX6UL_PAD_LCD_DATA00__GPIO3_IO05	0x1b0b1
+			>;
+		};
+
+		pinctrl_lcdif_dat: lcdifdatgrp {
+			fsl,pins = <
+				MX6UL_PAD_LCD_DATA02__LCDIF_DATA02	0x79
+				MX6UL_PAD_LCD_DATA03__LCDIF_DATA03	0x79
+				MX6UL_PAD_LCD_DATA04__LCDIF_DATA04	0x79
+				MX6UL_PAD_LCD_DATA05__LCDIF_DATA05	0x79
+				MX6UL_PAD_LCD_DATA06__LCDIF_DATA06	0x79
+				MX6UL_PAD_LCD_DATA07__LCDIF_DATA07	0x79
+				MX6UL_PAD_LCD_DATA10__LCDIF_DATA10	0x79
+				MX6UL_PAD_LCD_DATA11__LCDIF_DATA11	0x79
+				MX6UL_PAD_LCD_DATA12__LCDIF_DATA12	0x79
+				MX6UL_PAD_LCD_DATA13__LCDIF_DATA13	0x79
+				MX6UL_PAD_LCD_DATA14__LCDIF_DATA14	0x79
+				MX6UL_PAD_LCD_DATA15__LCDIF_DATA15	0x79
+				MX6UL_PAD_LCD_DATA18__LCDIF_DATA18	0x79
+				MX6UL_PAD_LCD_DATA19__LCDIF_DATA19	0x79
+				MX6UL_PAD_LCD_DATA20__LCDIF_DATA20	0x79
+				MX6UL_PAD_LCD_DATA21__LCDIF_DATA21	0x79
+				MX6UL_PAD_LCD_DATA22__LCDIF_DATA22	0x79
+				MX6UL_PAD_LCD_DATA23__LCDIF_DATA23	0x79
+			>;
+		};
+	
+		pinctrl_keys: keys1grp {
+			fsl,pins = <
+				MX6UL_PAD_ENET1_RX_DATA1__GPIO2_IO01	0x1b0b0 
+				MX6UL_PAD_ENET1_RX_DATA0__GPIO2_IO00	0x1b0b0 
+				MX6UL_PAD_SNVS_TAMPER1__GPIO5_IO01		0x110b0
+				MX6UL_PAD_SNVS_TAMPER2__GPIO5_IO02		0x110b0				
+			>;
+		};	
+	};
+};	
+
