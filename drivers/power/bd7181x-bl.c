@@ -382,7 +382,7 @@ static int bd7181x_backlight_probe(struct platform_device *pdev)
 
 	ret = sysfs_create_group(&pdev->dev.kobj, &attr_group);
 	if (ret != 0) {
-		printk(KERN_WARNING, "bd7181x_backlight: failed to create backlight attributes\n");
+		dev_err(&pdev->dev, "bd7181x_backlight: failed to create backlight attributes\n");
 	}
 
 	/*Set backlight interface*/

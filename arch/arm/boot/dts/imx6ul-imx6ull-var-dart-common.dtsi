@@ -372,6 +372,8 @@
                         ldo3_reg: ldo3 {
                                 regulator-min-microvolt = <3300000>;
                                 regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
                         };
 
                         ldo4_reg: ldo4 {

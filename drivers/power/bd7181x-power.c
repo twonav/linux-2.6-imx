@@ -197,7 +197,7 @@ static int send_signal(int type, int* pid)
 
 	if (!pid || *pid == 0) {
 		printk("BD7181x-power: no pid related to send signal type :%d\n", type);
-		return;
+		return -EINVAL;
 	}
 
 	memset(&info, 0, sizeof(struct siginfo));
@@ -1425,6 +1425,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 {
 	struct bd7181x *mfd = pwr->mfd;
 	int new_battery_detected;
+	int cc_batcap1_th;
 
 	bd7181x_init_registers(mfd);
 
@@ -1490,7 +1491,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
 
 		/* Set Battery Capacity Monitor threshold1 as 90% */
-		int cc_batcap1_th = get_battery_capacity() * 9 / 10;
+		cc_batcap1_th = get_battery_capacity() * 9 / 10;
 		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, cc_batcap1_th);  // Interrupt CC_MON1_DET (INTB)
 		bd7181x_info(pwr->dev, "BD7181X_REG_CC_BATCAP1_TH = %d\n", cc_batcap1_th);
 
@@ -2754,7 +2755,7 @@ static int bd7181x_enable_irq(struct platform_device *pdev,
  * @retval 0 success
  * @retval negative fail
  */
-static int __init bd7181x_power_probe(struct platform_device *pdev)
+static int bd7181x_power_probe(struct platform_device *pdev)
 {
 	struct bd7181x *bd7181x = dev_get_drvdata(pdev->dev.parent);
 	struct bd7181x_power *pwr;
@@ -2792,7 +2793,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 	//ret = power_supply_register(&pdev->dev, &pwr->bat);
 	pwr->bat = power_supply_register(&pdev->dev, &bd7181x_bat_desc, NULL);
 	if (pwr->bat == NULL) {
-		dev_err(&pdev->dev, "failed to register usb: %d\n", ret);
+		dev_err(&pdev->dev, "failed to register usb\n");
 		goto fail_register_bat;
 	}
 
@@ -2801,7 +2802,7 @@ static int __init bd7181x_power_probe(struct platform_device *pdev)
 
 	pwr->ac = power_supply_register(&pdev->dev, &bd7181x_ac_desc, &charger_cfg);
 	if (pwr->ac == NULL) {
-		dev_err(&pdev->dev, "failed to register ac: %d\n", ret);
+		dev_err(&pdev->dev, "failed to register ac\n");
 		goto fail_register_ac;
 	}
 

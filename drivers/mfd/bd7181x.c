@@ -334,6 +334,15 @@ static void fix_4a_i2c_address(struct i2c_adapter *adapter) {
     printk("bd7181x: Slave scanned: 0x%04x: %d\n", addr, res);    
 }
 
+static void twonav_specific_init(struct bd7181x* bd7181x) {
+	int ret;	
+	
+	printk("bd7181x: Setting specific twonav initialization\n");
+	ret = bd7181x_clear_bits(bd7181x, BD7181X_REG_LDO_MODE1, 0x08); // enable control ldo4 by pin	
+	ret += bd7181x_set_bits(bd7181x, BD7181X_REG_GPO, 0x01); // LDU: Turn ON leds	*/
+	printk("bd7181x: twonav initialization: %s\n", (ret == 0 ? "success" : "error"));
+}
+
 /** @brief probe bd7181x device
  *  @param i2c client object provided by system
  *  @param id chip id
@@ -349,7 +358,7 @@ static int bd7181x_i2c_probe(struct i2c_client *i2c,
 	int chip_id = id->driver_data;
 	int ret = 0;
 
-	printk("bd7181x probe called\n");
+	printk("bd7181x: probe called\n");
 	fix_4a_i2c_address(i2c->adapter);
 
 	pmic_plat_data = dev_get_platdata(&i2c->dev);
@@ -358,7 +367,7 @@ static int bd7181x_i2c_probe(struct i2c_client *i2c,
 		pmic_plat_data = bd7181x_parse_dt(i2c, &chip_id);
 		of_pmic_plat_data = pmic_plat_data;
 	}
-
+	
 	if (!pmic_plat_data)
 		return -EINVAL;
 
@@ -387,9 +396,12 @@ static int bd7181x_i2c_probe(struct i2c_client *i2c,
 			      bd7181x_mfd_cells, ARRAY_SIZE(bd7181x_mfd_cells),
 			      NULL, 0,
 			      regmap_irq_get_domain(bd7181x->irq_data));
-	if (ret < 0)
-		goto err;
 
+	twonav_specific_init(bd7181x);
+
+	if (ret < 0)
+		goto err;	
+	
 	return ret;
 
 err:

@@ -80,15 +80,14 @@ static int bd7181x_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay) {
 
 static int bd7181x_led_set_current_limit(struct regulator_dev *rdev,
 					int min_uA, int max_uA)
-{
-	printk(KERN_INFO "REGULATOR bd7181x_led_set_current_limit min_uA:%d max_uA:%d\n",min_uA,max_uA);
+{	
 	struct bd7181x_pmic* pmic = rdev_get_drvdata(rdev);
-	struct bd7181x* mfd = pmic->mfd;
-	u8 addr;
-	// int id = rdev_get_id(rdev);
+	struct bd7181x* mfd = pmic->mfd;	
+	uint8_t addr = BD7181X_REG_LED_DIMM;
 	int i;
-
-	addr = BD7181X_REG_LED_DIMM;
+	// int id = rdev_get_id(rdev);
+	
+	printk(KERN_INFO "REGULATOR bd7181x_led_set_current_limit min_uA:%d max_uA:%d\n",min_uA,max_uA);
 
 	//for (i = ARRAY_SIZE(bd7181x_wled_currents) - 1 ; i >= 0; i--) { // SET CURRENT TO MAX VALUE ON 1st LOAD
 	for (i = 0; i < ARRAY_SIZE(bd7181x_wled_currents); i++) { // SET TO MIN VALUE
@@ -436,6 +435,7 @@ static int bd7181x_probe(struct platform_device *pdev)
 	struct bd7181x *bd7181x = dev_get_drvdata(pdev->dev.parent);
 	struct of_regulator_match *matches = NULL;
 	int i, err;
+	int ret;
 
 	printk("bd7181x-regulator probe called");
 
@@ -493,15 +493,7 @@ static int bd7181x_probe(struct platform_device *pdev)
 		}
 		pmic->rdev[i] = rdev;
 	}
-
-	// LDU: Twonav Specific initialization --------------------------------------------
-	bd7181x_clear_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x08); // enable control ldo4 by pin
-	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE1, 0x04); //   ldo3 by default
-	bd7181x_set_bits(pmic->mfd, BD7181X_REG_LDO_MODE2, 0x40); //   ldo3 by default	
-	bd7181x_reg_write(pmic->mfd, BD7181X_REG_LDO4_VOLT, 0x14); // Set LDO4 to 1.8V	
-	bd7181x_set_bits(pmic->mfd, BD7181X_REG_GPO, 0x01); // LDU: Turn ON leds
-	// ----------------------------------------------------------------------------
-
+	
 	err = sysfs_create_group(&pdev->dev.kobj, &gpo_attr_group);
 	if (err != 0) {
 		dev_err(&pdev->dev, "Failed to create attribute group: %d\n", err);
