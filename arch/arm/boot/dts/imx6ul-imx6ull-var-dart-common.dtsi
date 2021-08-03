@@ -20,7 +20,6 @@
 		reg = <0x80000000 0x20000000>;
 	};
 
-#ifdef WIFI
 	bd7181_bl {
 		compatible = "bd7181x-backlight";
 		regulator-name = "bl-wled";
@@ -34,7 +33,11 @@
 			default-brightness-level = <15>;
 		};
 	};
-#endif
+
+	bd7181_power {
+		compatible = "bd7181x-power";	
+		status = "okay";	
+	};
 
 	pxp_v4l2 {
 		compatible = "fsl,imx6ul-pxp-v4l2", "fsl,imx6sx-pxp-v4l2", "fsl,imx6sl-pxp-v4l2";
@@ -297,6 +300,15 @@
 
 		};
 	};
+
+	atmel_mxt_ts@4a {
+		compatible = "atmel,atmel_mxt_ts";
+		reg = <0x4a>;				
+		interrupt-parent = <&gpio2>;
+		interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
+ 	};
+
 	
 	pmic: bd7181x@4b {
 		compatible = "rohm,bd71815";
@@ -360,6 +372,8 @@
                         ldo3_reg: ldo3 {
                                 regulator-min-microvolt = <3300000>;
                                 regulator-max-microvolt = <3300000>;
+                                regulator-boot-on;
+                                regulator-always-on;
                         };
 
                         ldo4_reg: ldo4 {
@@ -385,7 +399,7 @@
                         };
 
                         wled_reg: wled {
-                                regulator-min-microamp = <10>;
+                                regulator-min-microamp = <0>;
                                 regulator-max-microamp = <25000>;
                                 /*regulator-boot-on;*/
                         };

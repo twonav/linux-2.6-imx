@@ -431,6 +431,8 @@ static int mxt_bootloader_write(struct mxt_data *data,
 
 static int mxt_lookup_bootloader_address(struct mxt_data *data, bool retry)
 {
+	return -EINVAL;
+	#if 0
 	u8 appmode = data->client->addr;
 	u8 bootloader;
 
@@ -459,6 +461,7 @@ static int mxt_lookup_bootloader_address(struct mxt_data *data, bool retry)
 
 	data->bootloader_addr = bootloader;
 	return 0;
+	#endif 
 }
 
 static int mxt_probe_bootloader(struct mxt_data *data, bool alt_address)

@@ -322,6 +322,27 @@ struct bd7181x_board *bd7181x_parse_dt(struct i2c_client *client,
 }
 #endif
 
+
+/** @brief Fix workaround for atmel device i2c
+ *  @param i2c adapter 
+*/
+static void fix_4a_i2c_address(struct i2c_adapter *adapter) {
+	const unsigned short addr = 0x004a;      
+    int res = i2c_smbus_xfer(adapter, addr, 0, I2C_SMBUS_READ, 0,
+                  I2C_SMBUS_QUICK, NULL);
+   
+    printk("bd7181x: Slave scanned: 0x%04x: %d\n", addr, res);    
+}
+
+static void twonav_specific_init(struct bd7181x* bd7181x) {
+	int ret;	
+	
+	printk("bd7181x: Setting specific twonav initialization\n");
+	ret = bd7181x_clear_bits(bd7181x, BD7181X_REG_LDO_MODE1, 0x08); // enable control ldo4 by pin	
+	ret += bd7181x_set_bits(bd7181x, BD7181X_REG_GPO, 0x01); // LDU: Turn ON leds	*/
+	printk("bd7181x: twonav initialization: %s\n", (ret == 0 ? "success" : "error"));
+}
+
 /** @brief probe bd7181x device
  *  @param i2c client object provided by system
  *  @param id chip id
@@ -337,13 +358,16 @@ static int bd7181x_i2c_probe(struct i2c_client *i2c,
 	int chip_id = id->driver_data;
 	int ret = 0;
 
+	printk("bd7181x: probe called\n");
+	fix_4a_i2c_address(i2c->adapter);
+
 	pmic_plat_data = dev_get_platdata(&i2c->dev);
 
 	if (!pmic_plat_data && i2c->dev.of_node) {
 		pmic_plat_data = bd7181x_parse_dt(i2c, &chip_id);
 		of_pmic_plat_data = pmic_plat_data;
 	}
-
+	
 	if (!pmic_plat_data)
 		return -EINVAL;
 
@@ -372,9 +396,12 @@ static int bd7181x_i2c_probe(struct i2c_client *i2c,
 			      bd7181x_mfd_cells, ARRAY_SIZE(bd7181x_mfd_cells),
 			      NULL, 0,
 			      regmap_irq_get_domain(bd7181x->irq_data));
-	if (ret < 0)
-		goto err;
 
+	twonav_specific_init(bd7181x);
+
+	if (ret < 0)
+		goto err;	
+	
 	return ret;
 
 err:
