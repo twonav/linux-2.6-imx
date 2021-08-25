@@ -9,6 +9,15 @@
 #include "imx6ull.dtsi"
 #include "imx6ul-imx6ull-var-dart-common.dtsi"
 
+&i2c2 {
+     sound: max98390@3c {
+		compatible = "maxim,max98390";
+		reg = <0x3C>;
+		maxim,temperature_calib = <1024>;
+        maxim,r0_calib = <100232>;
+     };
+};
+
 / {
 	keys {
 		compatible = "gpio-keys";
@@ -58,15 +67,14 @@
 		};
 	};
 
-	codec: max98390@0 {
+	codec: max98390@3C {
         compatible = "maxim,max98390";
         pinctrl-names = "default";
         pinctrl-0 = <&pinctrl_audio>;
-        sdmode-gpios = <&gpio1 11 0>;
     };
 
 	sound {	
-		compatible = "fsl,imx-max98390-audio";
+		compatible = "maxim,max98390";
 		ssi-controller = <&sai2>;
 		codec = <&codec>;
 	};
