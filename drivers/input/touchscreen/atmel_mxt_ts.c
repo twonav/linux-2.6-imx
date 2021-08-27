@@ -247,6 +247,18 @@ enum t100_type {
 
 #define MXT_PIXELS_PER_MM	20
 
+#define VK_Y_AREA_START 690
+#define VK_Y_POS_START 710
+#define VK_LEFT_X_POS_START 50
+#define VK_LEFT_X_POS_END 100
+#define VK_CENTER_X_POS_START 220
+#define VK_CENTER_X_POS_END 270
+#define VK_RIGHT_X_POS_START 400
+#define VK_RIGHT_X_POS_END 450
+
+static u8 virtual_key_value = 0;
+static u8 virtual_key_id = -1;
+
 struct mxt_info {
 	u8 family_id;
 	u8 variant_id;
@@ -461,7 +473,7 @@ static int mxt_lookup_bootloader_address(struct mxt_data *data, bool retry)
 
 	data->bootloader_addr = bootloader;
 	return 0;
-	#endif 
+	#endif
 }
 
 static int mxt_probe_bootloader(struct mxt_data *data, bool alt_address)
@@ -904,19 +916,62 @@ static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 	if (status & MXT_T100_DETECT) {
 		dev_dbg(dev, "[%u] type:%u x:%u y:%u a:%02X p:%02X v:%02X\n",
 			id, type, x, y, major, pressure, orientation);
+		if (y >= VK_Y_AREA_START){
+			if (y >= VK_Y_POS_START) {
+				if (virtual_key_value == 0) {
+					if ((x>=VK_LEFT_X_POS_START) &&
+						(x<=VK_LEFT_X_POS_END))
+					{
+						virtual_key_value = KEY_F5;
+					}
+					else if ((x>=VK_CENTER_X_POS_START) &&
+							 (x<=VK_CENTER_X_POS_END))
+					{
+						virtual_key_value = KEY_F6;
+					}
+					else if ((x>=VK_RIGHT_X_POS_START) &&
+							 (x<=VK_RIGHT_X_POS_END))
+					{
+						virtual_key_value = KEY_F7;
+					}
+					else {
+						virtual_key_value = 0;
+					}
+				}
+			}
+			else {
+				virtual_key_value = 0;
+			}
 
-		input_mt_report_slot_state(input_dev, tool, 1);
-		input_report_abs(input_dev, ABS_MT_POSITION_X, x);
-		input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
-		input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, major);
-		input_report_abs(input_dev, ABS_MT_PRESSURE, pressure);
-		input_report_abs(input_dev, ABS_MT_DISTANCE, distance);
-		input_report_abs(input_dev, ABS_MT_ORIENTATION, orientation);
+			if (virtual_key_value) {
+				virtual_key_id = id;
+				input_report_key(input_dev, virtual_key_value, 1);
+			}
+		}
+		else {
+			input_mt_report_slot_state(input_dev, tool, 1);
+			input_report_abs(input_dev, ABS_MT_POSITION_X, x);
+			input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
+			input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, major);
+			input_report_abs(input_dev, ABS_MT_PRESSURE, pressure);
+			input_report_abs(input_dev, ABS_MT_DISTANCE, distance);
+			input_report_abs(input_dev, ABS_MT_ORIENTATION, orientation);
+		}
+
 	} else {
 		dev_dbg(dev, "[%u] release\n", id);
 
-		/* close out slot */
-		input_mt_report_slot_state(input_dev, 0, 0);
+		if (y >= VK_Y_AREA_START){
+			if ((virtual_key_id == id) && (virtual_key_value != 0)) {
+				input_report_key(input_dev, virtual_key_value, 0);
+				virtual_key_value = 0;
+				virtual_key_id = -1;
+			}
+		}
+		else {
+			/* close out slot */
+			input_mt_report_slot_state(input_dev, 0, 0);
+		}
 	}
 
 	data->update_input = true;
@@ -1893,6 +1948,11 @@ static int mxt_initialize_input_device(struct mxt_data *data)
 	input_dev->close = mxt_input_close;
 
 	input_set_capability(input_dev, EV_KEY, BTN_TOUCH);
+	
+	// Virtual buttons capability registration
+	input_set_capability(input_dev, EV_KEY, KEY_F5);
+	input_set_capability(input_dev, EV_KEY, KEY_F6);
+	input_set_capability(input_dev, EV_KEY, KEY_F7);
 
 	/* For single touch */
 	input_set_abs_params(input_dev, ABS_X, 0, data->max_x, 0, 0);
