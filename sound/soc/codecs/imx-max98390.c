@@ -16,7 +16,7 @@
 #include <linux/i2c.h>
 #include <sound/soc.h>
 
-static int imx_max98357a_hw_params(struct snd_pcm_substream *substream,
+static int imx_max98390_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -44,37 +44,38 @@ static int imx_max98357a_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	ret = snd_soc_dai_set_sysclk(cpu_dai, 0, bclk, SND_SOC_CLOCK_OUT);
-	if (ret)
+	if (ret) {
 		dev_err(cpu_dai->dev, "failed to set sysclk\n");
+	}
 
 	return ret;
 }
 
-static struct snd_soc_ops imx_max98357a_ops = {
-	.hw_params = imx_max98357a_hw_params,
+static struct snd_soc_ops imx_max98390_ops = {
+	.hw_params = imx_max98390_hw_params,
 };
 
 static struct snd_soc_dai_link imx_dai = {
-	.name = "imx-max98357a",
-	.stream_name = "imx-max98357a",
-	.codec_dai_name = "max98357a-codec",
-	.ops = &imx_max98357a_ops,
+	.name = "imx-max98390",
+	.stream_name = "imx-max98390",
+	.codec_dai_name = "max98390-codec",
+	.ops = &imx_max98390_ops,
 };
 
 static struct snd_soc_card snd_soc_card_imx_3stack = {
-	.name = "imx-audio-max98357a",
+	.name = "imx-audio-max98390",
 	.dai_link = &imx_dai,
 	.num_links = 1,
 };
 
-static int imx_max98357a_probe(struct platform_device *pdev)
+static int imx_max98390_probe(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = &snd_soc_card_imx_3stack;
 	struct device_node *ssi_np, *np = pdev->dev.of_node;
 	struct platform_device *ssi_pdev;
 	struct device_node *fm_np = NULL;
 	int ret;
-	
+
 	ssi_np = of_parse_phandle(np, "ssi-controller", 0);
 	if (!ssi_np) {
 		dev_err(&pdev->dev, "phandle missing or invalid\n");
@@ -99,31 +100,32 @@ static int imx_max98357a_probe(struct platform_device *pdev)
 	card->dai_link->cpu_dai_name = dev_name(&ssi_pdev->dev);
 	card->dai_link->platform_of_node = ssi_np;
 	card->dai_link->codec_of_node = fm_np;
-	card->dai_link->codec_dai_name = "max98357a-dai-driver";
-	
-	platform_set_drvdata(pdev, card);
-	
-	ret = snd_soc_register_card(card);
-	if (ret)
-		dev_err(&pdev->dev, "Failed to register card: %d\n", ret);
-	else
-		dev_info(&pdev->dev, "sound card successfully registered \n");
+	card->dai_link->codec_dai_name = "max98390-aif1";
 
-	
-end:
-	
-	if (ssi_np)
-		of_node_put(ssi_np);
-	
-	if (fm_np)
-	{
-		of_node_put(fm_np);	
+	platform_set_drvdata(pdev, card);
+
+	ret = snd_soc_register_card(card);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register card: %d\n", ret);
 	}
-	
+	else {
+		dev_info(&pdev->dev, "sound card successfully registered \n");
+	}
+
+end:
+
+	if (ssi_np) {
+		of_node_put(ssi_np);
+	}
+
+	if (fm_np) {
+		of_node_put(fm_np);
+	}
+
 	return ret;
 }
 
-static int imx_max98357a_remove(struct platform_device *pdev)
+static int imx_max98390_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = &snd_soc_card_imx_3stack;
 
@@ -132,27 +134,27 @@ static int imx_max98357a_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id imx_max98357a_dt_ids[] = {
-	{ .compatible = "fsl,imx-max98357a-audio", },
+static const struct of_device_id imx_max98390_dt_ids[] = {
+	{ .compatible = "fsl,imx-max98390-audio", },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, imx_max98357a_dt_ids);
+MODULE_DEVICE_TABLE(of, imx_max98390_dt_ids);
 
-static struct platform_driver imx_max98357a_driver = {
+static struct platform_driver imx_max98390_driver = {
 	.driver = {
-		.name = "imx-max98357a-audio",
+		.name = "imx-max98390-audio",
 		.owner = THIS_MODULE,
 		.pm = &snd_soc_pm_ops,
-		.of_match_table = imx_max98357a_dt_ids,
+		.of_match_table = imx_max98390_dt_ids,
 	},
-	.probe = imx_max98357a_probe,
-	.remove = imx_max98357a_remove,
+	.probe = imx_max98390_probe,
+	.remove = imx_max98390_remove,
 };
 
-module_platform_driver(imx_max98357a_driver);
+module_platform_driver(imx_max98390_driver);
 
 /* Module information */
-MODULE_AUTHOR("Freescale Semiconductor, Inc.");
-MODULE_DESCRIPTION("ALSA SoC i.MX6 max98357a");
+MODULE_AUTHOR("tpaschidis@twonav.com");
+MODULE_DESCRIPTION("Adaptation of imx-max98357a ,ALSA SoC i.MX6 max98390");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:imx-audio-max98357a");
+MODULE_ALIAS("platform:imx-audio-max98390");

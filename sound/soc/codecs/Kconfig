@@ -467,6 +467,12 @@ config SND_SOC_MAX98357A
 config SND_SOC_IMX_MAX98357A
        tristate "MAX98357A Audio Codec Link"
 
+config SND_SOC_MAX98390
+       tristate "MAX98390 Audio Codec"
+
+config SND_SOC_IMX_MAX98390
+       tristate "MAX98390 Audio Codec Link"
+
 config SND_SOC_MAX98925
        tristate
 
