@@ -7,10 +7,10 @@
 #define WIFI
 #define EMMC
 
-#include "crossxl-2018-common.dtsi"
+#include "terra-2018-common.dtsi"
 
 / {
-	model = "twonav-crossxl-2018";
+	model = "twonav-terra-2018";
 	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
 };
 
