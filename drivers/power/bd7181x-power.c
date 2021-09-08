@@ -67,8 +67,6 @@
 
 //VBAT Low voltage detection Threshold
 #define VBAT_LOW_STEP		16
-#define VBAT_LOW_TH			0x00BF // 0x00BF (191) * 16mV = 3.056V
-#define VBAT_LOW_TH_CROSS	0x00D6 // 0x00D6 (214) * 16mV = 3.4297V
 
 //#define RS_30mOHM		/* we have 10mOhm */
 
@@ -112,66 +110,174 @@
 #define BAT_DET_OK_USE_OCV 1
 #define BAT_DET_OK_USE_CV_SA 2
 
+#define OCV_TABLE_SIZE		23
+
 static char *hwtype = "twonav-trail-2018";
 module_param(hwtype, charp, 0644);
 
-static bool isTrail2(void) {
-	return ((strcmp(hwtype, "twonav-trail-2018") == 0) ||
-			(strcmp(hwtype, "os-trail-2018") == 0));
-}
+struct tn_power_values_st {
+	int term_current;
+	int capacity;
+	int low_voltage_th;
+	int ocv_table[OCV_TABLE_SIZE];
+};
 
-static bool isAventura2(void) {
-	return ((strcmp(hwtype, "twonav-aventura-2018") == 0) || 
-			(strcmp(hwtype, "os-aventura-2018") == 0));
-}
+static const struct tn_power_values_st TN_POWER_CROSS = {
+	.term_current = 0x06,
+	.capacity = 3300,
+	.low_voltage_th = 0x00D6, // 0x00D6 (214) * 16mV = 3.4297V,
+		.ocv_table = {
+			4200000,
+			4194870,
+			4119010,
+			4077064,
+			4041160,
+			4002180,
+			3960721,
+			3920908,
+			3886594,
+			3859514,
+			3838919,
+			3822260,
+			3806457,
+			3789310,
+			3770600,
+			3752420,
+			3738298,
+			3730658,
+			3726155,
+			3708454,
+			3637984,
+			3438226,
+			3000000,
+	}
+};
 
-static bool isCross(void) {
-	return ((strcmp(hwtype, "twonav-crosstop-2018") == 0) ||
-			(strcmp(hwtype, "os-crosstop-2018") == 0));
+
+static const struct tn_power_values_st TN_POWER_TRAIL = {
+	.term_current = 0x05,
+	.capacity = 4000,
+	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.ocv_table = {
+			4200000,
+			4165665,
+			4136689,
+			4069218,
+			4008334,
+			3953394,
+			3903754,
+			3858772,
+			3817803,
+			3780204,
+			3745332,
+			3712543,
+			3681193,
+			3650640,
+			3620240,
+			3589350,
+			3557325,
+			3523523,
+			3487300,
+			3448012,
+			3405017,
+			3357671,
+			3305330,
+	}
+};
+
+static const struct tn_power_values_st TN_POWER_AVENTURA = {
+	.term_current = 0x06,
+	.capacity = 6000,
+	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.ocv_table = {	
+			4200000,
+			4191700,
+			4133100,
+			4078000,
+			4040400,
+			3993600,
+			3959200,
+			3927400,
+			3891600,
+			3860500,
+			3829400,
+			3810400,
+			3798600,
+			3786900,
+			3775100,
+			3763300,
+			3744900,
+			3726300,
+			3698300,
+			3671200,
+			3635200,
+			3444900,
+			2850000, 
+	}		
+};
+
+//TODO: Check Terra Power config
+static const struct tn_power_values_st TN_POWER_TERRA = {
+	.term_current = 0x05,
+	.capacity = 2300,
+	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.ocv_table = {	
+			4200000,
+			4194870,
+			4119010,
+			4077064,
+			4041160,
+			4002180,
+			3960721,
+			3920908,
+			3886594,
+			3859514,
+			3838919,
+			3822260,
+			3806457,
+			3789310,
+			3770600,
+			3752420,
+			3738298,
+			3730658,
+			3726155,
+			3708454,
+			3637984,
+			3438226,
+			3000000, 
+	}		
+};				
+
+static struct tn_power_values_st tn_power_values;
+
+static void twonav_identify_power_type(void) { 
+	if(strstr(hwtype, "trail") != NULL) {
+		tn_power_values = TN_POWER_TRAIL;
+	}
+	else if(strstr(hwtype, "crosstop") != NULL) {
+		tn_power_values = TN_POWER_CROSS;		
+	}	
+	else if(strstr(hwtype, "terra") != NULL) {
+		tn_power_values = TN_POWER_TERRA;		
+	}
+	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
+		tn_power_values = TN_POWER_AVENTURA;		
+	}
 }
 
 static int get_iterm_current(void) {
-	int term_current = 0x02;
-	if (isAventura2()) {
-		term_current = 0x06; // 0.01C typical value 6000*0.01=60mA -> 100mA
-	}
-	else if (isTrail2()) {
-		term_current = 0x05; // 0.01C typical value 4000*0.01=40mA -> 50mA
-	}
-	else if (isCross()) {
-		term_current = 0x06; // 0.02C typical value 3300*0.02=66mA -> 100mA
-	}
-	return term_current;
+	return tn_power_values.term_current;
 }
 
 static int get_battery_capacity(void) {
-	int capacity = 4000; // mAh
-	if (isAventura2()) {
-		capacity = 6000;
-	}
-	else if (isTrail2()) {
-		capacity = 4000;
-	}
-	else if (isCross()) {
-		capacity = 3300;
-	}
-	return mAh_A10s(capacity);
+	return mAh_A10s(tn_power_values.capacity);
 }
-
-
 
 static int get_lowbatt_voltage_th(void) {
-	
-	int low_voltage_th = VBAT_LOW_TH; // mV
-	if (isCross()) {
-		low_voltage_th = VBAT_LOW_TH_CROSS;
-	}
-
-	return low_voltage_th; // mV/16
+	return tn_power_values.low_voltage_th;	
 }
 
-static int get_lowbatt_voltage(void) {
-	
+static int get_lowbatt_voltage(void) {	
 	int low_voltage = get_lowbatt_voltage_th() * VBAT_LOW_STEP;
 	return low_voltage; // mV	
 }
@@ -264,97 +370,8 @@ static const struct file_operations vbat_emergency_pid_fops = {
     .write = write_vbat_emergency_pid,
 };
 
-
-static int trail_ocv_table[] = {
-	4200000,
-	4165665,
-	4136689,
-	4069218,
-	4008334,
-	3953394,
-	3903754,
-	3858772,
-	3817803,
-	3780204,
-	3745332,
-	3712543,
-	3681193,
-	3650640,
-	3620240,
-	3589350,
-	3557325,
-	3523523,
-	3487300,
-	3448012,
-	3405017,
-	3357671,
-	3305330
-};
-
-static int aventura_ocv_table[] = {
-	4200000,
-	4191700,
-	4133100,
-	4078000,
-	4040400,
-	3993600,
-	3959200,
-	3927400,
-	3891600,
-	3860500,
-	3829400,
-	3810400,
-	3798600,
-	3786900,
-	3775100,
-	3763300,
-	3744900,
-	3726300,
-	3698300,
-	3671200,
-	3635200,
-	3444900,
-	2850000
-};	
-
-static int cross_ocv_table[] = {
-	4200000,
-	4194870,
-	4119010,
-	4077064,
-	4041160,
-	4002180,
-	3960721,
-	3920908,
-	3886594,
-	3859514,
-	3838919,
-	3822260,
-	3806457,
-	3789310,
-	3770600,
-	3752420,
-	3738298,
-	3730658,
-	3726155,
-	3708454,
-	3637984,
-	3438226,
-	3000000	 
-};	/* unit 1 micro V */
-
 static int* get_ocv_table(void) {
-	if (isAventura2()) {
-		return aventura_ocv_table;
-	}
-	else if (isTrail2()) {
-		return trail_ocv_table;
-	}
-	else if (isCross()) {
-		return cross_ocv_table;
-	}
-
-	return NULL;
+	return tn_power_values.ocv_table;
 }
 
 static int get_ocv_max_voltage(void) {
@@ -1191,7 +1208,7 @@ int bd7181x_get_ocv(struct bd7181x_power* pwr, int dsoc) {
  * @return OCV
  */
 static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
-	int ocv_table_load[23]; // HARDCODED VALUE 23 - 23 samples in vector soc
+	int ocv_table_load[OCV_TABLE_SIZE]; // HARDCODED VALUE 23 - 23 samples in vector soc
 
 	pwr->soc = pwr->soc_norm;
 
@@ -1210,14 +1227,14 @@ static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
 			dsoc = mod_coulomb_cnt * 1000 /  pwr->full_cap;
 			bd7181x_info(pwr->dev, "%s() dsoc = %d\n", __func__, dsoc);
 			ocv = bd7181x_get_ocv(pwr, dsoc);
-			for (i = 1; i < 23; i++) {
+			for (i = 1; i < OCV_TABLE_SIZE; i++) {
 				ocv_table_load[i] = get_ocv_table()[i] - (ocv - pwr->vsys_min);
 				if (ocv_table_load[i] <= MIN_VOLTAGE) {
 					bd7181x_info(pwr->dev, "%s() ocv_table_load[%d] = %d\n", __func__, i, ocv_table_load[i]);
 					break;
 				}
 			}
-			if (i < 23) {
+			if (i < OCV_TABLE_SIZE) {
 				int j;
 				int dv = (ocv_table_load[i-1] - ocv_table_load[i]) / 5;
 				int lost_cap2;
@@ -2774,6 +2791,7 @@ static int bd7181x_power_probe(struct platform_device *pdev)
 	if (battery_cycle <= 0) {
 		battery_cycle = 0;
 	}
+
 	dev_err(pwr->dev, "XXXXXX battery_cycle = %d\n", battery_cycle);
 
 	/* If the product often power up/down and the power down time is long, the Coulomb Counter may have a drift. */
@@ -2786,6 +2804,8 @@ static int bd7181x_power_probe(struct platform_device *pdev)
 	/* (4) Must use this code with "Stop Coulomb Counter" code in bd7181x_power_remove() function */
 	/* Start Coulomb Counter */
 	/* bd7181x_set_bits(pwr->mfd, BD7181x_REG_CC_CTRL, CCNTENB); */
+
+	twonav_identify_power_type();
 
 	bd7181x_init_hardware(pwr);
 
