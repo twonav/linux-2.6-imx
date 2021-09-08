@@ -110,6 +110,8 @@
 #define BAT_DET_OK_USE_OCV 1
 #define BAT_DET_OK_USE_CV_SA 2
 
+#define OCV_TABLE_SIZE		23
+
 static char *hwtype = "twonav-trail-2018";
 module_param(hwtype, charp, 0644);
 
@@ -117,7 +119,7 @@ struct tn_power_values_st {
 	int term_current;
 	int capacity;
 	int low_voltage_th;
-	int ocv_table[];
+	int ocv_table[OCV_TABLE_SIZE];
 };
 
 static const struct tn_power_values_st TN_POWER_CROSS = {
@@ -1206,7 +1208,7 @@ int bd7181x_get_ocv(struct bd7181x_power* pwr, int dsoc) {
  * @return OCV
  */
 static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
-	int ocv_table_load[23]; // HARDCODED VALUE 23 - 23 samples in vector soc
+	int ocv_table_load[OCV_TABLE_SIZE]; // HARDCODED VALUE 23 - 23 samples in vector soc
 
 	pwr->soc = pwr->soc_norm;
 
@@ -1225,14 +1227,14 @@ static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
 			dsoc = mod_coulomb_cnt * 1000 /  pwr->full_cap;
 			bd7181x_info(pwr->dev, "%s() dsoc = %d\n", __func__, dsoc);
 			ocv = bd7181x_get_ocv(pwr, dsoc);
-			for (i = 1; i < 23; i++) {
+			for (i = 1; i < OCV_TABLE_SIZE; i++) {
 				ocv_table_load[i] = get_ocv_table()[i] - (ocv - pwr->vsys_min);
 				if (ocv_table_load[i] <= MIN_VOLTAGE) {
 					bd7181x_info(pwr->dev, "%s() ocv_table_load[%d] = %d\n", __func__, i, ocv_table_load[i]);
 					break;
 				}
 			}
-			if (i < 23) {
+			if (i < OCV_TABLE_SIZE) {
 				int j;
 				int dv = (ocv_table_load[i-1] - ocv_table_load[i]) / 5;
 				int lost_cap2;
