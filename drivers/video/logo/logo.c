@@ -36,6 +36,10 @@ static bool isTwoNavTrail2(void) {
 	return (strcmp(hwtype, "twonav-trail-2018") == 0);
 }
 
+static bool isTwoNavTerra(void) {
+	return (strcmp(hwtype, "twonav-terra-2018") == 0);
+}
+
 static bool isOSTrail2(void) {
 	return (strcmp(hwtype, "os-trail-2018") == 0);
 }
@@ -153,6 +157,9 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		}
 		else if (isTwoNavCross()) {
 			logo = &logo_twonav_crosstop_clut224;
+		}
+		else if(isTwoNavTerra()) { // TODO
+			logo = &logo_twonav_trail_aventura_clut224;
 		}
 	}
 	return logo;
