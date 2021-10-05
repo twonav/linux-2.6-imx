@@ -10,7 +10,7 @@
 #include "imx6ul-imx6ull-var-dart-common.dtsi"
 
 &i2c2 {
-     codec: max98390@3c {
+     codec0: max98390@3c {
 		compatible = "maxim,max98390";
 		reg = <0x3C>;
 		maxim,temperature_calib = <1024>;
@@ -77,10 +77,21 @@
 		};
 	};
 
-	sound {
+	codec1: max98357a@0 {
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio1 11 0>;
+	};
+
+	sound0: sound@0 {
 		compatible = "fsl,imx-max98390-audio";
 		ssi-controller = <&sai2>;
-		codec = <&codec>;
+		codec = <&codec0>;
+	};
+
+	sound1: sound@1 {
+		compatible = "fsl,imx-max98357a-audio";
+		ssi-controller = <&sai2>;
+		codec = <&codec1>;
 	};
 
 };
