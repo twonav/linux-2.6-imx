@@ -9,14 +9,14 @@
 #include "imx6ull.dtsi"
 #include "imx6ul-imx6ull-var-dart-common.dtsi"
 
-/*&i2c2 {
-     sound: max98390@3c {
+&i2c2 {
+     codec0: max98390@3c {
 		compatible = "maxim,max98390";
 		reg = <0x3C>;
 		maxim,temperature_calib = <1024>;
         maxim,r0_calib = <100232>;
      };
-};*/
+};
 
 / {
 	keys {
@@ -65,19 +65,35 @@
 			gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
+		resetb {
+			label = "max98390_resetb";
+			gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
+		amp_switch {
+			label = "max98390_amp_switch";
+			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
+			default-state = "on";
+		};
 	};
 
-	/*codec: max98390@3C {
-        compatible = "maxim,max98390";
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_audio>;
-    };
+	codec1: max98357a@0 {
+		compatible = "maxim,max98357a";
+		sdmode-gpios = <&gpio1 11 0>;
+	};
 
-	sound {	
-		compatible = "maxim,max98390";
+	sound0: sound@0 {
+		compatible = "fsl,imx-max98390-audio";
 		ssi-controller = <&sai2>;
-		codec = <&codec>;
-	};*/
+		codec = <&codec0>;
+	};
+
+	sound1: sound@1 {
+		compatible = "fsl,imx-max98357a-audio";
+		ssi-controller = <&sai2>;
+		codec = <&codec1>;
+	};
+
 };
 
 &lcdif {
@@ -120,18 +136,11 @@
 	imx6ul-evk {	
 		pinctrl_hog_2: hoggrp-2 {
 			fsl,pins = <				
-				/*-------------------------------audio switch--------------------------------*/										
-				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0
+				/*-------------------------------audio--------------------------------*/										
+				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0 /* AMP_SWITCH */
+				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01		0x1b0b1 /* RESETB */
 			>;			
 		};
-
-		pinctrl_audio: audiogrp {
-			fsl,pins = <
-				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01		0x1b0b1
-				MX6UL_PAD_GPIO1_IO02__GPIO1_IO02		0x1b0b1
-				MX6UL_PAD_GPIO1_IO03__GPIO1_IO03		0x1b0b1
-			>;
-		};	
 		
 		pinctrl_lcdif_ctrl: lcdifctrlgrp {
 			fsl,pins = <
