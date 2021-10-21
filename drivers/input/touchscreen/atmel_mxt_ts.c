@@ -249,12 +249,12 @@ enum t100_type {
 
 #define VK_Y_AREA_START 690
 #define VK_Y_POS_START 710
-#define VK_LEFT_X_POS_START 50
-#define VK_LEFT_X_POS_END 100
-#define VK_CENTER_X_POS_START 220
-#define VK_CENTER_X_POS_END 270
-#define VK_RIGHT_X_POS_START 400
-#define VK_RIGHT_X_POS_END 450
+#define VK_LEFT_X_POS_START 10
+#define VK_LEFT_X_POS_END 140
+#define VK_CENTER_X_POS_START 170
+#define VK_CENTER_X_POS_END 310
+#define VK_RIGHT_X_POS_START 340
+#define VK_RIGHT_X_POS_END 470
 
 /* Virtual key tracking variables*/
 #define FINGER_ID_ARRAY_SIZE 3
@@ -855,7 +855,7 @@ static int add_finger(const int id) {
 static void remove_finger(const int id) {
 	int i;
 	for (i = 0; i < FINGER_ID_ARRAY_SIZE; i++) {
-		if (finger_key_id_array[i] == -id) {
+		if (finger_key_id_array[i] == id) {
 			finger_key_id_array[i] = ID_EMPTY;
 		}
 	}
