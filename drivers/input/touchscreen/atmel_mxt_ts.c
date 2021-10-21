@@ -249,15 +249,21 @@ enum t100_type {
 
 #define VK_Y_AREA_START 690
 #define VK_Y_POS_START 710
-#define VK_LEFT_X_POS_START 50
-#define VK_LEFT_X_POS_END 100
-#define VK_CENTER_X_POS_START 220
-#define VK_CENTER_X_POS_END 270
-#define VK_RIGHT_X_POS_START 400
-#define VK_RIGHT_X_POS_END 450
+#define VK_LEFT_X_POS_START 10
+#define VK_LEFT_X_POS_END 140
+#define VK_CENTER_X_POS_START 170
+#define VK_CENTER_X_POS_END 310
+#define VK_RIGHT_X_POS_START 340
+#define VK_RIGHT_X_POS_END 470
 
-static u8 virtual_key_value = 0;
-static u8 virtual_key_id = -1;
+/* Virtual key tracking variables*/
+#define FINGER_ID_ARRAY_SIZE 3
+#define VIRTUAL_KEY_VALUE_NONE -1
+#define ID_EMPTY -1
+static int virtual_key_value = VIRTUAL_KEY_VALUE_NONE;
+static int virtual_key_id = ID_EMPTY;
+static int finger_key_id_array[FINGER_ID_ARRAY_SIZE] = {ID_EMPTY,ID_EMPTY,ID_EMPTY};
+
 
 struct mxt_info {
 	u8 family_id;
@@ -826,6 +832,56 @@ static void mxt_proc_t9_message(struct mxt_data *data, u8 *message)
 	data->update_input = true;
 }
 
+static int is_finger(const int id) {
+	int i;
+	for (i = 0; i < FINGER_ID_ARRAY_SIZE; i++) {
+		if (finger_key_id_array[i] == id)
+			return 1;
+	}
+	return 0;
+}
+
+static int add_finger(const int id) {
+	int i;
+	for (i = 0; i < FINGER_ID_ARRAY_SIZE; i++) {
+		if (finger_key_id_array[i] == ID_EMPTY) {
+			finger_key_id_array[i] = id;
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static void remove_finger(const int id) {
+	int i;
+	for (i = 0; i < FINGER_ID_ARRAY_SIZE; i++) {
+		if (finger_key_id_array[i] == id) {
+			finger_key_id_array[i] = ID_EMPTY;
+		}
+	}
+}
+
+static void get_virtual_key_value(int x, int y) {
+	if ((x>=VK_LEFT_X_POS_START) &&
+		(x<=VK_LEFT_X_POS_END))
+	{
+		virtual_key_value = KEY_F5;
+	}
+	else if ((x>=VK_CENTER_X_POS_START) &&
+			 (x<=VK_CENTER_X_POS_END))
+	{
+		virtual_key_value = KEY_F6;
+	}
+	else if ((x>=VK_RIGHT_X_POS_START) &&
+			 (x<=VK_RIGHT_X_POS_END))
+	{
+		virtual_key_value = KEY_F7;
+	}
+	else {
+		virtual_key_value = VIRTUAL_KEY_VALUE_NONE;
+	}
+}
+
 static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 {
 	struct device *dev = &data->client->dev;
@@ -917,60 +973,54 @@ static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 		dev_dbg(dev, "[%u] type:%u x:%u y:%u a:%02X p:%02X v:%02X\n",
 			id, type, x, y, major, pressure, orientation);
 		if (y >= VK_Y_AREA_START){
-			if (y >= VK_Y_POS_START) {
-				if (virtual_key_value == 0) {
-					if ((x>=VK_LEFT_X_POS_START) &&
-						(x<=VK_LEFT_X_POS_END))
-					{
-						virtual_key_value = KEY_F5;
-					}
-					else if ((x>=VK_CENTER_X_POS_START) &&
-							 (x<=VK_CENTER_X_POS_END))
-					{
-						virtual_key_value = KEY_F6;
-					}
-					else if ((x>=VK_RIGHT_X_POS_START) &&
-							 (x<=VK_RIGHT_X_POS_END))
-					{
-						virtual_key_value = KEY_F7;
-					}
-					else {
-						virtual_key_value = 0;
+			if (is_finger(id) == false) {
+				if (y >= VK_Y_POS_START) {
+					if (virtual_key_value == VIRTUAL_KEY_VALUE_NONE) {
+						get_virtual_key_value(x,y);
 					}
 				}
-			}
-			else {
-				virtual_key_value = 0;
-			}
 
-			if (virtual_key_value) {
-				virtual_key_id = id;
-				input_report_key(input_dev, virtual_key_value, 1);
+				if (virtual_key_id != id) {
+					virtual_key_id = id;
+				}
+				if (virtual_key_value != VIRTUAL_KEY_VALUE_NONE) {
+					input_report_key(input_dev, virtual_key_value, 1);
+				}
 			}
 		}
 		else {
-			input_mt_report_slot_state(input_dev, tool, 1);
-			input_report_abs(input_dev, ABS_MT_POSITION_X, x);
-			input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
-			input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, major);
-			input_report_abs(input_dev, ABS_MT_PRESSURE, pressure);
-			input_report_abs(input_dev, ABS_MT_DISTANCE, distance);
-			input_report_abs(input_dev, ABS_MT_ORIENTATION, orientation);
-		}
-
-	} else {
-		dev_dbg(dev, "[%u] release\n", id);
-
-		if (y >= VK_Y_AREA_START){
-			if ((virtual_key_id == id) && (virtual_key_value != 0)) {
-				input_report_key(input_dev, virtual_key_value, 0);
-				virtual_key_value = 0;
-				virtual_key_id = -1;
+			if (virtual_key_id == id) {
+				if (virtual_key_value  != VIRTUAL_KEY_VALUE_NONE) {
+					input_report_key(input_dev, virtual_key_value, 1);
+				}
 			}
+			else {
+				if (is_finger(id) == false) {
+					add_finger(id);
+				}
+				input_mt_report_slot_state(input_dev, tool, 1);
+				input_report_abs(input_dev, ABS_MT_POSITION_X, x);
+				input_report_abs(input_dev, ABS_MT_POSITION_Y, y);
+				input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, major);
+				input_report_abs(input_dev, ABS_MT_PRESSURE, pressure);
+				input_report_abs(input_dev, ABS_MT_DISTANCE, distance);
+				input_report_abs(input_dev, ABS_MT_ORIENTATION, orientation);
+			}
+		}
+	}
+	else {
+		dev_dbg(dev, "[%u] release\n", id);
+		if ((virtual_key_id == id)) {
+			if (virtual_key_value != VIRTUAL_KEY_VALUE_NONE) {
+				input_report_key(input_dev, virtual_key_value, 0);
+			}
+			virtual_key_value = VIRTUAL_KEY_VALUE_NONE;
+			virtual_key_id = ID_EMPTY;
 		}
 		else {
 			/* close out slot */
 			input_mt_report_slot_state(input_dev, 0, 0);
+			remove_finger(id);
 		}
 	}
 
