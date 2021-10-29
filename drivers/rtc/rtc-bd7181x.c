@@ -128,6 +128,17 @@ static int bd7181x_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	struct bd7181x *mfd = dev_get_drvdata(dev->parent);
 	int ret;
 
+	// Prevent RTC to be set on a date after Jan 19 2038 due to the
+	// known 32bit time_t upper limit. Any date above will cause an overflow
+	// which will result on a year < 2000 which is not supported by this rtc
+	int size_of_time = sizeof(time_t);
+	if (size_of_time == 4) {
+		if (tm->tm_year >= 38) {
+			printk(KERN_ERR "RTC: year out of bounds, reset to 2000\n");
+			tm->tm_year = 0;
+		}
+	}
+
 	rtc_time_to_hw(rtc_data, tm);
 
 	/* update all the time registers in one shot */
