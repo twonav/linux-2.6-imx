@@ -133,7 +133,7 @@ static int bd7181x_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	// which will result on a year < 2000 which is not supported by this rtc
 	int size_of_time = sizeof(time_t);
 	if (size_of_time == 4) {
-		if (tm->tm_year >= 38) {
+		if ((tm->tm_year < 100) || (tm->tm_year >= 138)) {
 			printk(KERN_ERR "RTC: year out of bounds, reset to 2000\n");
 			tm->tm_year = 0;
 		}
