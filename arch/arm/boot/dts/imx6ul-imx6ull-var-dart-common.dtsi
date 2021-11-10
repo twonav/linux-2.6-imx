@@ -35,8 +35,8 @@
 	};
 
 	bd7181_power {
-		compatible = "bd7181x-power";	
-		status = "okay";	
+		compatible = "bd7181x-power";
+		status = "okay";
 	};
 
 	pxp_v4l2 {
@@ -71,12 +71,12 @@
 		};
 	};
 
-	leds-gpio {
+	init-gpios-common {
 		compatible = "gpio-leds";
 		notifications_led {
 			label = "blue";
 			gpios = <&gpio1 7 GPIO_ACTIVE_HIGH>;
-		};		
+		};
 	};
 };
 
@@ -245,8 +245,8 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
-	
-	tsc@24 {
+
+	cyttsp5@24 {
 		compatible = "cy,cyttsp5_i2c_adapter";
 		reg = <0x24>;
 		interrupt-parent = <&gpio2>;
@@ -297,7 +297,6 @@
 				cy,slots_max = <32>;
 
 			};
-
 		};
 	};
 
@@ -305,11 +304,9 @@
 		compatible = "atmel,atmel_mxt_ts";
 		reg = <0x4a>;				
 		interrupt-parent = <&gpio2>;
-		interrupts = <2 IRQ_TYPE_LEVEL_LOW>;
-		reset-gpios = <&gpio2 7 GPIO_ACTIVE_LOW>;
- 	};
+		interrupts = <2 IRQ_TYPE_LEVEL_LOW>;		
+ 	};   
 
-	
 	pmic: bd7181x@4b {
 		compatible = "rohm,bd71815";
 		reg = <0x4b>;

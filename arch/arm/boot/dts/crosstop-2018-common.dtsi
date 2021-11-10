@@ -44,7 +44,7 @@
 		};	
 	};
 
-	lcd-control {
+	init-gpios {
 		compatible = "gpio-leds";
 		lcd_enable {
 			label = "lcd_enable";
@@ -56,7 +56,6 @@
 			gpios = <&gpio2 14 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
         };
-
 	};
 };
 
