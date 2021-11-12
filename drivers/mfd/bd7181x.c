@@ -322,18 +322,6 @@ struct bd7181x_board *bd7181x_parse_dt(struct i2c_client *client,
 }
 #endif
 
-
-/** @brief Fix workaround for atmel device i2c
- *  @param i2c adapter 
-*/
-static void fix_4a_i2c_address(struct i2c_adapter *adapter) {
-	const unsigned short addr = 0x004a;      
-    int res = i2c_smbus_xfer(adapter, addr, 0, I2C_SMBUS_READ, 0,
-                  I2C_SMBUS_QUICK, NULL);
-   
-    printk("bd7181x: Slave scanned: 0x%04x: %d\n", addr, res);    
-}
-
 static void twonav_specific_init(struct bd7181x* bd7181x) {
 	int ret;	
 	
@@ -359,7 +347,6 @@ static int bd7181x_i2c_probe(struct i2c_client *i2c,
 	int ret = 0;
 
 	printk("bd7181x: probe called\n");
-	fix_4a_i2c_address(i2c->adapter);
 
 	pmic_plat_data = dev_get_platdata(&i2c->dev);
 
