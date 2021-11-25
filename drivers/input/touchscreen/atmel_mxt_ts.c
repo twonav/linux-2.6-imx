@@ -973,28 +973,20 @@ static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 		dev_dbg(dev, "[%u] type:%u x:%u y:%u a:%02X p:%02X v:%02X\n",
 			id, type, x, y, major, pressure, orientation);
 		if (y >= VK_Y_AREA_START){
-			if (is_finger(id) == false) {
+			if (is_finger(id) == false) { // ignore fingers in this area
 				if (y >= VK_Y_POS_START) {
-					if (virtual_key_value == VIRTUAL_KEY_VALUE_NONE) {
+					if (virtual_key_id == ID_EMPTY) { // allow only one virtual key
 						get_virtual_key_value(x,y);
+						if (virtual_key_value != VIRTUAL_KEY_VALUE_NONE) {
+							virtual_key_id = id;
+							input_report_key(input_dev, virtual_key_value, 1);
+						}
 					}
-				}
-
-				if (virtual_key_id != id) {
-					virtual_key_id = id;
-				}
-				if (virtual_key_value != VIRTUAL_KEY_VALUE_NONE) {
-					input_report_key(input_dev, virtual_key_value, 1);
 				}
 			}
 		}
 		else {
-			if (virtual_key_id == id) {
-				if (virtual_key_value  != VIRTUAL_KEY_VALUE_NONE) {
-					input_report_key(input_dev, virtual_key_value, 1);
-				}
-			}
-			else {
+			if (virtual_key_id != id) { // ignore Virtual Keys in this area
 				if (is_finger(id) == false) {
 					add_finger(id);
 				}
