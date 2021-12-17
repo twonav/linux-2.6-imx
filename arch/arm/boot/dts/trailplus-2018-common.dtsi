@@ -9,4 +9,4 @@
 #include "imx6ull.dtsi"
 #include "imx6ul-imx6ull-var-dart-common.dtsi"
 #include "stonehenge-big-common.dtsi"
-#include "wireless-ti1835.dtsi"
+#include "wireless-murata-sd8987.dtsi"
