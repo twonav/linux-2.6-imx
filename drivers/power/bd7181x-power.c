@@ -250,7 +250,10 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 static struct tn_power_values_st tn_power_values;
 
 static void twonav_identify_power_type(void) { 
-	if(strstr(hwtype, "trail") != NULL) {
+	if(strstr(hwtype, "trailplus") != NULL) {
+		tn_power_values = TN_POWER_TRAIL;
+	}
+	else if(strstr(hwtype, "trail") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
 	}
 	else if(strstr(hwtype, "crosstop") != NULL) {
