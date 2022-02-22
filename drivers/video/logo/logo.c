@@ -48,6 +48,10 @@ static bool isTwoNavCross(void) {
 	return (strcmp(hwtype, "twonav-crosstop-2018") == 0);
 }
 
+static bool isTwoNavTrailPlus(void) {
+	return (strcmp(hwtype, "twonav-trailplus-2018") == 0);
+}
+
 /*
  * Logos are located in the initdata, and will be freed in kernel_init.
  * Use late_init to mark the logos as freed to prevent any further use.
@@ -147,18 +151,15 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 #endif
 #ifdef CONFIG_LOGO_FLASHER_SMALL_CLUT224
 		logo = &logo_flasher_small_clut224;
-#endif
-
-		if (isTwoNavAventura2() || isTwoNavTrail2()) {
-			logo = &logo_twonav_trail_aventura_clut224;
+#endif		
+		if (isTwoNavCross()) {
+			logo = &logo_twonav_crosstop_clut224;
 		}
 		else if (isOSAventura2() || isOSTrail2()) {
 			logo = &logo_os_trail_aventura_clut224;
 		}
-		else if (isTwoNavCross()) {
-			logo = &logo_twonav_crosstop_clut224;
-		}
-		else if(isTwoNavTerra()) { // TODO
+		else { 
+			// terra, aventura, trail, trailplus
 			logo = &logo_twonav_trail_aventura_clut224;
 		}
 	}
