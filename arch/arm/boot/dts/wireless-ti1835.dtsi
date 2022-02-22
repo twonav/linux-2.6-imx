@@ -36,11 +36,11 @@
 			gpios = <&gpio1 29 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
 		};
-		/*bt_enable { TODO
+		bt_enable {
 			label = "bt_enable";
 			gpios = <&gpio1 30 GPIO_ACTIVE_HIGH>;
 			default-state = "off";
-		};*/
+		};
 	};
 };
 
