@@ -264,6 +264,16 @@ static void twonav_identify_power_type(void) {
 	}
 }
 
+static int replacable_battery = 0;
+
+static int supports_replacable_battery(void) {
+	int replacable_battery = 0;
+	if(strstr(hwtype, "aventura") != NULL) {
+		replacable_battery = 1;
+	}
+	return replacable_battery;
+}
+
 static int get_iterm_current(void) {
 	return tn_power_values.term_current;
 }
@@ -784,21 +794,19 @@ static int bd7181x_calib_voltage(struct bd7181x_power* pwr, int* ocv) {
 	int r, curr, volt;
 
 	bd7181x_get_vbat_curr(pwr, &volt, &curr);
-
 	r = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
-	if (r >= 0) { // charging
-		if (curr > 0) {
-			// voltage increment caused by battery inner resistor
-			if (r == 3) {
-				volt -= VBAT_FAST_CHARGE_DIFF * 1000;
-			}
-			else if (r == 2) {
-				volt -= VBAT_PRE_CHARGE_DIFF * 1000;
-			}
+	if (curr > 0) {
+		// INFO: make an OCV estimation while charging is difficult
+		// because voltage increment depends on actual state of charge
+		if (r == 3) {
+			volt -= VBAT_FAST_CHARGE_DIFF * 1000;
 		}
-		else {
-			volt += VBAT_OCV_DIFF * 1000;
+		else if (r == 2) {
+			volt -= VBAT_PRE_CHARGE_DIFF * 1000;
 		}
+	}
+	else {
+		volt += VBAT_OCV_DIFF * 1000;
 	}
 
 	*ocv = volt;
@@ -1402,29 +1410,32 @@ static int detect_new_battery(struct bd7181x *mfd) {
 		new_battery_detected = BAT_DET_OK_USE_OCV;
 	}
 	else {
-		/* If the battery is replaced "fast" (<25secs) the RTC may still stay alive due to charged capacitors
-		   and very low power consumption leading to the OCV registers not beiing actualized. So we try to detect
-		   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
-		*/
-		int charge_state_on, charge_state_off, volt_on, volt_off, volt_diff;
-		charge_state_on =  bd7181x_reg_read(mfd, BD7181X_REG_CHG_STATE);
-		if (charge_state_on > 0) charge_state_on = 1;
-		charge_state_off = bd7181x_reg_read(mfd, BD7181X_CHG_STATE_END);
-		if (charge_state_off > 0) charge_state_off = 1;
-		volt_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U);
-		volt_off = bd7181x_reg_read16(mfd, BD7181X_VBAT_END);
-		volt_diff = abs(volt_on - volt_off);
+		replacable_battery = supports_replacable_battery();
+		if(replacable_battery) {
+			/* If the battery is replaced "fast" (<25secs) the RTC may still stay alive due to charged capacitors
+			   and very low power consumption leading to the OCV registers not beiing actualized. So we try to detect
+			   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
+			*/
+			int charge_state_on, charge_state_off, volt_on, volt_off, volt_diff;
+			charge_state_on =  bd7181x_reg_read(mfd, BD7181X_REG_CHG_STATE);
+			if (charge_state_on > 0) charge_state_on = 1;
+			charge_state_off = bd7181x_reg_read(mfd, BD7181X_CHG_STATE_END);
+			if (charge_state_off > 0) charge_state_off = 1;
+			volt_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U);
+			volt_off = bd7181x_reg_read16(mfd, BD7181X_VBAT_END);
+			volt_diff = abs(volt_on - volt_off);
 
-		if (charge_state_on == charge_state_off) {
-			if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
-				printk(KERN_ERR "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
-				new_battery_detected = BAT_DET_OK_USE_CV_SA;
+			if (charge_state_on == charge_state_off) {
+				if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
+					printk(KERN_ERR "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
+					new_battery_detected = BAT_DET_OK_USE_CV_SA;
+				}
 			}
-		}
-		else {
-			if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
-				printk(KERN_ERR "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
-				new_battery_detected = BAT_DET_OK_USE_CV_SA;
+			else {
+				if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
+					printk(KERN_ERR "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
+					new_battery_detected = BAT_DET_OK_USE_CV_SA;
+				}
 			}
 		}
 	}
@@ -1726,7 +1737,8 @@ static void bd_work_callback(struct work_struct *work)
 	}
 
 	bd7181x_send_signals(pwr);
-	store_state(pwr);
+	if (replacable_battery)
+		store_state(pwr);
 }
 
 #if USE_INTERRUPTIONS
@@ -2790,8 +2802,6 @@ static int bd7181x_power_probe(struct platform_device *pdev)
 	if (battery_cycle <= 0) {
 		battery_cycle = 0;
 	}
-
-	dev_err(pwr->dev, "XXXXXX battery_cycle = %d\n", battery_cycle);
 
 	/* If the product often power up/down and the power down time is long, the Coulomb Counter may have a drift. */
 	/* If so, it may be better accuracy to enable Coulomb Counter using following commented out code */
