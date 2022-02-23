@@ -68,6 +68,11 @@
 			gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
+		amp_switch {
+			label = "amp_switch";
+			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
 	};
 
 	codec: max98357a@0 {
