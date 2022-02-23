@@ -70,14 +70,14 @@
 			default-state = "on";
 		};
 		resetb {
-			label = "max98390_resetb";
+			label = "resetb";
 			gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
 		amp_switch {
-			label = "max98390_amp_switch";
+			label = "amp_switch";
 			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
+			default-state = "off";
 		};
 	};
 
