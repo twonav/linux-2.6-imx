@@ -1116,9 +1116,6 @@ static void remove_finger(const int id) {
                }
        }
        mutex_unlock(&fingerlist_lock);
-	   if (i==FINGER_ID_ARRAY_SIZE){
-		   printk(KERN_ERR "XXX THIS ID:%d IS NOT A FINGER !!!!\n",id);
-	   }
 }
 
 static int get_virtual_key_value(int x, int y) {
