@@ -3,7 +3,7 @@
  *  @brief This file contains functions for 11n Aggregation.
  *
  *
- *  Copyright 2014-2020 NXP
+ *  Copyright 2008-2021 NXP
  *
  *  This software file (the File) is distributed by NXP
  *  under the terms of the GNU General Public License Version 2, June 1991
@@ -56,37 +56,33 @@ Change log:
  *
  *  @return         Final packet size
  */
-static int
-wlan_11n_form_amsdu_pkt(pmlan_adapter pmadapter, t_u8 *amsdu_buf, t_u8 *data,
-			int pkt_len, int *pad)
+static int wlan_11n_form_amsdu_pkt(pmlan_adapter pmadapter, t_u8 *amsdu_buf,
+				   t_u8 *data, int pkt_len, int *pad)
 {
 	int dt_offset, amsdu_buf_offset;
 	Rfc1042Hdr_t snap = {
-		0xaa,		/* LLC DSAP */
-		0xaa,		/* LLC SSAP */
-		0x03,		/* LLC CTRL */
-		{0x00, 0x00, 0x00},	/* SNAP OUI */
-		0x0000		/* SNAP type */
-			/*
-			 * This field will be overwritten
-			 * later with ethertype
-			 */
+		0xaa, /* LLC DSAP */
+		0xaa, /* LLC SSAP */
+		0x03, /* LLC CTRL */
+		{0x00, 0x00, 0x00}, /* SNAP OUI */
+		0x0000 /* SNAP type */
+		/*
+		 * This field will be overwritten
+		 * later with ethertype
+		 */
 	};
 
 	ENTER();
 
-	memcpy_ext(pmadapter, amsdu_buf, data, (MLAN_MAC_ADDR_LENGTH) * 2,
-		   (MLAN_MAC_ADDR_LENGTH) * 2);
-	dt_offset = amsdu_buf_offset = (MLAN_MAC_ADDR_LENGTH) * 2;
+	memcpy_ext(pmadapter, amsdu_buf, data, (MLAN_MAC_ADDR_LENGTH)*2,
+		   (MLAN_MAC_ADDR_LENGTH)*2);
+	dt_offset = amsdu_buf_offset = (MLAN_MAC_ADDR_LENGTH)*2;
 
 	snap.snap_type = *(t_u16 *)(data + dt_offset);
 	dt_offset += sizeof(t_u16);
-	*(t_u16 *)(amsdu_buf + amsdu_buf_offset) = mlan_htons(pkt_len +
-							      LLC_SNAP_LEN -
-							      ((2 *
-								MLAN_MAC_ADDR_LENGTH)
-							       +
-							       sizeof(t_u16)));
+	*(t_u16 *)(amsdu_buf + amsdu_buf_offset) =
+		mlan_htons(pkt_len + LLC_SNAP_LEN -
+			   ((2 * MLAN_MAC_ADDR_LENGTH) + sizeof(t_u16)));
 	amsdu_buf_offset += sizeof(t_u16);
 	memcpy_ext(pmadapter, amsdu_buf + amsdu_buf_offset, &snap, LLC_SNAP_LEN,
 		   LLC_SNAP_LEN);
@@ -94,9 +90,9 @@ wlan_11n_form_amsdu_pkt(pmlan_adapter pmadapter, t_u8 *amsdu_buf, t_u8 *data,
 
 	memcpy_ext(pmadapter, amsdu_buf + amsdu_buf_offset, data + dt_offset,
 		   pkt_len - dt_offset, pkt_len - dt_offset);
-	*pad = (((pkt_len + LLC_SNAP_LEN) & 3)) ? (4 -
-						   (((pkt_len +
-						      LLC_SNAP_LEN)) & 3)) : 0;
+	*pad = (((pkt_len + LLC_SNAP_LEN) & 3)) ?
+		       (4 - (((pkt_len + LLC_SNAP_LEN)) & 3)) :
+		       0;
 
 	LEAVE();
 	return pkt_len + LLC_SNAP_LEN + *pad;
@@ -110,8 +106,7 @@ wlan_11n_form_amsdu_pkt(pmlan_adapter pmadapter, t_u8 *amsdu_buf, t_u8 *data,
  *
  *  @return		N/A
  */
-static void
-wlan_11n_form_amsdu_txpd(mlan_private *priv, mlan_buffer *mbuf)
+static void wlan_11n_form_amsdu_txpd(mlan_private *priv, mlan_buffer *mbuf)
 {
 	TxPD *ptx_pd;
 	mlan_adapter *pmadapter = priv->adapter;
@@ -132,6 +127,8 @@ wlan_11n_form_amsdu_txpd(mlan_private *priv, mlan_buffer *mbuf)
 	/* Always zero as the data is followed by TxPD */
 	ptx_pd->tx_pkt_offset = sizeof(TxPD);
 	ptx_pd->tx_pkt_type = PKT_TYPE_AMSDU;
+	if (mbuf->flags & MLAN_BUF_FLAG_TDLS)
+		ptx_pd->flags = MRVDRV_TxPD_FLAGS_TDLS_PACKET;
 	if (ptx_pd->tx_control == 0)
 		/* TxCtrl set by user or default */
 		ptx_pd->tx_control = priv->pkt_tx_ctrl;
@@ -150,8 +147,8 @@ wlan_11n_form_amsdu_txpd(mlan_private *priv, mlan_buffer *mbuf)
  *
  *  @return         N/A
  */
-static INLINE void
-wlan_11n_update_pktlen_amsdu_txpd(mlan_private *priv, pmlan_buffer mbuf)
+static INLINE void wlan_11n_update_pktlen_amsdu_txpd(mlan_private *priv,
+						     pmlan_buffer mbuf)
 {
 	TxPD *ptx_pd;
 	ENTER();
@@ -179,8 +176,7 @@ wlan_11n_update_pktlen_amsdu_txpd(mlan_private *priv, pmlan_buffer mbuf)
  *
  *  @return			Number of packets
  */
-static int
-wlan_11n_get_num_aggrpkts(t_u8 *data, int total_pkt_len)
+static int wlan_11n_get_num_aggrpkts(t_u8 *data, int total_pkt_len)
 {
 	int pkt_count = 0, pkt_len, pad;
 	t_u8 hdr_len = sizeof(Eth803Hdr_t);
@@ -188,15 +184,16 @@ wlan_11n_get_num_aggrpkts(t_u8 *data, int total_pkt_len)
 	ENTER();
 	while (total_pkt_len >= hdr_len) {
 		/* Length will be in network format, change it to host */
-		pkt_len = mlan_ntohs((*(t_u16 *)(data + (2 *
-							 MLAN_MAC_ADDR_LENGTH))));
+		pkt_len = mlan_ntohs(
+			(*(t_u16 *)(data + (2 * MLAN_MAC_ADDR_LENGTH))));
 		if (pkt_len > total_pkt_len) {
 			PRINTM(MERROR, "Error in packet length.\n");
 			break;
 		}
 
 		pad = (((pkt_len + sizeof(Eth803Hdr_t)) & 3)) ?
-			(4 - ((pkt_len + sizeof(Eth803Hdr_t)) & 3)) : 0;
+			      (4 - ((pkt_len + sizeof(Eth803Hdr_t)) & 3)) :
+			      0;
 		data += pkt_len + pad + sizeof(Eth803Hdr_t);
 		total_pkt_len -= pkt_len + pad + sizeof(Eth803Hdr_t);
 		++pkt_count;
@@ -217,8 +214,7 @@ wlan_11n_get_num_aggrpkts(t_u8 *data, int total_pkt_len)
  *
  *  @return		MLAN_STATUS_SUCCESS --success, otherwise fail
  */
-mlan_status
-wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
+mlan_status wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
 {
 	t_u16 pkt_len;
 	int total_pkt_len;
@@ -229,11 +225,18 @@ wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
 	mlan_status ret = MLAN_STATUS_FAILURE;
 	RxPacketHdr_t *prx_pkt;
 	mlan_buffer *daggr_mbuf = MNULL;
-	t_u8 rfc1042_eth_hdr[MLAN_MAC_ADDR_LENGTH] = { 0xaa, 0xaa, 0x03,
-		0x00, 0x00, 0x00
-	};
+	t_u8 rfc1042_eth_hdr[MLAN_MAC_ADDR_LENGTH] = {0xaa, 0xaa, 0x03,
+						      0x00, 0x00, 0x00};
 	t_u8 hdr_len = sizeof(Eth803Hdr_t);
-	t_u8 eapol_type[2] = { 0x88, 0x8e };
+	t_u8 eapol_type[2] = {0x88, 0x8e};
+	t_u8 tdls_action_type[2] = {0x89, 0x0d};
+	t_u32 in_ts_sec, in_ts_usec;
+	t_u32 out_ts_sec, out_ts_usec;
+	t_u32 in_copy_ts_sec, in_copy_ts_usec;
+	t_u32 out_copy_ts_sec, out_copy_ts_usec;
+	pmlan_callbacks pcb = &pmadapter->callbacks;
+	t_u32 copy_delay = 0;
+	t_u32 delay = 0;
 
 	ENTER();
 
@@ -250,26 +253,40 @@ wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
 		    MLAN_USB_AGGR_MODE_NUM) {
 			max_rx_data_size *=
 				MAX(MLAN_USB_MAX_PKT_SIZE,
-				    pmadapter->pcard_usb->usb_rx_deaggr.
-				    aggr_ctrl.aggr_align);
+				    pmadapter->pcard_usb->usb_rx_deaggr
+					    .aggr_ctrl.aggr_align);
 			max_rx_data_size =
 				MAX(max_rx_data_size, MLAN_RX_DATA_BUF_SIZE);
 		}
 	}
 #endif
-	if (total_pkt_len > max_rx_data_size) {
-		PRINTM(MERROR, "Total packet length greater than tx buffer"
-		       " size %d\n", total_pkt_len);
+	if (total_pkt_len > (int)max_rx_data_size) {
+		PRINTM(MERROR,
+		       "Total packet length greater than tx buffer"
+		       " size %d\n",
+		       total_pkt_len);
 		goto done;
 	}
-
+	if (pmadapter->tp_state_on)
+		pcb->moal_get_system_time(pmadapter->pmoal_handle, &in_ts_sec,
+					  &in_ts_usec);
 	pmbuf->use_count = wlan_11n_get_num_aggrpkts(data, total_pkt_len);
+
+	// rx_trace 7
+	if (pmadapter->tp_state_on) {
+		pmadapter->callbacks.moal_tp_accounting(
+			pmadapter->pmoal_handle, pmbuf, 7 /*RX_DROP_P3*/);
+		pmadapter->callbacks.moal_tp_accounting_rx_param(
+			pmadapter->pmoal_handle, 4, pmbuf->use_count);
+	}
+	if (pmadapter->tp_state_drop_point == 7 /*RX_DROP_P3*/)
+		goto done;
 
 	while (total_pkt_len >= hdr_len) {
 		prx_pkt = (RxPacketHdr_t *)data;
 		/* Length will be in network format, change it to host */
-		pkt_len = mlan_ntohs((*(t_u16 *)(data + (2 *
-							 MLAN_MAC_ADDR_LENGTH))));
+		pkt_len = mlan_ntohs(
+			(*(t_u16 *)(data + (2 * MLAN_MAC_ADDR_LENGTH))));
 		if (pkt_len > total_pkt_len) {
 			PRINTM(MERROR,
 			       "Error in packet length: total_pkt_len = %d, pkt_len = %d\n",
@@ -279,25 +296,25 @@ wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
 		}
 
 		pad = (((pkt_len + sizeof(Eth803Hdr_t)) & 3)) ?
-			(4 - ((pkt_len + sizeof(Eth803Hdr_t)) & 3)) : 0;
+			      (4 - ((pkt_len + sizeof(Eth803Hdr_t)) & 3)) :
+			      0;
 
 		total_pkt_len -= pkt_len + pad + sizeof(Eth803Hdr_t);
 
-		if (memcmp(pmadapter, &prx_pkt->rfc1042_hdr,
-			   rfc1042_eth_hdr, sizeof(rfc1042_eth_hdr)) == 0) {
-			memmove(pmadapter, data + LLC_SNAP_LEN, data, (2 *
-								       MLAN_MAC_ADDR_LENGTH));
+		if (memcmp(pmadapter, &prx_pkt->rfc1042_hdr, rfc1042_eth_hdr,
+			   sizeof(rfc1042_eth_hdr)) == 0) {
+			memmove(pmadapter, data + LLC_SNAP_LEN, data,
+				(2 * MLAN_MAC_ADDR_LENGTH));
 			data += LLC_SNAP_LEN;
 			pkt_len += sizeof(Eth803Hdr_t) - LLC_SNAP_LEN;
 		} else {
-			*(t_u16 *)(data + (2 * MLAN_MAC_ADDR_LENGTH))
-				= (t_u16)0;
+			*(t_u16 *)(data + (2 * MLAN_MAC_ADDR_LENGTH)) =
+				(t_u16)0;
 			pkt_len += sizeof(Eth803Hdr_t);
 		}
-		daggr_mbuf =
-			wlan_alloc_mlan_buffer(pmadapter,
-					       pkt_len + MLAN_NET_IP_ALIGN, 0,
-					       MOAL_ALLOC_MLAN_BUFFER);
+		daggr_mbuf = wlan_alloc_mlan_buffer(pmadapter,
+						    pkt_len + MLAN_NET_IP_ALIGN,
+						    0, MOAL_ALLOC_MLAN_BUFFER);
 		if (daggr_mbuf == MNULL) {
 			PRINTM(MERROR, "Error allocating daggr mlan_buffer\n");
 			ret = MLAN_STATUS_FAILURE;
@@ -309,39 +326,68 @@ wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
 		daggr_mbuf->data_len = pkt_len;
 		daggr_mbuf->in_ts_sec = pmbuf->in_ts_sec;
 		daggr_mbuf->in_ts_usec = pmbuf->in_ts_usec;
+		daggr_mbuf->extra_ts_sec = pmbuf->extra_ts_sec;
+		daggr_mbuf->extra_ts_usec = pmbuf->extra_ts_usec;
 		daggr_mbuf->pparent = pmbuf;
 		daggr_mbuf->priority = pmbuf->priority;
+		if (pmadapter->tp_state_on)
+			pcb->moal_get_system_time(pmadapter->pmoal_handle,
+						  &in_copy_ts_sec,
+						  &in_copy_ts_usec);
 		memcpy_ext(pmadapter,
 			   daggr_mbuf->pbuf + daggr_mbuf->data_offset, data,
 			   pkt_len, daggr_mbuf->data_len);
-
+		if (pmadapter->tp_state_on) {
+			pcb->moal_get_system_time(pmadapter->pmoal_handle,
+						  &out_copy_ts_sec,
+						  &out_copy_ts_usec);
+			copy_delay +=
+				(t_s32)(out_copy_ts_sec - in_copy_ts_sec) *
+				1000000;
+			copy_delay +=
+				(t_s32)(out_copy_ts_usec - in_copy_ts_usec);
+		}
 #ifdef UAP_SUPPORT
 		if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_UAP) {
 			ret = wlan_uap_recv_packet(priv, daggr_mbuf);
 		} else {
 #endif /* UAP_SUPPORT */
-		/** send EAPOL from AMSDU pkt to firmware */
+			/** send EAPOL from AMSDU pkt to firmware */
 			if (priv->sec_info.ewpa_enabled &&
-			    (!memcmp
-			     (pmadapter,
-			      daggr_mbuf->pbuf + daggr_mbuf->data_offset +
-			      MLAN_ETHER_PKT_TYPE_OFFSET, eapol_type,
-			      sizeof(eapol_type)))) {
-				ret = wlan_prepare_cmd(priv,
-						       HostCmd_CMD_802_11_EAPOL_PKT,
-						       0, 0, MNULL, daggr_mbuf);
+			    (!memcmp(pmadapter,
+				     daggr_mbuf->pbuf +
+					     daggr_mbuf->data_offset +
+					     MLAN_ETHER_PKT_TYPE_OFFSET,
+				     eapol_type, sizeof(eapol_type)))) {
+				ret = wlan_prepare_cmd(
+					priv, HostCmd_CMD_802_11_EAPOL_PKT, 0,
+					0, MNULL, daggr_mbuf);
 				if (ret == MLAN_STATUS_SUCCESS)
-					wlan_recv_event(priv,
-							MLAN_EVENT_ID_DRV_DEFER_HANDLING,
-							MNULL);
+					wlan_recv_event(
+						priv,
+						MLAN_EVENT_ID_DRV_DEFER_HANDLING,
+						MNULL);
 				wlan_free_mlan_buffer(pmadapter, daggr_mbuf);
 				data += pkt_len + pad;
 				continue;
 			}
+			/**process tdls packet*/
+			if (!memcmp(pmadapter,
+				    daggr_mbuf->pbuf + daggr_mbuf->data_offset +
+					    MLAN_ETHER_PKT_TYPE_OFFSET,
+				    tdls_action_type,
+				    sizeof(tdls_action_type))) {
+				PRINTM(MEVENT,
+				       "Recevie AMSDU TDLS action frame\n");
+				wlan_process_tdls_action_frame(
+					priv,
+					daggr_mbuf->pbuf +
+						daggr_mbuf->data_offset,
+					daggr_mbuf->data_len);
+			}
 
-			ret = pmadapter->callbacks.moal_recv_packet(pmadapter->
-								    pmoal_handle,
-								    daggr_mbuf);
+			ret = pmadapter->callbacks.moal_recv_packet(
+				pmadapter->pmoal_handle, daggr_mbuf);
 #ifdef UAP_SUPPORT
 		}
 #endif /* UAP_SUPPORT */
@@ -361,11 +407,19 @@ wlan_11n_deaggregate_pkt(mlan_private *priv, pmlan_buffer pmbuf)
 
 		data += pkt_len + pad;
 	}
+	if (pmadapter->tp_state_on) {
+		pcb->moal_get_system_time(pmadapter->pmoal_handle, &out_ts_sec,
+					  &out_ts_usec);
+		delay += (t_s32)(out_ts_sec - in_ts_sec) * 1000000;
+		delay += (t_s32)(out_ts_usec - in_ts_usec);
+		pmadapter->callbacks.moal_amsdu_tp_accounting(
+			pmadapter->pmoal_handle, delay, copy_delay);
+	}
 
 done:
 	priv->msdu_in_rx_amsdu_cnt += pmbuf->use_count;
 	priv->amsdu_rx_cnt++;
-    /** we should free the aggr buffer after deaggr */
+	/** we should free the aggr buffer after deaggr */
 	pmadapter->ops.data_complete(pmadapter, pmbuf, ret);
 	LEAVE();
 	return ret;
@@ -383,9 +437,8 @@ done:
  *
  *  @return     Final packet size or MLAN_STATUS_FAILURE
  */
-int
-wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
-		       int headroom, int ptrindex)
+int wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
+			   int headroom, int ptrindex)
 {
 	int pkt_size = 0;
 	pmlan_adapter pmadapter = priv->adapter;
@@ -401,23 +454,22 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 	TxPD *ptx_pd = MNULL;
 #endif
 	t_u32 max_amsdu_size = MIN(pra_list->max_amsdu, pmadapter->tx_buf_size);
+	t_u32 msdu_in_tx_amsdu_cnt = 0;
 	ENTER();
 
 	PRINTM(MDAT_D, "Handling Aggr packet\n");
 
-	pmbuf_src =
-		(pmlan_buffer)util_peek_list(pmadapter->pmoal_handle,
-					     &pra_list->buf_head, MNULL, MNULL);
+	pmbuf_src = (pmlan_buffer)util_peek_list(
+		pmadapter->pmoal_handle, &pra_list->buf_head, MNULL, MNULL);
 	if (pmbuf_src) {
 		pmbuf_aggr = wlan_alloc_mlan_buffer(pmadapter,
 						    pmadapter->tx_buf_size, 0,
 						    MOAL_MALLOC_BUFFER);
 		if (!pmbuf_aggr) {
 			PRINTM(MERROR, "Error allocating mlan_buffer\n");
-			pmadapter->callbacks.moal_spin_unlock(pmadapter->
-							      pmoal_handle,
-							      priv->wmm.
-							      ra_list_spinlock);
+			pmadapter->callbacks.moal_spin_unlock(
+				pmadapter->pmoal_handle,
+				priv->wmm.ra_list_spinlock);
 			LEAVE();
 			return MLAN_STATUS_FAILURE;
 		}
@@ -430,6 +482,8 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 		pmbuf_aggr->data_offset = 0;
 		pmbuf_aggr->in_ts_sec = pmbuf_src->in_ts_sec;
 		pmbuf_aggr->in_ts_usec = pmbuf_src->in_ts_usec;
+		if (pmbuf_src->flags & MLAN_BUF_FLAG_TDLS)
+			pmbuf_aggr->flags |= MLAN_BUF_FLAG_TDLS;
 		if (pmbuf_src->flags & MLAN_BUF_FLAG_TCP_ACK)
 			pmbuf_aggr->flags |= MLAN_BUF_FLAG_TCP_ACK;
 
@@ -442,19 +496,21 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 #endif
 		priv->msdu_in_tx_amsdu_cnt++;
 	} else {
-		pmadapter->callbacks.moal_spin_unlock(pmadapter->pmoal_handle,
-						      priv->wmm.
-						      ra_list_spinlock);
+		pmadapter->callbacks.moal_spin_unlock(
+			pmadapter->pmoal_handle, priv->wmm.ra_list_spinlock);
 		goto exit;
 	}
 
-	while (pmbuf_src && ((pkt_size + (pmbuf_src->data_len + LLC_SNAP_LEN)
-			      + headroom) <= max_amsdu_size)) {
-
-		pmbuf_src = (pmlan_buffer)
-			util_dequeue_list(pmadapter->pmoal_handle,
-					  &pra_list->buf_head, MNULL, MNULL);
-
+	while (pmbuf_src && ((pkt_size + (pmbuf_src->data_len + LLC_SNAP_LEN) +
+			      headroom) <= max_amsdu_size)) {
+		pmbuf_src =
+			(pmlan_buffer)util_dequeue_list(pmadapter->pmoal_handle,
+							&pra_list->buf_head,
+							MNULL, MNULL);
+		/* Collects TP statistics */
+		if (pmadapter->tp_state_on && (pkt_size > sizeof(TxPD)))
+			pmadapter->callbacks.moal_tp_accounting(
+				pmadapter->pmoal_handle, pmbuf_src->pdesc, 3);
 		pra_list->total_pkts--;
 
 		/* decrement for every PDU taken from the list */
@@ -462,18 +518,14 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 		util_scalar_decrement(pmadapter->pmoal_handle,
 				      &priv->wmm.tx_pkts_queued, MNULL, MNULL);
 
-		pmadapter->callbacks.moal_spin_unlock(pmadapter->pmoal_handle,
-						      priv->wmm.
-						      ra_list_spinlock);
+		pmadapter->callbacks.moal_spin_unlock(
+			pmadapter->pmoal_handle, priv->wmm.ra_list_spinlock);
 
 		if (pmbuf_src) {
-			pkt_size += wlan_11n_form_amsdu_pkt(pmadapter,
-							    (data + pkt_size),
-							    pmbuf_src->pbuf +
-							    pmbuf_src->
-							    data_offset,
-							    pmbuf_src->data_len,
-							    &pad);
+			pkt_size += wlan_11n_form_amsdu_pkt(
+				pmadapter, (data + pkt_size),
+				pmbuf_src->pbuf + pmbuf_src->data_offset,
+				pmbuf_src->data_len, &pad);
 
 			DBG_HEXDUMP(MDAT_D, "pmbuf_src", pmbuf_src,
 				    sizeof(mlan_buffer));
@@ -485,10 +537,9 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 						    priv->wmm.ra_list_spinlock);
 
 		if (!wlan_is_ralist_valid(priv, pra_list, ptrindex)) {
-			pmadapter->callbacks.moal_spin_unlock(pmadapter->
-							      pmoal_handle,
-							      priv->wmm.
-							      ra_list_spinlock);
+			pmadapter->callbacks.moal_spin_unlock(
+				pmadapter->pmoal_handle,
+				priv->wmm.ra_list_spinlock);
 			LEAVE();
 			return MLAN_STATUS_FAILURE;
 		}
@@ -498,6 +549,7 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 						     &pra_list->buf_head, MNULL,
 						     MNULL);
 		priv->msdu_in_tx_amsdu_cnt++;
+		msdu_in_tx_amsdu_cnt++;
 	}
 
 	pmadapter->callbacks.moal_spin_unlock(pmadapter->pmoal_handle,
@@ -509,11 +561,23 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 	wlan_11n_update_pktlen_amsdu_txpd(priv, pmbuf_aggr);
 	pmbuf_aggr->data_len += headroom;
 	pmbuf_aggr->pbuf = data - headroom;
-	tx_param.next_pkt_len = ((pmbuf_src) ?
-				 pmbuf_src->data_len + sizeof(TxPD) : 0);
+	tx_param.next_pkt_len =
+		((pmbuf_src) ? pmbuf_src->data_len + sizeof(TxPD) : 0);
+	/* Collects TP statistics */
+	if (pmadapter->tp_state_on) {
+		pmadapter->callbacks.moal_tp_accounting(pmadapter->pmoal_handle,
+							pmbuf_aggr, 4);
+		pmadapter->callbacks.moal_tp_accounting_rx_param(
+			pmadapter->pmoal_handle, 5, msdu_in_tx_amsdu_cnt);
+	}
 
-	ret = pmadapter->ops.host_to_card(priv, MLAN_TYPE_DATA,
-					  pmbuf_aggr, &tx_param);
+	/* Drop Tx packets at drop point 4 */
+	if (pmadapter->tp_state_drop_point == 4) {
+		wlan_write_data_complete(pmadapter, pmbuf_aggr, ret);
+		goto exit;
+	} else
+		ret = pmadapter->ops.host_to_card(priv, MLAN_TYPE_DATA,
+						  pmbuf_aggr, &tx_param);
 	switch (ret) {
 #ifdef USB
 	case MLAN_STATUS_PRESOURCE:
@@ -525,10 +589,9 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 						    priv->wmm.ra_list_spinlock);
 
 		if (!wlan_is_ralist_valid(priv, pra_list, ptrindex)) {
-			pmadapter->callbacks.moal_spin_unlock(pmadapter->
-							      pmoal_handle,
-							      priv->wmm.
-							      ra_list_spinlock);
+			pmadapter->callbacks.moal_spin_unlock(
+				pmadapter->pmoal_handle,
+				priv->wmm.ra_list_spinlock);
 			pmbuf_aggr->status_code = MLAN_ERROR_PKT_INVALID;
 			wlan_write_data_complete(pmadapter, pmbuf_aggr,
 						 MLAN_STATUS_FAILURE);
@@ -557,9 +620,8 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 		util_scalar_increment(pmadapter->pmoal_handle,
 				      &priv->wmm.tx_pkts_queued, MNULL, MNULL);
 		pmbuf_aggr->flags |= MLAN_BUF_FLAG_REQUEUED_PKT;
-		pmadapter->callbacks.moal_spin_unlock(pmadapter->pmoal_handle,
-						      priv->wmm.
-						      ra_list_spinlock);
+		pmadapter->callbacks.moal_spin_unlock(
+			pmadapter->pmoal_handle, priv->wmm.ra_list_spinlock);
 		PRINTM(MINFO, "MLAN_STATUS_RESOURCE is returned\n");
 		pmbuf_aggr->status_code = MLAN_ERROR_PKT_INVALID;
 		break;
@@ -584,11 +646,10 @@ wlan_11n_aggregate_pkt(mlan_private *priv, raListTbl *pra_list,
 			priv->wmm.tid_tbl_ptr[ptrindex].ra_list_curr = pra_list;
 		}
 		pmadapter->bssprio_tbl[priv->bss_priority].bssprio_cur =
-			pmadapter->bssprio_tbl[priv->bss_priority].bssprio_cur->
-			pnext;
-		pmadapter->callbacks.moal_spin_unlock(pmadapter->pmoal_handle,
-						      priv->wmm.
-						      ra_list_spinlock);
+			pmadapter->bssprio_tbl[priv->bss_priority]
+				.bssprio_cur->pnext;
+		pmadapter->callbacks.moal_spin_unlock(
+			pmadapter->pmoal_handle, priv->wmm.ra_list_spinlock);
 	}
 	PRINTM_GET_SYS_TIME(MDATA, &sec, &usec);
 	PRINTM_NETINTF(MDATA, priv);

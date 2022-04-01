@@ -1542,9 +1542,22 @@ int mwifiex_ret_get_hw_spec(struct mwifiex_private *priv,
 					adapter->fw_api_ver =
 							api_rev->major_ver;
 					dev_dbg(adapter->dev,
-						"Firmware api version %d\n",
-						adapter->fw_api_ver);
+						"Firmware api version %d.%d\n",
++						    adapter->fw_api_ver,
++						    api_rev->minor_ver);
 					break;
+				case UAP_FW_API_VER_ID:
+					dev_dbg(adapter->dev,
+						    "uAP api version %d.%d\n",
+						    api_rev->major_ver,
+						    api_rev->minor_ver);
+					break;
+				case CHANRPT_API_VER_ID:
+					dev_dbg(adapter->dev,
+						    "channel report api version %d.%d\n",
+						    api_rev->major_ver,
+						    api_rev->minor_ver);
+ 					break;
 				default:
 					dev_warn(adapter->dev,
 						 "Unknown api_id: %d\n",
