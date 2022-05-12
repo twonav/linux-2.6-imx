@@ -1565,10 +1565,6 @@ static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 			break;
 
 		case MXT_T100_TYPE_GLOVE:
-			if (!data->glove_enabled) {
-				printk(KERN_ERR "XXX GLOVE DISABLED\n"); // dev_dbg
-				return;
-			}
 		case MXT_T100_TYPE_FINGER:
 			tool = MT_TOOL_FINGER;
 			distance = MXT_DISTANCE_ACTIVE_TOUCH;
