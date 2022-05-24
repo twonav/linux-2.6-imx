@@ -1565,6 +1565,9 @@ static void mxt_proc_t100_message(struct mxt_data *data, u8 *message)
 			break;
 
 		case MXT_T100_TYPE_GLOVE:
+			if (!data->glove_enabled) {
+				return;
+			}
 		case MXT_T100_TYPE_FINGER:
 			tool = MT_TOOL_FINGER;
 			distance = MXT_DISTANCE_ACTIVE_TOUCH;
@@ -3945,6 +3948,8 @@ static int mxt_initialize(struct mxt_data *data)
 		if (error)
 			dev_err(&client->dev, "RETRIGEN Not Enabled or unavailable\n");
 	}
+
+	data->glove_enabled = true;
 
 	return 0;
 }
