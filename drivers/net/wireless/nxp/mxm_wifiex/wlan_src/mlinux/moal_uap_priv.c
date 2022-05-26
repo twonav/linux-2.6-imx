@@ -1,33 +1,33 @@
 /** @file  moal_uap_priv.c
-  *
-  * @brief This file contains standard ioctl functions
-  *
-  *
-  * Copyright 2014-2020 NXP
-  *
-  * This software file (the File) is distributed by NXP
-  * under the terms of the GNU General Public License Version 2, June 1991
-  * (the License).  You may use, redistribute and/or modify the File in
-  * accordance with the terms and conditions of the License, a copy of which
-  * is available by writing to the Free Software Foundation, Inc.,
-  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
-  * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
-  *
-  * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
-  * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
-  * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
-  * this warranty disclaimer.
-  *
-  */
+ *
+ * @brief This file contains standard ioctl functions
+ *
+ *
+ * Copyright 2010-2021 NXP
+ *
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
+ *
+ */
 
 /************************************************************************
 Change log:
     08/06/2010: initial version
 ************************************************************************/
 
-#include	"moal_main.h"
-#include    "moal_uap.h"
-#include    "moal_uap_priv.h"
+#include "moal_main.h"
+#include "moal_uap.h"
+#include "moal_uap_priv.h"
 
 /********************************************************
 			Local Variables
@@ -54,8 +54,7 @@ Change log:
  *
  *  @return          0 --success, otherwise fail
  */
-int
-woal_uap_do_priv_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
+int woal_uap_do_priv_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
 {
 	moal_private *priv = (moal_private *)netdev_priv(dev);
 	struct iwreq *wrq = (struct iwreq *)req;
@@ -103,28 +102,29 @@ woal_uap_do_priv_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
 		case WOAL_WL_FW_RELOAD:
 			break;
 		case WOAL_AP_SET_CFG:
-			ret = woal_uap_set_ap_cfg(priv, wrq->u.data.pointer,
-						  wrq->u.data.length);
+			ret = woal_uap_set_ap_cfg(
+				priv, (t_u8 __force *)wrq->u.data.pointer,
+				wrq->u.data.length);
 			break;
 		default:
 			ret = -EINVAL;
 			break;
 		}
 		break;
-#ifdef WIFI_DIRECT_SUPPORT
-#if defined(STA_SUPPORT) && defined(UAP_SUPPORT)
 	case WOAL_UAP_SETONEINT_GETONEINT:
 		switch (wrq->u.data.flags) {
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_SUPPORT) && defined(UAP_SUPPORT)
 		case WOAL_UAP_SET_GET_BSS_ROLE:
 			ret = woal_set_get_bss_role(priv, wrq);
 			break;
+#endif
+#endif
 		default:
 			ret = -EINVAL;
 			break;
 		}
 		break;
-#endif
-#endif
 	case WOAL_UAP_HOST_CMD:
 		ret = woal_host_command(priv, wrq);
 		break;
@@ -142,7 +142,8 @@ woal_uap_do_priv_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
 	case WOAL_UAP_FROYO_WL_FW_RELOAD:
 		break;
 	case WOAL_UAP_FROYO_AP_SET_CFG:
-		ret = woal_uap_set_ap_cfg(priv, wrq->u.data.pointer,
+		ret = woal_uap_set_ap_cfg(priv,
+					  (t_u8 __force *)wrq->u.data.pointer,
 					  wrq->u.data.length);
 		break;
 	default:
@@ -162,8 +163,7 @@ woal_uap_do_priv_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
  *
  *  @return         N/A
  */
-void
-woal_ioctl_get_uap_info_resp(moal_private *priv, mlan_ds_get_info *info)
+void woal_ioctl_get_uap_info_resp(moal_private *priv, mlan_ds_get_info *info)
 {
 	ENTER();
 	switch (info->sub_command) {
