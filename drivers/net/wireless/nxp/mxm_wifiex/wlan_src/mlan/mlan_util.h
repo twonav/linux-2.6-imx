@@ -4,7 +4,7 @@
  *  spinlock and timer defines.
  *
  *
- *  Copyright 2014-2020 NXP
+ *  Copyright 2008-2021 NXP
  *
  *  This software file (the File) is distributed by NXP
  *  under the terms of the GNU General Public License Version 2, June 1991
@@ -31,21 +31,24 @@ Change log:
 
 /** Circular doubly linked list */
 typedef struct _mlan_linked_list {
-    /** Pointer to previous node */
+	/** Pointer to previous node */
 	struct _mlan_linked_list *pprev;
-    /** Pointer to next node */
+	/** Pointer to next node */
 	struct _mlan_linked_list *pnext;
 } mlan_linked_list, *pmlan_linked_list;
 
 /** List head */
 typedef struct _mlan_list_head {
-    /** Pointer to previous node */
+	/** Pointer to previous node */
 	struct _mlan_linked_list *pprev;
-    /** Pointer to next node */
+	/** Pointer to next node */
 	struct _mlan_linked_list *pnext;
-    /** Pointer to lock */
+	/** Pointer to lock */
 	t_void *plock;
 } mlan_list_head, *pmlan_list_head;
+
+/** MLAN MNULL pointer */
+#define MNULL ((void *)0)
 
 /**
  *  @brief This function initializes a list without locking
@@ -54,8 +57,7 @@ typedef struct _mlan_list_head {
  *
  *  @return			N/A
  */
-static INLINE t_void
-util_init_list(pmlan_linked_list phead)
+static INLINE t_void util_init_list(pmlan_linked_list phead)
 {
 	/* Both next and prev point to self */
 	phead->pprev = phead->pnext = (pmlan_linked_list)phead;
@@ -70,19 +72,16 @@ util_init_list(pmlan_linked_list phead)
  *
  *  @return			N/A
  */
-static INLINE t_void
-util_init_list_head(t_void *pmoal_handle,
-		    pmlan_list_head phead,
-		    t_u8 lock_required,
-		    mlan_status (*moal_init_lock) (t_void *handle,
-						   t_void **pplock))
+static INLINE t_void util_init_list_head(
+	t_void *pmoal_handle, pmlan_list_head phead, t_u8 lock_required,
+	mlan_status (*moal_init_lock)(t_void *handle, t_void **pplock))
 {
 	/* Both next and prev point to self */
 	util_init_list((pmlan_linked_list)phead);
 	if (lock_required)
 		moal_init_lock(pmoal_handle, &phead->plock);
 	else
-		phead->plock = 0;
+		phead->plock = MNULL;
 }
 
 /**
@@ -93,13 +92,11 @@ util_init_list_head(t_void *pmoal_handle,
  *
  *  @return			N/A
  */
-static INLINE t_void
-util_free_list_head(t_void *pmoal_handle,
-		    pmlan_list_head phead,
-		    mlan_status (*moal_free_lock) (t_void *handle,
-						   t_void *plock))
+static INLINE t_void util_free_list_head(
+	t_void *pmoal_handle, pmlan_list_head phead,
+	mlan_status (*moal_free_lock)(t_void *handle, t_void *plock))
 {
-	phead->pprev = phead->pnext = 0;
+	phead->pprev = phead->pnext = MNULL;
 	if (phead->plock)
 		moal_free_lock(pmoal_handle, phead->plock);
 }
@@ -114,12 +111,11 @@ util_free_list_head(t_void *pmoal_handle,
  *  @return			List node
  */
 static INLINE pmlan_linked_list
-util_peek_list(t_void *pmoal_handle,
-	       pmlan_list_head phead,
-	       mlan_status (*moal_spin_lock) (t_void *handle, t_void *plock),
-	       mlan_status (*moal_spin_unlock) (t_void *handle, t_void *plock))
+util_peek_list(t_void *pmoal_handle, pmlan_list_head phead,
+	       mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	       mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
-	pmlan_linked_list pnode = 0;
+	pmlan_linked_list pnode = MNULL;
 
 	if (moal_spin_lock)
 		moal_spin_lock(pmoal_handle, phead->plock);
@@ -140,14 +136,10 @@ util_peek_list(t_void *pmoal_handle,
  *
  *  @return			N/A
  */
-static INLINE t_void
-util_enqueue_list_tail(t_void *pmoal_handle,
-		       pmlan_list_head phead,
-		       pmlan_linked_list pnode,
-		       mlan_status (*moal_spin_lock) (t_void *handle,
-						      t_void *plock),
-		       mlan_status (*moal_spin_unlock) (t_void *handle,
-							t_void *plock))
+static INLINE t_void util_enqueue_list_tail(
+	t_void *pmoal_handle, pmlan_list_head phead, pmlan_linked_list pnode,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	pmlan_linked_list pold_last;
 
@@ -172,14 +164,10 @@ util_enqueue_list_tail(t_void *pmoal_handle,
  *
  *  @return			N/A
  */
-static INLINE t_void
-util_enqueue_list_head(t_void *pmoal_handle,
-		       pmlan_list_head phead,
-		       pmlan_linked_list pnode,
-		       mlan_status (*moal_spin_lock) (t_void *handle,
-						      t_void *plock),
-		       mlan_status (*moal_spin_unlock) (t_void *handle,
-							t_void *plock))
+static INLINE t_void util_enqueue_list_head(
+	t_void *pmoal_handle, pmlan_list_head phead, pmlan_linked_list pnode,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	pmlan_linked_list pold_first;
 
@@ -204,13 +192,10 @@ util_enqueue_list_head(t_void *pmoal_handle,
  *
  *  @return			N/A
  */
-static INLINE t_void
-util_unlink_list(t_void *pmoal_handle,
-		 pmlan_list_head phead,
-		 pmlan_linked_list pnode,
-		 mlan_status (*moal_spin_lock) (t_void *handle, t_void *plock),
-		 mlan_status (*moal_spin_unlock) (t_void *handle,
-						  t_void *plock))
+static INLINE t_void util_unlink_list(
+	t_void *pmoal_handle, pmlan_list_head phead, pmlan_linked_list pnode,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	pmlan_linked_list pmy_prev;
 	pmlan_linked_list pmy_next;
@@ -222,7 +207,7 @@ util_unlink_list(t_void *pmoal_handle,
 	pmy_next->pprev = pmy_prev;
 	pmy_prev->pnext = pmy_next;
 
-	pnode->pnext = pnode->pprev = 0;
+	pnode->pnext = pnode->pprev = MNULL;
 	if (moal_spin_unlock)
 		moal_spin_unlock(pmoal_handle, phead->plock);
 }
@@ -236,12 +221,10 @@ util_unlink_list(t_void *pmoal_handle,
  *
  *  @return			List node
  */
-static INLINE pmlan_linked_list
-util_dequeue_list(t_void *pmoal_handle,
-		  pmlan_list_head phead,
-		  mlan_status (*moal_spin_lock) (t_void *handle, t_void *plock),
-		  mlan_status (*moal_spin_unlock) (t_void *handle,
-						   t_void *plock))
+static INLINE pmlan_linked_list util_dequeue_list(
+	t_void *pmoal_handle, pmlan_list_head phead,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	pmlan_linked_list pnode;
 
@@ -249,9 +232,9 @@ util_dequeue_list(t_void *pmoal_handle,
 		moal_spin_lock(pmoal_handle, phead->plock);
 	pnode = phead->pnext;
 	if (pnode && (pnode != (pmlan_linked_list)phead))
-		util_unlink_list(pmoal_handle, phead, pnode, 0, 0);
+		util_unlink_list(pmoal_handle, phead, pnode, MNULL, MNULL);
 	else
-		pnode = 0;
+		pnode = MNULL;
 	if (moal_spin_unlock)
 		moal_spin_unlock(pmoal_handle, phead->plock);
 	return pnode;
@@ -259,16 +242,16 @@ util_dequeue_list(t_void *pmoal_handle,
 
 /** Access controlled scalar variable */
 typedef struct _mlan_scalar {
-    /** Value */
+	/** Value */
 	t_s32 value;
-    /** Pointer to lock */
+	/** Pointer to lock */
 	t_void *plock;
-    /** Control flags */
+	/** Control flags */
 	t_u32 flags;
 } mlan_scalar, *pmlan_scalar;
 
 /** Flag to scalar lock acquired */
-#define MLAN_SCALAR_FLAG_UNIQUE_LOCK	MBIT(16)
+#define MLAN_SCALAR_FLAG_UNIQUE_LOCK MBIT(16)
 
 /** scalar conditional value list */
 typedef enum _MLAN_SCALAR_CONDITIONAL {
@@ -291,12 +274,9 @@ typedef enum _MLAN_SCALAR_CONDITIONAL {
  *  @return					N/A
  */
 static INLINE t_void
-util_scalar_init(t_void *pmoal_handle,
-		 pmlan_scalar pscalar,
-		 t_s32 val,
+util_scalar_init(t_void *pmoal_handle, pmlan_scalar pscalar, t_s32 val,
 		 t_void *plock_to_use,
-		 mlan_status (*moal_init_lock) (t_void *handle,
-						t_void **pplock))
+		 mlan_status (*moal_init_lock)(t_void *handle, t_void **pplock))
 {
 	pscalar->value = val;
 	pscalar->flags = 0;
@@ -318,9 +298,8 @@ util_scalar_init(t_void *pmoal_handle,
  *  @return			N/A
  */
 static INLINE t_void
-util_scalar_free(t_void *pmoal_handle,
-		 pmlan_scalar pscalar,
-		 mlan_status (*moal_free_lock) (t_void *handle, t_void *plock))
+util_scalar_free(t_void *pmoal_handle, pmlan_scalar pscalar,
+		 mlan_status (*moal_free_lock)(t_void *handle, t_void *plock))
 {
 	if (pscalar->flags & MLAN_SCALAR_FLAG_UNIQUE_LOCK)
 		moal_free_lock(pmoal_handle, pscalar->plock);
@@ -336,11 +315,9 @@ util_scalar_free(t_void *pmoal_handle,
  *  @return					Stored value
  */
 static INLINE t_s32
-util_scalar_read(t_void *pmoal_handle,
-		 pmlan_scalar pscalar,
-		 mlan_status (*moal_spin_lock) (t_void *handle, t_void *plock),
-		 mlan_status (*moal_spin_unlock) (t_void *handle,
-						  t_void *plock))
+util_scalar_read(t_void *pmoal_handle, pmlan_scalar pscalar,
+		 mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+		 mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	t_s32 val;
 
@@ -363,13 +340,10 @@ util_scalar_read(t_void *pmoal_handle,
  *
  *  @return					N/A
  */
-static INLINE t_void
-util_scalar_write(t_void *pmoal_handle,
-		  pmlan_scalar pscalar,
-		  t_s32 val,
-		  mlan_status (*moal_spin_lock) (t_void *handle, t_void *plock),
-		  mlan_status (*moal_spin_unlock) (t_void *handle,
-						   t_void *plock))
+static INLINE t_void util_scalar_write(
+	t_void *pmoal_handle, pmlan_scalar pscalar, t_s32 val,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	if (moal_spin_lock)
 		moal_spin_lock(pmoal_handle, pscalar->plock);
@@ -387,13 +361,10 @@ util_scalar_write(t_void *pmoal_handle,
  *
  *  @return					N/A
  */
-static INLINE t_void
-util_scalar_increment(t_void *pmoal_handle,
-		      pmlan_scalar pscalar,
-		      mlan_status (*moal_spin_lock) (t_void *handle,
-						     t_void *plock),
-		      mlan_status (*moal_spin_unlock) (t_void *handle,
-						       t_void *plock))
+static INLINE t_void util_scalar_increment(
+	t_void *pmoal_handle, pmlan_scalar pscalar,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	if (moal_spin_lock)
 		moal_spin_lock(pmoal_handle, pscalar->plock);
@@ -411,13 +382,10 @@ util_scalar_increment(t_void *pmoal_handle,
  *
  *  @return					N/A
  */
-static INLINE t_void
-util_scalar_decrement(t_void *pmoal_handle,
-		      pmlan_scalar pscalar,
-		      mlan_status (*moal_spin_lock) (t_void *handle,
-						     t_void *plock),
-		      mlan_status (*moal_spin_unlock) (t_void *handle,
-						       t_void *plock))
+static INLINE t_void util_scalar_decrement(
+	t_void *pmoal_handle, pmlan_scalar pscalar,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	if (moal_spin_lock)
 		moal_spin_lock(pmoal_handle, pscalar->plock);
@@ -437,14 +405,10 @@ util_scalar_decrement(t_void *pmoal_handle,
  *
  *  @return					Value after offset
  */
-static INLINE t_s32
-util_scalar_offset(t_void *pmoal_handle,
-		   pmlan_scalar pscalar,
-		   t_s32 offset,
-		   mlan_status (*moal_spin_lock) (t_void *handle,
-						  t_void *plock),
-		   mlan_status (*moal_spin_unlock) (t_void *handle,
-						    t_void *plock))
+static INLINE t_s32 util_scalar_offset(
+	t_void *pmoal_handle, pmlan_scalar pscalar, t_s32 offset,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	t_s32 newval;
 
@@ -471,16 +435,11 @@ util_scalar_offset(t_void *pmoal_handle,
  *
  *  @return                 Comparison result (MTRUE or MFALSE)
  */
-static INLINE t_u8
-util_scalar_conditional_write(t_void *pmoal_handle,
-			      pmlan_scalar pscalar,
-			      MLAN_SCALAR_CONDITIONAL condition,
-			      t_s32 val_compare,
-			      t_s32 val_to_set,
-			      mlan_status (*moal_spin_lock) (t_void *handle,
-							     t_void *plock),
-			      mlan_status (*moal_spin_unlock) (t_void *handle,
-							       t_void *plock))
+static INLINE t_u8 util_scalar_conditional_write(
+	t_void *pmoal_handle, pmlan_scalar pscalar,
+	MLAN_SCALAR_CONDITIONAL condition, t_s32 val_compare, t_s32 val_to_set,
+	mlan_status (*moal_spin_lock)(t_void *handle, t_void *plock),
+	mlan_status (*moal_spin_unlock)(t_void *handle, t_void *plock))
 {
 	t_u8 update;
 	if (moal_spin_lock)
@@ -523,14 +482,11 @@ util_scalar_conditional_write(t_void *pmoal_handle,
  *  @param num  number
  *  @return     number of bits
  */
-static INLINE t_u32
-bitcount(t_u32 num)
+static INLINE t_u32 bitcount(t_u32 num)
 {
 	t_u32 count = 0;
-	static t_u32 nibblebits[] = {
-		0, 1, 1, 2, 1, 2, 2, 3,
-		1, 2, 2, 3, 2, 3, 3, 4
-	};
+	static t_u32 nibblebits[] = {0, 1, 1, 2, 1, 2, 2, 3,
+				     1, 2, 2, 3, 2, 3, 3, 4};
 	for (; num != 0; num >>= 4)
 		count += nibblebits[num & 0x0f];
 	return count;

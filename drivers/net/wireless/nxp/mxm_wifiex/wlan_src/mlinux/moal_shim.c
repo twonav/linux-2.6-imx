@@ -1,48 +1,59 @@
 /** @file moal_shim.c
-  *
-  * @brief This file contains the callback functions registered to MLAN
-  *
-  *
-  * Copyright 2014-2020 NXP
-  *
-  * This software file (the File) is distributed by NXP
-  * under the terms of the GNU General Public License Version 2, June 1991
-  * (the License).  You may use, redistribute and/or modify the File in
-  * accordance with the terms and conditions of the License, a copy of which
-  * is available by writing to the Free Software Foundation, Inc.,
-  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
-  * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
-  *
-  * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
-  * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
-  * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
-  * this warranty disclaimer.
-  *
-  */
+ *
+ * @brief This file contains the callback functions registered to MLAN
+ *
+ *
+ * Copyright 2008-2021 NXP
+ *
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
+ *
+ */
 
 /********************************************************
 Change log:
     10/21/2008: initial version
 ********************************************************/
 
-#include	"moal_main.h"
+#include "moal_main.h"
 #ifdef USB
-#include	"moal_usb.h"
+#include "moal_usb.h"
 #endif
 #ifdef SDIO
-#include	"moal_sdio.h"
+#include "moal_sdio.h"
 #endif
 #ifdef PCIE
-#include	"moal_pcie.h"
+#include "moal_pcie.h"
 #endif
 #ifdef UAP_SUPPORT
-#include    "moal_uap.h"
+#include "moal_uap.h"
 #endif
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #include "moal_cfg80211.h"
 #include "moal_cfg80211_util.h"
 #endif
 #include <asm/div64.h>
+
+#if defined(PCIE) || defined(SDIO)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 70)
+#ifdef IMX_SUPPORT
+#include <linux/busfreq-imx.h>
+#endif
+#endif
+
+#include <linux/etherdevice.h>
+
+#endif /*defined(PCIE) || defined(SDIO)*/
 
 /********************************************************
 		Local Variables
@@ -71,20 +82,19 @@ extern int wifi_status;
 /**
  *  @brief Alloc a buffer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param size     The size of the buffer to be allocated
  *  @param flag     The type of the buffer to be allocated
- *  @param ppbuf    Pointer to a buffer location to store buffer pointer allocated
+ *  @param ppbuf    Pointer to a buffer location to store buffer pointer
+ * allocated
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_malloc(IN t_void *pmoal_handle,
-	    IN t_u32 size, IN t_u32 flag, OUT t_u8 **ppbuf)
+mlan_status moal_malloc(t_void *pmoal, t_u32 size, t_u32 flag, t_u8 **ppbuf)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
-	t_u32 mem_flag = (in_interrupt() ||
-			  irqs_disabled())? GFP_ATOMIC : GFP_KERNEL;
+	moal_handle *handle = (moal_handle *)pmoal;
+	gfp_t mem_flag =
+		(in_interrupt() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
 
 #ifdef USB
 	if (!IS_USB(handle->card_type))
@@ -107,15 +117,14 @@ moal_malloc(IN t_void *pmoal_handle,
 /**
  *  @brief Free a buffer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pbuf     Pointer to the buffer to be freed
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_mfree(IN t_void *pmoal_handle, IN t_u8 *pbuf)
+mlan_status moal_mfree(t_void *pmoal, t_u8 *pbuf)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 
 	if (!pbuf)
 		return MLAN_STATUS_FAILURE;
@@ -127,16 +136,16 @@ moal_mfree(IN t_void *pmoal_handle, IN t_u8 *pbuf)
 /**
  *  @brief Alloc a vitual-address-continuous buffer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param size     The size of the buffer to be allocated
- *  @param ppbuf    Pointer to a buffer location to store buffer pointer allocated
+ *  @param ppbuf    Pointer to a buffer location to store buffer pointer
+ * allocated
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_vmalloc(IN t_void *pmoal_handle, IN t_u32 size, OUT t_u8 **ppbuf)
+mlan_status moal_vmalloc(t_void *pmoal, t_u32 size, t_u8 **ppbuf)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 
 	*ppbuf = vmalloc(size);
 	if (*ppbuf == NULL) {
@@ -152,15 +161,14 @@ moal_vmalloc(IN t_void *pmoal_handle, IN t_u32 size, OUT t_u8 **ppbuf)
 /**
  *  @brief Free a buffer allocated by vmalloc
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pbuf     Pointer to the buffer to be freed
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_vfree(IN t_void *pmoal_handle, IN t_u8 *pbuf)
+mlan_status moal_vfree(t_void *pmoal, t_u8 *pbuf)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 
 	if (!pbuf)
 		return MLAN_STATUS_FAILURE;
@@ -173,28 +181,34 @@ moal_vfree(IN t_void *pmoal_handle, IN t_u8 *pbuf)
 /**
  *  @brief Alloc a consistent block of memory
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param size         The size of the buffer to be allocated
  *  @param ppbuf        Pointer to a buffer location to store memory allocated
- *  @param pbuf_pa      Pointer to a buffer location to store physical address of above memory
+ *  @param pbuf_pa      Pointer to a buffer location to store physical address
+ * of above memory
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_malloc_consistent(IN t_void *pmoal_handle,
-		       IN t_u32 size, OUT t_u8 **ppbuf, OUT t_u64 *pbuf_pa)
+mlan_status moal_malloc_consistent(t_void *pmoal, t_u32 size, t_u8 **ppbuf,
+				   t_pu64 pbuf_pa)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	pcie_service_card *card = (pcie_service_card *)handle->card;
+	dma_addr_t dma;
 	*pbuf_pa = 0;
+
+	if (!card)
+		return MLAN_STATUS_FAILURE;
+
 	*ppbuf = (t_u8 *)pci_alloc_consistent(card->dev, size,
-					      (dma_addr_t *) pbuf_pa);
+					      (dma_addr_t *)&dma);
 	if (*ppbuf == NULL) {
 		PRINTM(MERROR,
 		       "%s: allocate consistent memory (%d bytes) failed!\n",
 		       __func__, (int)size);
 		return MLAN_STATUS_FAILURE;
 	}
+	*pbuf_pa = (t_u64)dma;
 	atomic_inc(&handle->malloc_cons_count);
 
 	return MLAN_STATUS_SUCCESS;
@@ -203,21 +217,20 @@ moal_malloc_consistent(IN t_void *pmoal_handle,
 /**
  *  @brief Free a consistent block of memory
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param size         Size of them memory to be freed
  *  @param pbuf         Pointer to the memory to be freed
  *  @param buf_pa       Physical address of the memory to be freed
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_mfree_consistent(IN t_void *pmoal_handle,
-		      IN t_u32 size, IN t_u8 *pbuf, IN t_u64 buf_pa)
+mlan_status moal_mfree_consistent(t_void *pmoal, t_u32 size, t_u8 *pbuf,
+				  t_u64 buf_pa)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	pcie_service_card *card = handle->card;
 
-	if (!pbuf)
+	if (!pbuf || !card)
 		return MLAN_STATUS_FAILURE;
 
 	pci_free_consistent(card->dev, size, pbuf, buf_pa);
@@ -228,7 +241,7 @@ moal_mfree_consistent(IN t_void *pmoal_handle,
 /**
  *  @brief Map a block of memory to device
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pbuf         Pointer to the buffer to be mapped
  *  @param pbuf_pa      Pointer to store the physical address of buffer
  *  @param size         Size of the buffer to be mapped
@@ -236,14 +249,16 @@ moal_mfree_consistent(IN t_void *pmoal_handle,
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_map_memory(IN t_void *pmoal_handle,
-		IN t_u8 *pbuf, OUT t_u64 *pbuf_pa, IN t_u32 size, IN t_u32 flag)
+mlan_status moal_map_memory(t_void *pmoal, t_u8 *pbuf, t_u64 *pbuf_pa,
+			    t_u32 size, t_u32 flag)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	pcie_service_card *card = (pcie_service_card *)handle->card;
 
 	dma_addr_t dma;
+
+	if (!card)
+		return MLAN_STATUS_FAILURE;
 
 	/* Init memory to device */
 	dma = pci_map_single(card->dev, pbuf, size, flag);
@@ -263,7 +278,7 @@ moal_map_memory(IN t_void *pmoal_handle,
 /**
  *  @brief Unmap a block of memory from device
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pbuf         Pointer to the buffer to unmap
  *  @param buf_pa       Physical address of buffer to unmap
  *  @param size         Size of the buffer to unmap
@@ -271,12 +286,14 @@ moal_map_memory(IN t_void *pmoal_handle,
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_unmap_memory(IN t_void *pmoal_handle,
-		  IN t_u8 *pbuf, IN t_u64 buf_pa, IN t_u32 size, IN t_u32 flag)
+mlan_status moal_unmap_memory(t_void *pmoal, t_u8 *pbuf, t_u64 buf_pa,
+			      t_u32 size, t_u32 flag)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	pcie_service_card *card = (pcie_service_card *)handle->card;
+
+	if (!card)
+		return MLAN_STATUS_FAILURE;
 
 	pci_unmap_single(card->dev, buf_pa, size, flag);
 
@@ -287,16 +304,14 @@ moal_unmap_memory(IN t_void *pmoal_handle,
 /**
  *  @brief Fill memory with constant byte
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmem     Pointer to the memory area
  *  @param byte     A constant byte
  *  @param num      Number of bytes to fill
  *
  *  @return         Pointer to the memory area
  */
-t_void *
-moal_memset(IN t_void *pmoal_handle,
-	    IN t_void *pmem, IN t_u8 byte, IN t_u32 num)
+t_void *moal_memset(t_void *pmoal, t_void *pmem, t_u8 byte, t_u32 num)
 {
 	t_void *p = pmem;
 
@@ -309,16 +324,14 @@ moal_memset(IN t_void *pmoal_handle,
 /**
  *  @brief Copy memory from one area to another
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pdest    Pointer to the dest memory
  *  @param psrc     Pointer to the src memory
  *  @param num      Number of bytes to move
  *
  *  @return         Pointer to the dest memory
  */
-t_void *
-moal_memcpy(IN t_void *pmoal_handle,
-	    IN t_void *pdest, IN const t_void *psrc, IN t_u32 num)
+t_void *moal_memcpy(t_void *pmoal, t_void *pdest, const t_void *psrc, t_u32 num)
 {
 	t_void *p = pdest;
 
@@ -331,7 +344,7 @@ moal_memcpy(IN t_void *pmoal_handle,
 /**
  *  @brief Copy memory from one area to another
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pdest    Pointer to the dest memory
  *  @param psrc     Pointer to the src memory
  *  @param num      Number of bytes to move
@@ -339,10 +352,8 @@ moal_memcpy(IN t_void *pmoal_handle,
  *
  *  @return         Pointer to the dest memory
  */
-t_void *
-moal_memcpy_ext(IN t_void *pmoal_handle,
-		IN t_void *pdest,
-		IN const t_void *psrc, IN t_u32 num, IN t_u32 dest_size)
+t_void *moal_memcpy_ext(t_void *pmoal, t_void *pdest, const t_void *psrc,
+			t_u32 num, t_u32 dest_size)
 {
 	t_void *p = pdest;
 	if (pdest && psrc && num && dest_size)
@@ -354,16 +365,15 @@ moal_memcpy_ext(IN t_void *pmoal_handle,
 /**
  *  @brief Move memory from one area to another
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pdest    Pointer to the dest memory
  *  @param psrc     Pointer to the src memory
  *  @param num      Number of bytes to move
  *
  *  @return         Pointer to the dest memory
  */
-t_void *
-moal_memmove(IN t_void *pmoal_handle,
-	     IN t_void *pdest, IN const t_void *psrc, IN t_u32 num)
+t_void *moal_memmove(t_void *pmoal, t_void *pdest, const t_void *psrc,
+		     t_u32 num)
 {
 	t_void *p = pdest;
 
@@ -376,16 +386,15 @@ moal_memmove(IN t_void *pmoal_handle,
 /**
  *  @brief Compare two memory areas
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmem1    Pointer to the first memory
  *  @param pmem2    Pointer to the second memory
  *  @param num      Number of bytes to compare
  *
  *  @return         Compare result returns by memcmp
  */
-t_s32
-moal_memcmp(IN t_void *pmoal_handle,
-	    IN const t_void *pmem1, IN const t_void *pmem2, IN t_u32 num)
+t_s32 moal_memcmp(t_void *pmoal, const t_void *pmem1, const t_void *pmem2,
+		  t_u32 num)
 {
 	t_s32 result;
 
@@ -397,37 +406,54 @@ moal_memcmp(IN t_void *pmoal_handle,
 /**
  *  @brief Delay function
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param delay  delay in micro-second
  *
  *  @return       N/A
  */
-t_void
-moal_udelay(IN t_void *pmoal_handle, IN t_u32 delay)
+t_void moal_udelay(t_void *pmoal, t_u32 delay)
 {
 	if (delay >= 1000)
-		mdelay(delay / 1000);
+		msleep(delay / 1000);
 	if (delay % 1000)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
+		usleep_range(delay % 1000 - 1, delay % 1000);
+#else
 		udelay(delay % 1000);
+#endif
 }
 
 /**
+ *  @brief  usleep_range function
+ *
+ *  @param pmoal Pointer to the MOAL context
+ *  @param min_delay  minimal delay in micro-second
+ *  @param max_delay  delay in micro-second
+ *
+ *  @return       N/A
+ */
+t_void moal_usleep_range(t_void *pmoal, t_u32 min_delay, t_u32 max_delay)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
+	usleep_range(min_delay, max_delay);
+#endif
+}
+/**
  *  @brief Retrieves the current system time
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param psec     Pointer to buf for the seconds of system time
  *  @param pusec    Pointer to buf the micro seconds of system time
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_get_system_time(IN t_void *pmoal_handle, OUT t_u32 *psec, OUT t_u32 *pusec)
+mlan_status moal_get_system_time(t_void *pmoal, t_u32 *psec, t_u32 *pusec)
 {
-	struct timeval t;
+	wifi_timeval t;
 
 	woal_get_monotonic_time(&t);
-	*psec = (t_u32)t.tv_sec;
-	*pusec = (t_u32)t.tv_usec;
+	*psec = t.time_sec;
+	*pusec = t.time_usec;
 
 	return MLAN_STATUS_SUCCESS;
 }
@@ -435,13 +461,12 @@ moal_get_system_time(IN t_void *pmoal_handle, OUT t_u32 *psec, OUT t_u32 *pusec)
 /**
  *  @brief Retrieves the current boot time
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pnsec     Pointer to buf for the Nanoseconds of boot time
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_get_boot_ktime(IN t_void *pmoal_handle, OUT t_u64 *pnsec)
+mlan_status moal_get_boot_ktime(t_void *pmoal, t_u64 *pnsec)
 {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0)
 	ktime_t time;
@@ -455,21 +480,20 @@ moal_get_boot_ktime(IN t_void *pmoal_handle, OUT t_u64 *pnsec)
 /**
  *  @brief Initializes the timer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pptimer      Pointer to the timer
  *  @param callback     Pointer to callback function
  *  @param pcontext     Pointer to context
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_init_timer(IN t_void *pmoal_handle,
-		OUT t_void **pptimer,
-		IN t_void (*callback) (t_void *pcontext), IN t_void *pcontext)
+mlan_status moal_init_timer(t_void *pmoal, t_void **pptimer,
+			    IN t_void (*callback)(t_void *pcontext),
+			    t_void *pcontext)
 {
 	moal_drv_timer *timer = NULL;
-	t_u32 mem_flag = (in_interrupt() ||
-			  irqs_disabled())? GFP_ATOMIC : GFP_KERNEL;
+	gfp_t mem_flag =
+		(in_interrupt() || irqs_disabled()) ? GFP_ATOMIC : GFP_KERNEL;
 
 	timer = kmalloc(sizeof(moal_drv_timer), mem_flag);
 	if (timer == NULL)
@@ -483,18 +507,18 @@ moal_init_timer(IN t_void *pmoal_handle,
 /**
  *  @brief Free the timer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param ptimer   Pointer to the timer
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_free_timer(IN t_void *pmoal_handle, IN t_void *ptimer)
+mlan_status moal_free_timer(t_void *pmoal, t_void *ptimer)
 {
 	moal_drv_timer *timer = (moal_drv_timer *)ptimer;
 
 	if (timer) {
-		if ((timer->timer_is_canceled == MFALSE) && timer->time_period) {
+		if ((timer->timer_is_canceled == MFALSE) &&
+		    timer->time_period) {
 			PRINTM(MWARN,
 			       "mlan try to free timer without stop timer!\n");
 			woal_cancel_timer(timer);
@@ -508,16 +532,15 @@ moal_free_timer(IN t_void *pmoal_handle, IN t_void *ptimer)
 /**
  *  @brief Start the timer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param ptimer       Pointer to the timer
  *  @param periodic     Periodic timer
  *  @param msec         Timer value in milliseconds
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_start_timer(IN t_void *pmoal_handle,
-		 IN t_void *ptimer, IN t_u8 periodic, IN t_u32 msec)
+mlan_status moal_start_timer(t_void *pmoal, t_void *ptimer, t_u8 periodic,
+			     t_u32 msec)
 {
 	if (!ptimer)
 		return MLAN_STATUS_FAILURE;
@@ -531,13 +554,12 @@ moal_start_timer(IN t_void *pmoal_handle,
 /**
  *  @brief Stop the timer
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param ptimer   Pointer to the timer
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_stop_timer(IN t_void *pmoal_handle, IN t_void *ptimer)
+mlan_status moal_stop_timer(t_void *pmoal, t_void *ptimer)
 {
 	if (!ptimer)
 		return MLAN_STATUS_FAILURE;
@@ -549,15 +571,14 @@ moal_stop_timer(IN t_void *pmoal_handle, IN t_void *ptimer)
 /**
  *  @brief Initializes the lock
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pplock   Pointer to the lock
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_init_lock(IN t_void *pmoal_handle, OUT t_void **pplock)
+mlan_status moal_init_lock(t_void *pmoal, t_void **pplock)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	moal_lock *mlock = NULL;
 
 	mlock = kmalloc(sizeof(moal_lock), GFP_ATOMIC);
@@ -574,15 +595,14 @@ moal_init_lock(IN t_void *pmoal_handle, OUT t_void **pplock)
 /**
  *  @brief Free the lock
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param plock    Lock
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_free_lock(IN t_void *pmoal_handle, IN t_void *plock)
+mlan_status moal_free_lock(t_void *pmoal, t_void *plock)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	moal_lock *mlock = plock;
 
 	kfree(mlock);
@@ -595,63 +615,187 @@ moal_free_lock(IN t_void *pmoal_handle, IN t_void *plock)
 /**
  *  @brief Request a spin lock
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param plock    Pointer to the lock
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_spin_lock(IN t_void *pmoal_handle, IN t_void *plock)
+mlan_status moal_spin_lock(t_void *pmoal, t_void *plock)
+	__acquires(&plock->lock)
 {
 	moal_lock *mlock = plock;
 	unsigned long flags = 0;
-
-	if (mlock) {
-		spin_lock_irqsave(&mlock->lock, flags);
-		mlock->flags = flags;
-		return MLAN_STATUS_SUCCESS;
-	} else {
-		return MLAN_STATUS_FAILURE;
-	}
+	spin_lock_irqsave(&mlock->lock, flags);
+	mlock->flags = flags;
+	return MLAN_STATUS_SUCCESS;
 }
 
 /**
  *  @brief Request a spin_unlock
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param plock    Pointer to the lock
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_spin_unlock(IN t_void *pmoal_handle, IN t_void *plock)
+mlan_status moal_spin_unlock(t_void *pmoal, t_void *plock)
+	__releases(&plock->lock)
 {
 	moal_lock *mlock = (moal_lock *)plock;
+	spin_unlock_irqrestore(&mlock->lock, mlock->flags);
+	return MLAN_STATUS_SUCCESS;
+}
 
-	if (mlock) {
-		spin_unlock_irqrestore(&mlock->lock, mlock->flags);
+/**
+ *  @brief  This function collects AMSDU TP statistics.
+ *
+ *  @param pmoal Pointer to the MOAL context
+ *  @param amsdu_process_delay          amsdu process time
+ *  @param amsdu_copy_delay             amsdu copy time
+ *
+ *  @return         N/A
+ */
+void moal_amsdu_tp_accounting(t_void *pmoal, t_s32 amsdu_process_delay,
+			      t_s32 amsdu_copy_delay)
+{
+	moal_handle *handle = (moal_handle *)pmoal;
+	handle->tp_acnt.rx_amsdu_delay[handle->tp_acnt.rx_amsdu_index] =
+		amsdu_process_delay;
+	handle->tp_acnt.rx_amsdu_copy_delay[handle->tp_acnt.rx_amsdu_index] =
+		amsdu_copy_delay;
+	handle->tp_acnt.rx_amsdu_index++;
+	if (handle->tp_acnt.rx_amsdu_index >= TXRX_MAX_SAMPLE)
+		handle->tp_acnt.rx_amsdu_index = 0;
+}
 
-		return MLAN_STATUS_SUCCESS;
-	} else {
-		return MLAN_STATUS_FAILURE;
+/**
+ *  @brief  This function collects TP statistics.
+ *
+ *  @param pmoal Pointer to the MOAL context
+ *  @param buf          pointer to the buffer of a packet
+ *  @param drop_point   Drop pointer user set
+ *
+ *  @return         N/A
+ */
+void moal_tp_accounting(t_void *pmoal, void *buf, t_u32 drop_point)
+{
+	struct sk_buff *skb = NULL;
+	moal_handle *handle = (moal_handle *)pmoal;
+	pmlan_buffer pmbuf = (pmlan_buffer)buf;
+	t_s32 delay;
+	wifi_timeval t;
+
+	if (drop_point < MAX_TP_ACCOUNT_DROP_POINT_NUM) {
+		if (drop_point == 4) {
+			handle->tp_acnt.tx_bytes[drop_point] += pmbuf->data_len;
+		} else {
+			skb = (struct sk_buff *)buf;
+			handle->tp_acnt.tx_bytes[drop_point] += skb->len;
+		}
+		handle->tp_acnt.tx_packets[drop_point]++;
+	} else if (drop_point <= RX_DROP_P5) {
+		t_u16 rx_len = 0;
+		if (drop_point == RX_DROP_P1 || drop_point == RX_DROP_P2)
+			rx_len = pmbuf->data_len -
+				 *((t_u16 *)(pmbuf->pbuf + pmbuf->data_offset) +
+				   2); // remove rx_pkt_offset
+		else if (drop_point == RX_DROP_P3) // aggr pkt
+			rx_len = pmbuf->data_len;
+		else if (drop_point == RX_DROP_P4) { // before to kernel
+			skb = (struct sk_buff *)buf;
+			rx_len = skb->len;
+		}
+		handle->tp_acnt
+			.rx_bytes[drop_point - MAX_TP_ACCOUNT_DROP_POINT_NUM] +=
+			rx_len;
+		handle->tp_acnt.rx_packets[drop_point -
+					   MAX_TP_ACCOUNT_DROP_POINT_NUM]++;
+	} else if (drop_point == RX_TIME_PKT) {
+		woal_get_monotonic_time(&t);
+		/* deque - pcie receive */
+		delay = (t_s32)(pmbuf->extra_ts_sec - pmbuf->in_ts_sec) *
+			1000000;
+		delay += (t_s32)(pmbuf->extra_ts_usec - pmbuf->in_ts_usec);
+		handle->tp_acnt.rx_delay1_driver[handle->tp_acnt.rx_index] =
+			delay;
+		/* before netif_rx - deque */
+		delay = (t_s32)(pmbuf->out_ts_sec - pmbuf->extra_ts_sec) *
+			1000000;
+		delay += (t_s32)(pmbuf->out_ts_usec - pmbuf->extra_ts_usec);
+		handle->tp_acnt.rx_delay2_driver[handle->tp_acnt.rx_index] =
+			delay;
+		/* netif_rx to netif_rx return */
+		delay = (t_s32)(t.time_sec - pmbuf->out_ts_sec) * 1000000;
+		delay += (t_s32)(t.time_usec - pmbuf->out_ts_usec);
+		handle->tp_acnt.rx_delay_kernel[handle->tp_acnt.rx_index] =
+			delay;
+		handle->tp_acnt.rx_index++;
+		if (handle->tp_acnt.rx_index >= TXRX_MAX_SAMPLE)
+			handle->tp_acnt.rx_index = 0;
+	} else if (drop_point == TX_TIME_PKT) {
+		delay = (t_s32)(pmbuf->out_ts_sec - pmbuf->in_ts_sec) * 1000000;
+		delay += (t_s32)(pmbuf->out_ts_usec - pmbuf->in_ts_usec);
+		handle->tp_acnt.tx_delay_driver[handle->tp_acnt.tx_index] =
+			delay;
+		handle->tp_acnt.tx_index++;
+		if (handle->tp_acnt.tx_index >= TXRX_MAX_SAMPLE)
+			handle->tp_acnt.tx_index = 0;
+	}
+}
+
+void moal_tp_accounting_rx_param(t_void *pmoal, unsigned int type,
+				 unsigned int rsvd1)
+{
+	moal_handle *phandle = (moal_handle *)pmoal;
+	switch (type) {
+	case 0: // Rx interrupt
+		phandle->tp_acnt.rx_intr_cnt++;
+		break;
+	case 1: // rx_pkts_queued
+		phandle->tp_acnt.rx_pending = rsvd1;
+		break;
+	case 2: // paused
+		phandle->tp_acnt.rx_paused_cnt++;
+		break;
+	case 3: // tx interrupt count
+		phandle->tp_acnt.tx_intr_cnt++;
+		break;
+	case 4: // rx amsdu count
+		phandle->tp_acnt.rx_amsdu_cnt++;
+		phandle->tp_acnt.rx_amsdu_pkt_cnt += rsvd1;
+		break;
+	case 5: // tx amsdu count
+		phandle->tp_acnt.tx_amsdu_cnt++;
+		phandle->tp_acnt.tx_amsdu_pkt_cnt += rsvd1;
+		break;
+	case 6: // rxbd rdptr full count
+		phandle->tp_acnt.rx_rdptr_full_cnt++;
+		break;
+	case 7: // tx hard xmit skb realloc count
+		phandle->tp_acnt.tx_xmit_skb_realloc_cnt++;
+		break;
+	case 8: // tx stop queue count
+		phandle->tp_acnt.tx_stop_queue_cnt++;
+		break;
+
+	default:
+		break;
 	}
 }
 
 /**
  *  @brief This function reads one block of firmware data from MOAL
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param offset       Offset from where the data will be copied
  *  @param len          Length to be copied
  *  @param pbuf         Buffer where the data will be copied
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_get_fw_data(IN t_void *pmoal_handle,
-		 IN t_u32 offset, IN t_u32 len, OUT t_u8 *pbuf)
+mlan_status moal_get_fw_data(t_void *pmoal, t_u32 offset, t_u32 len, t_u8 *pbuf)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 
 	if (!pbuf || !len || !handle->firmware)
 		return MLAN_STATUS_FAILURE;
@@ -668,16 +812,15 @@ moal_get_fw_data(IN t_void *pmoal_handle,
 /**
  *  @brief This function get vdll data from moal
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param len          Length to be copied
  *  @param pbuf         Buffer where the data will be copied
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_get_vdll_data(IN t_void *pmoal_handle, IN t_u32 len, OUT t_u8 *pbuf)
+mlan_status moal_get_vdll_data(t_void *pmoal, t_u32 len, t_u8 *pbuf)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	mlan_status status = MLAN_STATUS_FAILURE;
 	t_u32 offset = 0;
 	t_u8 req_fw = MFALSE;
@@ -707,38 +850,63 @@ moal_get_vdll_data(IN t_void *pmoal_handle, IN t_u32 len, OUT t_u8 *pbuf)
 }
 
 /**
- *  @brief This function is called when MLAN completes the initialization firmware.
+ *  @brief This function is called when MLAN completes the initialization
+ * firmware.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param status   The status code for mlan_init_fw request
  *  @param phw      pointer to mlan_hw_info
  *  @param ptbl     pointer to mplan_bss_tbl
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_get_hw_spec_complete(IN t_void *pmoal_handle, IN mlan_status status,
-			  IN mlan_hw_info * phw, IN pmlan_bss_tbl ptbl)
+mlan_status moal_get_hw_spec_complete(t_void *pmoal, mlan_status status,
+				      mlan_hw_info *phw, pmlan_bss_tbl ptbl)
 {
+#if defined(PCIE9098)
+	moal_handle *handle = (moal_handle *)pmoal;
+#endif
+
 	ENTER();
 	if (status == MLAN_STATUS_SUCCESS) {
 		PRINTM(MCMND, "Get Hw Spec done, fw_cap=0x%x\n", phw->fw_cap);
+#ifdef PCIE9098
+		/** Special/Temporary handling to manage the driver version
+		 * string to identify Seahawk/AW690 (skyhawk based) based on
+		 * fw_cap_ext value set by Fw */
+		if (phw->fw_cap_ext & MBIT(31) &&
+		    IS_PCIE9098(handle->card_type)) {
+			moal_memcpy_ext(handle, driver_version, CARD_PCIEAW690,
+					strlen(CARD_PCIEAW690),
+					strlen(driver_version));
+			moal_memcpy_ext(handle,
+					driver_version + strlen(INTF_CARDTYPE) +
+						strlen(KERN_VERSION),
+					V17, strlen(V17),
+					strlen(driver_version) -
+						strlen(INTF_CARDTYPE) -
+						strlen(KERN_VERSION));
+			moal_memcpy_ext(handle, handle->driver_version,
+					driver_version, strlen(driver_version),
+					MLAN_MAX_VER_STR_LEN - 1);
+		}
+#endif
 	}
 	LEAVE();
 	return MLAN_STATUS_SUCCESS;
 }
 
 /**
- *  @brief This function is called when MLAN completes the initialization firmware.
+ *  @brief This function is called when MLAN completes the initialization
+ * firmware.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param status   The status code for mlan_init_fw request
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_init_fw_complete(IN t_void *pmoal_handle, IN mlan_status status)
+mlan_status moal_init_fw_complete(t_void *pmoal, mlan_status status)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	ENTER();
 	if (status == MLAN_STATUS_SUCCESS)
 		handle->hardware_status = HardwareStatusReady;
@@ -751,15 +919,14 @@ moal_init_fw_complete(IN t_void *pmoal_handle, IN mlan_status status)
 /**
  *  @brief This function is called when MLAN shutdown firmware is completed.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param status   The status code for mlan_shutdown request
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_shutdown_fw_complete(IN t_void *pmoal_handle, IN mlan_status status)
+mlan_status moal_shutdown_fw_complete(t_void *pmoal, mlan_status status)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	ENTER();
 	handle->hardware_status = HardwareStatusNotReady;
 	handle->init_wait_q_woken = MTRUE;
@@ -771,17 +938,16 @@ moal_shutdown_fw_complete(IN t_void *pmoal_handle, IN mlan_status status)
 /**
  *  @brief This function is called when an MLAN IOCTL is completed.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pioctl_req	pointer to structure mlan_ioctl_req
  *  @param status   The status code for mlan_ioctl request
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_ioctl_complete(IN t_void *pmoal_handle,
-		    IN pmlan_ioctl_req pioctl_req, IN mlan_status status)
+mlan_status moal_ioctl_complete(t_void *pmoal, pmlan_ioctl_req pioctl_req,
+				mlan_status status)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	moal_private *priv = NULL;
 	wait_queue *wait;
 	unsigned long flags = 0;
@@ -845,17 +1011,16 @@ moal_ioctl_complete(IN t_void *pmoal_handle,
 /**
  *  @brief This function allocates mlan_buffer.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param size     allocation size requested
  *  @param pmbuf    pointer to pointer to the allocated buffer
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_alloc_mlan_buffer(IN t_void *pmoal_handle,
-		       IN t_u32 size, OUT pmlan_buffer *pmbuf)
+mlan_status moal_alloc_mlan_buffer(t_void *pmoal, t_u32 size,
+				   pmlan_buffer *pmbuf)
 {
-	*pmbuf = woal_alloc_mlan_buffer((moal_handle *)pmoal_handle, size);
+	*pmbuf = woal_alloc_mlan_buffer((moal_handle *)pmoal, size);
 	if (NULL == *pmbuf)
 		return MLAN_STATUS_FAILURE;
 	return MLAN_STATUS_SUCCESS;
@@ -864,40 +1029,37 @@ moal_alloc_mlan_buffer(IN t_void *pmoal_handle,
 /**
  *  @brief This function frees mlan_buffer.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    pointer to buffer to be freed
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_free_mlan_buffer(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
+mlan_status moal_free_mlan_buffer(t_void *pmoal, pmlan_buffer pmbuf)
 {
 	if (!pmbuf)
 		return MLAN_STATUS_FAILURE;
-	woal_free_mlan_buffer((moal_handle *)pmoal_handle, pmbuf);
+	woal_free_mlan_buffer((moal_handle *)pmoal, pmbuf);
 	return MLAN_STATUS_SUCCESS;
 }
 
 /**
  *  @brief This function is called when MLAN complete send data packet.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    Pointer to the mlan buffer structure
  *  @param status   The status code for mlan_send_packet request
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_send_packet_complete(IN t_void *pmoal_handle,
-			  IN pmlan_buffer pmbuf, IN mlan_status status)
+mlan_status moal_send_packet_complete(t_void *pmoal, pmlan_buffer pmbuf,
+				      mlan_status status)
 {
 	moal_private *priv = NULL;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	struct sk_buff *skb = NULL;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
 	t_u32 index = 0;
 #endif
-	struct timeval tstamp;
 
 	ENTER();
 	if (pmbuf && pmbuf->buf_type == MLAN_BUF_TYPE_RAW_DATA) {
@@ -906,7 +1068,7 @@ moal_send_packet_complete(IN t_void *pmoal_handle,
 		goto done;
 	}
 	if (pmbuf) {
-		priv = woal_bss_index_to_priv(pmoal_handle, pmbuf->bss_index);
+		priv = woal_bss_index_to_priv(pmoal, pmbuf->bss_index);
 		skb = (struct sk_buff *)pmbuf->pdesc;
 		if (priv) {
 			woal_set_trans_start(priv->netdev);
@@ -914,37 +1076,36 @@ moal_send_packet_complete(IN t_void *pmoal_handle,
 				if (status == MLAN_STATUS_SUCCESS) {
 					priv->stats.tx_packets++;
 					priv->stats.tx_bytes += skb->len;
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-					woal_packet_fate_monitor(priv,
-								 PACKET_TYPE_TX,
-								 TX_PKT_FATE_SENT,
-								 FRAME_TYPE_ETHERNET_II,
-								 0, 0,
-								 skb->data,
-								 skb->data_len);
+					woal_packet_fate_monitor(
+						priv, PACKET_TYPE_TX,
+						TX_PKT_FATE_SENT,
+						FRAME_TYPE_ETHERNET_II, 0, 0,
+						skb->data, skb->data_len);
+#endif
 #endif
 				} else {
 					priv->stats.tx_errors++;
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-					woal_packet_fate_monitor(priv,
-								 PACKET_TYPE_TX,
-								 TX_PKT_FATE_DRV_DROP_OTHER,
-								 FRAME_TYPE_ETHERNET_II,
-								 0, 0,
-								 skb->data,
-								 skb->data_len);
+					woal_packet_fate_monitor(
+						priv, PACKET_TYPE_TX,
+						TX_PKT_FATE_DRV_DROP_OTHER,
+						FRAME_TYPE_ETHERNET_II, 0, 0,
+						skb->data, skb->data_len);
+#endif
 #endif
 				}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
 				index = skb_get_queue_mapping(skb);
 				atomic_dec(&handle->tx_pending);
-				if (atomic_dec_return
-				    (&priv->wmm_tx_pending[index]) ==
+				if (atomic_dec_return(
+					    &priv->wmm_tx_pending[index]) ==
 				    LOW_TX_PENDING) {
 					struct netdev_queue *txq =
-						netdev_get_tx_queue(priv->
-								    netdev,
-								    index);
+						netdev_get_tx_queue(
+							priv->netdev, index);
 					if (netif_tx_queue_stopped(txq)) {
 						netif_tx_wake_queue(txq);
 						PRINTM(MINFO,
@@ -952,40 +1113,37 @@ moal_send_packet_complete(IN t_void *pmoal_handle,
 						       index);
 					}
 				}
-#else /*#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,29) */
+#else /*#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,29)*/
 				if (atomic_dec_return(&handle->tx_pending) <
 				    LOW_TX_PENDING) {
 					int i;
 					for (i = 0; i < handle->priv_num; i++) {
 #ifdef STA_SUPPORT
-						if ((GET_BSS_ROLE
-						     (handle->priv[i]) ==
+						if ((GET_BSS_ROLE(
+							     handle->priv[i]) ==
 						     MLAN_BSS_ROLE_STA) &&
-						    (handle->priv[i]->
-						     media_connected ||
-						     priv->
-						     is_adhoc_link_sensed)) {
-							woal_wake_queue(handle->
-									priv
-									[i]->
-									netdev);
+						    (handle->priv[i]
+							     ->media_connected ||
+						     priv->is_adhoc_link_sensed)) {
+							woal_wake_queue(
+								handle->priv[i]
+									->netdev);
 						}
 #endif
 #ifdef UAP_SUPPORT
-						if ((GET_BSS_ROLE
-						     (handle->priv[i]) ==
+						if ((GET_BSS_ROLE(
+							     handle->priv[i]) ==
 						     MLAN_BSS_ROLE_UAP) &&
-						    (handle->priv[i]->
-						     media_connected)) {
-							woal_wake_queue(handle->
-									priv
-									[i]->
-									netdev);
+						    (handle->priv[i]
+							     ->media_connected)) {
+							woal_wake_queue(
+								handle->priv[i]
+									->netdev);
 						}
 #endif
 					}
 				}
-#endif /*#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,29) */
+#endif /*#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,29)*/
 			}
 		}
 		if (skb)
@@ -995,9 +1153,7 @@ moal_send_packet_complete(IN t_void *pmoal_handle,
 done:
 	if ((atomic_read(&handle->tx_pending) == 0) &&
 	    !is_zero_timeval(handle->tx_time_start)) {
-		woal_get_monotonic_time(&tstamp);
-		handle->tx_time_end.time_sec = (t_u32)tstamp.tv_sec;
-		handle->tx_time_end.time_usec = (t_u32)tstamp.tv_usec;
+		woal_get_monotonic_time(&handle->tx_time_end);
 		handle->tx_time +=
 			(t_u64)(timeval_to_usec(handle->tx_time_end) -
 				timeval_to_usec(handle->tx_time_start));
@@ -1022,19 +1178,18 @@ done:
  *  @brief This function is called when MLAN complete receiving
  *         data/event/command
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    Pointer to the mlan buffer structure
  *  @param port     Port number for receive
  *  @param status   The status code for mlan_receive request
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_recv_complete(IN t_void *pmoal_handle,
-		   IN pmlan_buffer pmbuf, IN t_u32 port, IN mlan_status status)
+mlan_status moal_recv_complete(t_void *pmoal, pmlan_buffer pmbuf, t_u32 port,
+			       mlan_status status)
 {
 	moal_private *priv = NULL;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	struct usb_card_rec *cardp = (struct usb_card_rec *)handle->card;
 	ENTER();
 
@@ -1052,15 +1207,16 @@ moal_recv_complete(IN t_void *pmoal_handle,
 			woal_submit_rx_urb(handle, port);
 		else {
 			woal_free_mlan_buffer(handle, pmbuf);
-			if ((atomic_read(&handle->rx_pending) < LOW_RX_PENDING)
-			    && atomic_read(&cardp->rx_data_urb_pending) <
-			    MVUSB_RX_DATA_URB)
+			if ((atomic_read(&handle->rx_pending) <
+			     USB_LOW_RX_PENDING) &&
+			    atomic_read(&cardp->rx_data_urb_pending) <
+				    MVUSB_RX_DATA_URB)
 				woal_usb_submit_rx_data_urbs(handle);
 		}
 	} else if (port == cardp->rx_data_ep) {
-		if ((atomic_read(&handle->rx_pending) < LOW_RX_PENDING) &&
+		if ((atomic_read(&handle->rx_pending) < USB_LOW_RX_PENDING) &&
 		    atomic_read(&cardp->rx_data_urb_pending) <
-		    MVUSB_RX_DATA_URB)
+			    MVUSB_RX_DATA_URB)
 			woal_usb_submit_rx_data_urbs(handle);
 	}
 	LEAVE();
@@ -1070,17 +1226,16 @@ moal_recv_complete(IN t_void *pmoal_handle,
 /**
  *  @brief This function write a command/data packet to card.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    Pointer to the mlan buffer structure
  *  @param port     Port number for sent
  *
- *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE or MLAN_STATUS_PENDING or MLAN_STATUS_RESOURCE
+ *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE or
+ * MLAN_STATUS_PENDING or MLAN_STATUS_RESOURCE
  */
-mlan_status
-moal_write_data_async(IN t_void *pmoal_handle,
-		      IN pmlan_buffer pmbuf, IN t_u32 port)
+mlan_status moal_write_data_async(t_void *pmoal, pmlan_buffer pmbuf, t_u32 port)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	mlan_status ret = MLAN_STATUS_SUCCESS;
 	ENTER();
 	if (handle->is_suspended == MTRUE) {
@@ -1089,8 +1244,7 @@ moal_write_data_async(IN t_void *pmoal_handle,
 		LEAVE();
 		return MLAN_STATUS_FAILURE;
 	}
-	ret = woal_write_data_async((moal_handle *)pmoal_handle, pmbuf,
-				    (t_u8)port);
+	ret = woal_write_data_async((moal_handle *)pmoal, pmbuf, (t_u8)port);
 	LEAVE();
 	return ret;
 }
@@ -1100,18 +1254,17 @@ moal_write_data_async(IN t_void *pmoal_handle,
  *  @brief This function write a command/data packet to card.
  *         This function blocks the call until it finishes
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    Pointer to the mlan buffer structure
  *  @param port     Port number for sent
  *  @param timeout  Timeout value in milliseconds (if 0 the wait is forever)
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_write_data_sync(IN t_void *pmoal_handle,
-		     IN pmlan_buffer pmbuf, IN t_u32 port, IN t_u32 timeout)
+mlan_status moal_write_data_sync(t_void *pmoal, pmlan_buffer pmbuf, t_u32 port,
+				 t_u32 timeout)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	return handle->ops.write_data_sync(handle, pmbuf, port, timeout);
 }
 
@@ -1119,18 +1272,17 @@ moal_write_data_sync(IN t_void *pmoal_handle,
  *  @brief This function read data packet/event/command from card.
  *         This function blocks the call until it finish
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    Pointer to the mlan buffer structure
  *  @param port     Port number for read
  *  @param timeout  Timeout value in milliseconds (if 0 the wait is forever)
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_read_data_sync(IN t_void *pmoal_handle,
-		    IN OUT pmlan_buffer pmbuf, IN t_u32 port, IN t_u32 timeout)
+mlan_status moal_read_data_sync(t_void *pmoal, pmlan_buffer pmbuf, t_u32 port,
+				t_u32 timeout)
 {
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	return handle->ops.read_data_sync(handle, pmbuf, port, timeout);
 }
 
@@ -1138,17 +1290,16 @@ moal_read_data_sync(IN t_void *pmoal_handle,
 /**
  *  @brief This function writes data into card register.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param reg          register offset
  *  @param data         value
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_write_reg(IN t_void *pmoal_handle, IN t_u32 reg, IN t_u32 data)
+mlan_status moal_write_reg(t_void *pmoal, t_u32 reg, t_u32 data)
 {
 	int ret = MLAN_STATUS_FAILURE;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	if (handle->ops.write_reg)
 		ret = handle->ops.write_reg(handle, reg, data);
 	return ret;
@@ -1157,17 +1308,16 @@ moal_write_reg(IN t_void *pmoal_handle, IN t_u32 reg, IN t_u32 data)
 /**
  *  @brief This function reads data from card register.
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param reg          register offset
  *  @param data         value
  *
  *  @return             MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_read_reg(IN t_void *pmoal_handle, IN t_u32 reg, OUT t_u32 *data)
+mlan_status moal_read_reg(t_void *pmoal, t_u32 reg, t_u32 *data)
 {
 	int ret = MLAN_STATUS_FAILURE;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	if (handle->ops.read_reg)
 		ret = handle->ops.read_reg(handle, reg, data);
 	return ret;
@@ -1176,20 +1326,179 @@ moal_read_reg(IN t_void *pmoal_handle, IN t_u32 reg, OUT t_u32 *data)
 #endif /* SDIO || PCIE */
 
 /**
+ *  @brief This function uploads amsdu packet to the network stack
+ *
+ *  @param pmoal Pointer to the MOAL context
+ *  @param pmbuf    Pointer to the mlan buffer structure
+ *
+ *  @return         MLAN_STATUS_PENDING or MLAN_STATUS_FAILURE
+ */
+mlan_status moal_recv_amsdu_packet(t_void *pmoal, pmlan_buffer pmbuf)
+{
+	mlan_status status = MLAN_STATUS_FAILURE;
+	struct sk_buff *skb = NULL;
+	struct sk_buff *frame = NULL;
+	int remaining;
+	const struct ethhdr *eth;
+	u8 dst[ETH_ALEN], src[ETH_ALEN];
+	moal_handle *handle = (moal_handle *)pmoal;
+	moal_private *priv = NULL;
+	struct net_device *netdev = NULL;
+	u8 *payload;
+	mlan_buffer mbuf;
+	t_u8 drop = 0;
+	t_u8 rfc1042_eth_hdr[MLAN_MAC_ADDR_LENGTH] = {0xaa, 0xaa, 0x03,
+						      0x00, 0x00, 0x00};
+
+	wifi_timeval t1, t2;
+	t_s32 delay;
+	t_u32 in_ts_sec = 0;
+	t_u32 in_ts_usec = 0;
+
+	ENTER();
+	memset(&mbuf, 0, sizeof(mlan_buffer));
+	mbuf.bss_index = pmbuf->bss_index;
+
+	priv = woal_bss_index_to_priv(pmoal, pmbuf->bss_index);
+	if (priv == NULL) {
+		PRINTM(MERROR, "%s: priv is null\n", __func__);
+		goto done;
+	}
+	netdev = priv->netdev;
+	skb = (struct sk_buff *)pmbuf->pdesc;
+	if (!skb)
+		goto done;
+
+	skb_reserve(skb, pmbuf->data_offset);
+	if (skb_tailroom(skb) < (int)pmbuf->data_len) {
+		PRINTM(MERROR, "skb overflow: tail room=%d, data_len=%d\n",
+		       skb_tailroom(skb), pmbuf->data_len);
+		goto done;
+	}
+	skb_put(skb, pmbuf->data_len);
+
+	// rx_trace 8
+	if (handle->tp_acnt.on) {
+		moal_tp_accounting(pmoal, skb, RX_DROP_P4);
+		woal_get_monotonic_time(&t1);
+		in_ts_sec = t1.time_sec;
+		in_ts_usec = t1.time_usec;
+		if (pmbuf && pmbuf->in_ts_sec) {
+			pmbuf->out_ts_sec = t1.time_sec;
+			pmbuf->out_ts_usec = t1.time_usec;
+		}
+	}
+	if (handle->tp_acnt.drop_point == RX_DROP_P4) {
+		status = MLAN_STATUS_PENDING;
+		dev_kfree_skb(skb);
+		goto done;
+	}
+
+	while (skb != frame) {
+		__be16 len;
+		u8 padding;
+		unsigned int subframe_len;
+		eth = (struct ethhdr *)skb->data;
+		len = ntohs(eth->h_proto);
+		subframe_len = sizeof(struct ethhdr) + len;
+		remaining = skb->len;
+
+		if (subframe_len > remaining) {
+			PRINTM(MERROR,
+			       "Error in len: remaining = %d, subframe_len = %d\n",
+			       remaining, subframe_len);
+			break;
+		}
+		memcpy(dst, eth->h_dest, ETH_ALEN);
+		memcpy(src, eth->h_source, ETH_ALEN);
+
+		padding = (4 - subframe_len) & 0x3;
+
+		skb_pull(skb, sizeof(struct ethhdr));
+
+		if (remaining <= (subframe_len + padding)) {
+			frame = skb;
+			status = MLAN_STATUS_PENDING;
+		} else {
+			frame = skb_clone(skb, GFP_ATOMIC);
+			skb_trim(frame, len);
+			eth = (struct ethhdr *)skb_pull(skb, len + padding);
+			if (!eth) {
+				PRINTM(MERROR, "Invalid amsdu packet\n");
+				break;
+			}
+		}
+		skb_reset_network_header(frame);
+		frame->dev = netdev;
+		frame->priority = skb->priority;
+		payload = frame->data;
+		if (ether_addr_equal(payload, rfc1042_eth_hdr)) {
+			/* Remove RFC1042 */
+			skb_pull(frame, 6);
+			memcpy(skb_push(frame, ETH_ALEN), src, ETH_ALEN);
+			memcpy(skb_push(frame, ETH_ALEN), dst, ETH_ALEN);
+		} else {
+			memcpy(skb_push(frame, sizeof(__be16)), &len,
+			       sizeof(__be16));
+			memcpy(skb_push(frame, ETH_ALEN), src, ETH_ALEN);
+			memcpy(skb_push(frame, ETH_ALEN), dst, ETH_ALEN);
+		}
+		mbuf.pbuf = frame->data;
+		mbuf.data_len = frame->len;
+		mlan_process_deaggr_pkt(handle->pmlan_adapter, &mbuf, &drop);
+		if (drop) {
+			dev_kfree_skb(frame);
+			continue;
+		}
+		frame->protocol = eth_type_trans(frame, netdev);
+		frame->ip_summed = CHECKSUM_NONE;
+		if (in_interrupt())
+			netif_rx(frame);
+		else {
+			if (atomic_read(&handle->rx_pending) >
+			    MAX_RX_PENDING_THRHLD)
+				netif_rx(frame);
+			else {
+				if (handle->params.net_rx == MTRUE) {
+					local_bh_disable();
+					netif_receive_skb(frame);
+					local_bh_enable();
+				} else {
+					netif_rx_ni(frame);
+				}
+			}
+		}
+	}
+	if (handle->tp_acnt.on) {
+		if (pmbuf && pmbuf->in_ts_sec)
+			moal_tp_accounting(handle, pmbuf, RX_TIME_PKT);
+
+		woal_get_monotonic_time(&t2);
+		delay = (t_s32)(t2.time_sec - in_ts_sec) * 1000000;
+		delay += (t_s32)(t2.time_usec - in_ts_usec);
+		moal_amsdu_tp_accounting(pmoal, delay, 0);
+	}
+done:
+	if (status == MLAN_STATUS_PENDING)
+		atomic_dec(&handle->mbufalloc_count);
+	LEAVE();
+	return status;
+}
+
+/**
  *  @brief This function uploads the packet to the network stack
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmbuf    Pointer to the mlan buffer structure
  *
  *  @return         MLAN_STATUS_SUCCESS or MLAN_STATUS_FAILURE
  */
-mlan_status
-moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
+mlan_status moal_recv_packet(t_void *pmoal, pmlan_buffer pmbuf)
 {
 	mlan_status status = MLAN_STATUS_SUCCESS;
 	moal_private *priv = NULL;
 	struct sk_buff *skb = NULL;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 #if defined(USB) || defined(PCIE)
 	t_u32 max_rx_data_size = MLAN_RX_DATA_BUF_SIZE;
 #endif
@@ -1197,6 +1506,7 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 	t_u8 rx_info_flag = MFALSE;
 	int j;
 	struct ethhdr *ethh = NULL;
+	struct net_device *netdev = NULL;
 
 	ENTER();
 	if (pmbuf) {
@@ -1212,8 +1522,8 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 				    MLAN_USB_AGGR_MODE_NUM) {
 					max_rx_data_size *=
 						MAX(MLAN_USB_MAX_PKT_SIZE,
-						    cardp->rx_deaggr_ctrl.
-						    aggr_align);
+						    cardp->rx_deaggr_ctrl
+							    .aggr_align);
 					max_rx_data_size =
 						MAX(max_rx_data_size,
 						    MLAN_RX_DATA_BUF_SIZE);
@@ -1223,12 +1533,12 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 #endif
 #endif
 
-		priv = woal_bss_index_to_priv(pmoal_handle, pmbuf->bss_index);
+		priv = woal_bss_index_to_priv(pmoal, pmbuf->bss_index);
 		skb = (struct sk_buff *)pmbuf->pdesc;
 		if (priv) {
 			if (skb) {
 				skb_reserve(skb, pmbuf->data_offset);
-				if (skb_tailroom(skb) < pmbuf->data_len) {
+				if (skb_tailroom(skb) < (int)pmbuf->data_len) {
 					PRINTM(MERROR,
 					       "skb overflow: tail room=%d, data_len=%d\n",
 					       skb_tailroom(skb),
@@ -1241,7 +1551,8 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 				pmbuf->pdesc = NULL;
 				pmbuf->pbuf = NULL;
 				pmbuf->data_offset = pmbuf->data_len = 0;
-				/* pkt been submit to kernel, no need to free by mlan */
+				/* pkt been submit to kernel, no need to
+				 * free by mlan*/
 				status = MLAN_STATUS_PENDING;
 				atomic_dec(&handle->mbufalloc_count);
 			} else {
@@ -1254,19 +1565,16 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 					       __func__);
 					status = MLAN_STATUS_FAILURE;
 					priv->stats.rx_dropped++;
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-					woal_packet_fate_monitor(priv,
-								 PACKET_TYPE_RX,
-								 RX_PKT_FATE_DRV_DROP_NOBUFS,
-								 FRAME_TYPE_ETHERNET_II,
-								 0, 0,
-								 (t_u8
-								  *)(pmbuf->
-								     pbuf +
-								     pmbuf->
-								     data_offset),
-								 pmbuf->
-								 data_len);
+					woal_packet_fate_monitor(
+						priv, PACKET_TYPE_RX,
+						RX_PKT_FATE_DRV_DROP_NOBUFS,
+						FRAME_TYPE_ETHERNET_II, 0, 0,
+						(t_u8 *)(pmbuf->pbuf +
+							 pmbuf->data_offset),
+						pmbuf->data_len);
+#endif
 #endif
 					goto done;
 				}
@@ -1277,38 +1585,49 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 						pmbuf->data_len,
 						pmbuf->data_len);
 				skb_put(skb, pmbuf->data_len);
-
 			}
 			ethh = (struct ethhdr *)(skb->data);
 			if (ntohs(ethh->h_proto) == ETH_P_PAE)
 				PRINTM(MEVENT,
 				       "wlan: %s Rx EAPOL pkt from " MACSTR
-				       "\n", priv->netdev->name,
+				       "\n",
+				       priv->netdev->name,
 				       MAC2STR(ethh->h_source));
-			skb->dev = priv->netdev;
-			skb->protocol = eth_type_trans(skb, priv->netdev);
+			if (!netdev)
+				netdev = priv->netdev;
+			skb->dev = netdev;
+			skb->protocol = eth_type_trans(skb, netdev);
 			skb->ip_summed = CHECKSUM_NONE;
 
 #if defined(USB) || defined(PCIE)
-			/* This is only required only in case of 11n and USB as we alloc                 if(skb_tailroom(skb) < pmbuf->data_len){
-			   PRINTM(MERROR,"skb overflow: tail room=%d, data_len\n", skb_tailroom(skb), pmbuf->data_len);
-			   status = MLAN_STATUS_FAILURE;
-			   priv->stats.rx_dropped++;
-			   goto done;
-			   }
-			   * a buffer of 4K only if its 11N (to be able to receive 4K AMSDU
-			   * packets). In case of SD we allocate buffers based on the size
-			   * of packet and hence this is not needed.
-			 */
-			/* Modifying the truesize here as our allocation for each skb is 4K
-			 * but we only receive 2K packets and this cause the kernel to start
-			 * dropping packets in case where application has allocated buffer
-			 * based on 2K size i.e. if there a 64K packet received (in IP
-			 * fragments and application allocates 64K to receive this packet
-			 * but this packet would almost double up because we allocate each
-			 * 1.5K fragment in 4K and pass it up. As soon as the 64K limit
-			 * hits kernel will start to drop rest of the fragments. Currently
-			 * we fail the Filesndl-ht.scr script for UDP, hence this fix
+			/* This is only required only in case of 11n and
+			 USB as we alloc if(skb_tailroom(skb) <
+			 pmbuf->data_len){ PRINTM(MERROR,"skb overflow:
+			 tail room=%d, data_len\n", skb_tailroom(skb),
+			 pmbuf->data_len); status = MLAN_STATUS_FAILURE;
+				priv->stats.rx_dropped++;
+				goto done;
+			    }
+			 * a buffer of 4K only if its 11N (to be able to
+			 receive 4K AMSDU
+			 * packets). In case of SD we allocate buffers
+			 based on the size
+			 * of packet and hence this is not needed.
+			*/
+			/* Modifying the truesize here as our allocation
+			 * for each skb is 4K but we only receive 2K
+			 * packets and this cause the kernel to start
+			 * dropping packets in case where application
+			 * has allocated buffer based on 2K size i.e. if
+			 * there a 64K packet received (in IP fragments
+			 * and application allocates 64K to receive this
+			 * packet but this packet would almost double up
+			 * because we allocate each 1.5K fragment in 4K
+			 * and pass it up. As soon as the 64K limit hits
+			 * kernel will start to drop rest of the
+			 * fragments. Currently we fail the
+			 * Filesndl-ht.scr script for UDP, hence this
+			 * fix
 			 */
 			if (!IS_SD(priv->phandle->card_type)) {
 				if (skb->truesize > max_rx_data_size)
@@ -1316,53 +1635,57 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 						(skb->len - max_rx_data_size);
 			}
 #endif
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 			if (!woal_filter_packet(priv, skb->data, skb->len, 0)) {
 				PRINTM(MEVENT, "drop filtered packet %s\n",
 				       priv->netdev->name);
 				status = MLAN_STATUS_FAILURE;
 				priv->stats.rx_dropped++;
-				woal_packet_fate_monitor(priv, PACKET_TYPE_RX,
-							 RX_PKT_FATE_DRV_DROP_FILTER,
-							 FRAME_TYPE_ETHERNET_II,
-							 0, 0, skb->data,
-							 skb->len);
+				woal_packet_fate_monitor(
+					priv, PACKET_TYPE_RX,
+					RX_PKT_FATE_DRV_DROP_FILTER,
+					FRAME_TYPE_ETHERNET_II, 0, 0, skb->data,
+					skb->len);
 				dev_kfree_skb(skb);
 				goto done;
 			}
 #endif
+#endif
 			priv->stats.rx_bytes += skb->len;
 			priv->stats.rx_packets++;
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 			woal_packet_fate_monitor(priv, PACKET_TYPE_RX,
 						 RX_PKT_FATE_SUCCESS,
 						 FRAME_TYPE_ETHERNET_II, 0, 0,
 						 skb->data, skb->len);
 #endif
-#ifdef ANDROID_KERNEL
+#endif
 			if (handle->params.wakelock_timeout) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
-				__pm_wakeup_event(&handle->ws,
-						  handle->params.
-						  wakelock_timeout);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+				__pm_wakeup_event(
+					&handle->ws,
+					handle->params.wakelock_timeout);
 #else
-				wake_lock_timeout(&handle->wake_lock,
-						  msecs_to_jiffies(handle->
-								   params.
-								   wakelock_timeout));
+				wake_lock_timeout(
+					&handle->wake_lock,
+					msecs_to_jiffies(
+						handle->params
+							.wakelock_timeout));
 #endif
 			}
-#endif
 			if (priv->rx_protocols.protocol_num) {
 				for (j = 0; j < priv->rx_protocols.protocol_num;
 				     j++) {
-					if (htons(skb->protocol) ==
+					if (htons((__force t_u16)
+							  skb->protocol) ==
 					    priv->rx_protocols.protocols[j])
 						rx_info_flag = MTRUE;
 				}
 			}
 			if (rx_info_flag &&
-			    (skb_tailroom(skb) > sizeof(rxcontrol))) {
+			    (skb_tailroom(skb) > (int)sizeof(rxcontrol))) {
 				memset(&rxcontrol, 0, sizeof(dot11_rxcontrol));
 				rxcontrol.datarate = pmbuf->u.rx_info.data_rate;
 				rxcontrol.channel = pmbuf->u.rx_info.channel;
@@ -1376,15 +1699,39 @@ moal_recv_packet(IN t_void *pmoal_handle, IN pmlan_buffer pmbuf)
 						sizeof(dot11_rxcontrol),
 						sizeof(dot11_rxcontrol));
 			}
-
-			if (in_interrupt())
+			// rx_trace 8
+			if (priv->phandle->tp_acnt.on) {
+				wifi_timeval t;
+				moal_tp_accounting(handle, skb, RX_DROP_P4);
+				if (pmbuf && pmbuf->in_ts_sec) {
+					woal_get_monotonic_time(&t);
+					pmbuf->out_ts_sec = t.time_sec;
+					pmbuf->out_ts_usec = t.time_usec;
+				}
+			}
+			if (priv->phandle->tp_acnt.drop_point == RX_DROP_P4) {
+				status = MLAN_STATUS_PENDING;
+				dev_kfree_skb(skb);
+			} else if (in_interrupt())
 				netif_rx(skb);
 			else {
 				if (atomic_read(&handle->rx_pending) >
 				    MAX_RX_PENDING_THRHLD)
 					netif_rx(skb);
-				else
-					netif_rx_ni(skb);
+				else {
+					if (handle->params.net_rx == MTRUE) {
+						local_bh_disable();
+						netif_receive_skb(skb);
+						local_bh_enable();
+					} else {
+						netif_rx_ni(skb);
+					}
+				}
+			}
+			if (priv->phandle->tp_acnt.on) {
+				if (pmbuf && pmbuf->in_ts_sec)
+					moal_tp_accounting(handle, pmbuf,
+							   RX_TIME_PKT);
 			}
 		}
 	}
@@ -1393,16 +1740,155 @@ done:
 	return status;
 }
 
+#if defined(PCIE) || defined(SDIO)
+void woal_request_busfreq_pmqos_add(t_void *handle)
+{
+	moal_handle *pmhandle = (moal_handle *)handle;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 70)
+#ifdef IMX_SUPPORT
+	if (IS_PCIE(pmhandle->card_type)) {
+		request_bus_freq(BUS_FREQ_HIGH);
+	}
+#endif
+#endif
+	if (moal_extflg_isset(pmhandle, EXT_PMQOS)) {
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#ifdef IMX_SUPPORT
+		pm_qos_add_request(&pmhandle->woal_pm_qos_req,
+				   PM_QOS_CPU_DMA_LATENCY, 0);
+#endif
+#endif
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+#ifdef IMX_SUPPORT
+		cpu_latency_qos_add_request(&pmhandle->woal_pm_qos_req, 0);
+#endif
+#endif
+	}
+	return;
+}
+
+void woal_release_busfreq_pmqos_remove(t_void *handle)
+{
+	moal_handle *pmhandle = (moal_handle *)handle;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 70)
+#ifdef IMX_SUPPORT
+	if (IS_PCIE(pmhandle->card_type)) {
+		release_bus_freq(BUS_FREQ_HIGH);
+	}
+#endif
+#endif
+
+	if (moal_extflg_isset(pmhandle, EXT_PMQOS)) {
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#ifdef IMX_SUPPORT
+		pm_qos_remove_request(&pmhandle->woal_pm_qos_req);
+#endif
+#endif
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 7, 0)
+#ifdef IMX_SUPPORT
+		cpu_latency_qos_remove_request(&pmhandle->woal_pm_qos_req);
+#endif
+#endif
+	}
+	return;
+}
+#endif /*defined(PCIE) || defined(SDIO)*/
+
+/**
+ *  @brief This function checks media_connected state for
+ *  BSS types UAP/STA/P2P_GO/GC
+ *
+ *  @param pmoal Pointer to the MOAL context
+ *
+ */
+int woal_check_media_connected(t_void *pmoal)
+{
+	int i;
+	moal_handle *pmhandle = (moal_handle *)pmoal;
+	moal_private *pmpriv = NULL;
+	for (i = 0; i < pmhandle->priv_num && (pmpriv = pmhandle->priv[i]);
+	     i++) {
+		if (!pmpriv)
+			continue;
+		if (pmpriv->media_connected == MTRUE) {
+			return MTRUE;
+		}
+	}
+	return MFALSE;
+}
+
+/**
+ *  @brief This function checks connect and disconnect
+ *  events for BSS types UAP/STA/P2P_GO/GC
+ *
+ *  @param pmoal Pointer to the MOAL context
+ *
+ */
+static void moal_connection_status_check_pmqos(t_void *pmoal)
+{
+	moal_handle *pmhandle = (moal_handle *)pmoal;
+	if ((woal_check_media_connected(pmoal) == MTRUE)) {
+		if (pmhandle->request_pm == MFALSE) {
+			pmhandle->request_pm = MTRUE;
+#if defined(PCIE) || defined(SDIO)
+			woal_request_busfreq_pmqos_add(pmhandle);
+#endif
+		}
+	} else {
+		if (pmhandle->request_pm == MTRUE) {
+			pmhandle->request_pm = MFALSE;
+#if defined(PCIE) || defined(SDIO)
+			woal_release_busfreq_pmqos_remove(pmhandle);
+#endif
+		}
+	}
+}
+
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)
+/**
+ * @brief   Handle RX MGMT PKT event
+ *
+ * @param priv          A pointer moal_private structure
+ * @param pkt        A pointer to pkt
+ * @param len        length of pkt
+ *
+ * @return          N/A
+ */
+static void woal_rx_mgmt_pkt_event(moal_private *priv, t_u8 *pkt, t_u16 len)
+{
+	struct woal_event *evt;
+	unsigned long flags;
+	moal_handle *handle = priv->phandle;
+
+	evt = kzalloc(sizeof(struct woal_event), GFP_ATOMIC);
+	if (evt) {
+		evt->priv = priv;
+		evt->type = WOAL_EVENT_RX_MGMT_PKT;
+		evt->evt.event_len = len;
+		moal_memcpy_ext(priv->phandle, evt->evt.event_buf, pkt,
+				evt->evt.event_len, sizeof(evt->evt.event_buf));
+		INIT_LIST_HEAD(&evt->link);
+		spin_lock_irqsave(&handle->evt_lock, flags);
+		list_add_tail(&evt->link, &handle->evt_queue);
+		spin_unlock_irqrestore(&handle->evt_lock, flags);
+		queue_work(handle->evt_workqueue, &handle->evt_work);
+	}
+}
+#endif
+#endif
+
 /**
  *  @brief This function handles event receive
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param pmevent  Pointer to the mlan event structure
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
+mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 {
 #ifdef STA_SUPPORT
 	int custom_len = 0;
@@ -1422,7 +1908,12 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #endif
 #endif
 	mlan_ds_ps_info pm_info;
+	moal_handle *handle = (moal_handle *)pmoal;
+	moal_handle *ref_handle = NULL;
+
+#ifdef STA_CFG80211
 	t_u8 hw_test;
+#endif
 	int cfg80211_wext;
 
 #ifdef STA_CFG80211
@@ -1432,27 +1923,36 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #if defined(UAP_CFG80211) || defined(STA_CFG80211)
 	chan_band_info *pchan_info = NULL;
 #endif
-	struct timeval tstamp;
-
 	t_u8 radar_detected;
 
+	t_u8 auto_fw_dump = MFALSE;
 	ENTER();
-
+	if (pmevent->event_id == MLAN_EVENT_ID_FW_DUMP_INFO) {
+		if (!handle->is_fw_dump_timer_set) {
+			PRINTM(MMSG, "FW trigger fw dump\n");
+			handle->is_fw_dump_timer_set = MTRUE;
+			woal_mod_timer(&handle->fw_dump_timer, MOAL_TIMER_5S);
+		}
+		woal_store_firmware_dump(pmoal, pmevent);
+		handle->driver_status = MTRUE;
+		ref_handle = (moal_handle *)handle->pref_mac;
+		if (ref_handle)
+			ref_handle->driver_status = MTRUE;
+		goto done;
+	}
 	if ((pmevent->event_id != MLAN_EVENT_ID_DRV_DEFER_RX_WORK) &&
 	    (pmevent->event_id != MLAN_EVENT_ID_DRV_DEFER_HANDLING) &&
 	    (pmevent->event_id != MLAN_EVENT_ID_DRV_MGMT_FRAME))
 		PRINTM(MEVENT, "event id:0x%x\n", pmevent->event_id);
-	if (pmevent->event_id == MLAN_EVENT_ID_FW_DUMP_INFO) {
-		woal_store_firmware_dump(pmoal_handle, pmevent);
-		goto done;
-	}
 #if defined(PCIE)
 	if (pmevent->event_id == MLAN_EVENT_ID_SSU_DUMP_FILE) {
-		woal_store_ssu_dump(pmoal_handle, pmevent);
 		goto done;
 	}
 #endif /* SSU_SUPPORT */
-	priv = woal_bss_index_to_priv(pmoal_handle, pmevent->bss_index);
+	if (pmevent->event_id == MLAN_EVENT_ID_STORE_HOST_CMD_RESP) {
+		goto done;
+	}
+	priv = woal_bss_index_to_priv(pmoal, pmevent->bss_index);
 	if (priv == NULL) {
 		PRINTM(MERROR, "%s: priv is null\n", __func__);
 		goto done;
@@ -1463,7 +1963,9 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 	}
 
 	cfg80211_wext = priv->phandle->params.cfg80211_wext;
-	hw_test = moal_extflg_isset(pmoal_handle, EXT_HW_TEST);
+#ifdef STA_CFG80211
+	hw_test = moal_extflg_isset(pmoal, EXT_HW_TEST);
+#endif
 	switch (pmevent->event_id) {
 #ifdef STA_SUPPORT
 	case MLAN_EVENT_ID_FW_ADHOC_LINK_SENSED:
@@ -1529,7 +2031,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		if (!netif_carrier_ok(priv->netdev))
 			netif_carrier_on(priv->netdev);
 		woal_wake_queue(priv->netdev);
-
+		moal_connection_status_check_pmqos(pmoal);
 		break;
 
 	case MLAN_EVENT_ID_DRV_ASSOC_SUCC_LOGGER:
@@ -1553,30 +2055,31 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				if (priv->phandle->scan_request) {
 					PRINTM(MINFO,
 					       "Reporting scan results\n");
-					woal_inform_bss_from_scan_result(priv,
-									 NULL,
-									 MOAL_NO_WAIT);
+					woal_inform_bss_from_scan_result(
+						priv, NULL, MOAL_NO_WAIT);
 					if (!priv->phandle->first_scan_done) {
 						priv->phandle->first_scan_done =
 							MTRUE;
-						woal_set_scan_time(priv,
-								   ACTIVE_SCAN_CHAN_TIME,
-								   PASSIVE_SCAN_CHAN_TIME,
-								   SPECIFIC_SCAN_CHAN_TIME);
+						woal_set_scan_time(
+							priv,
+							ACTIVE_SCAN_CHAN_TIME,
+							PASSIVE_SCAN_CHAN_TIME,
+							SPECIFIC_SCAN_CHAN_TIME);
 					}
-					spin_lock_irqsave(&priv->phandle->
-							  scan_req_lock, flags);
+					spin_lock_irqsave(
+						&priv->phandle->scan_req_lock,
+						flags);
 					if (priv->phandle->scan_request) {
-						woal_cfg80211_scan_done(priv->
-									phandle->
-									scan_request,
-									MFALSE);
+						woal_cfg80211_scan_done(
+							priv->phandle
+								->scan_request,
+							MFALSE);
 						priv->phandle->scan_request =
 							NULL;
 					}
-					spin_unlock_irqrestore(&priv->phandle->
-							       scan_req_lock,
-							       flags);
+					spin_unlock_irqrestore(
+						&priv->phandle->scan_req_lock,
+						flags);
 				}
 			}
 #endif /* STA_CFG80211 */
@@ -1590,20 +2093,14 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #endif
 			woal_broadcast_event(priv, (t_u8 *)&pmevent->event_id,
 					     sizeof(mlan_event_id));
-
 		}
 
 		if (!is_zero_timeval(priv->phandle->scan_time_start)) {
-			woal_get_monotonic_time(&tstamp);
-			priv->phandle->scan_time_end.time_sec =
-				(t_u32)tstamp.tv_sec;
-			priv->phandle->scan_time_end.time_usec =
-				(t_u32)tstamp.tv_usec;
-			priv->phandle->scan_time +=
-				(t_u64)(timeval_to_usec
-					(priv->phandle->scan_time_end) -
-					timeval_to_usec(priv->phandle->
-							scan_time_start));
+			woal_get_monotonic_time(&priv->phandle->scan_time_end);
+			priv->phandle->scan_time += (t_u64)(
+				timeval_to_usec(priv->phandle->scan_time_end) -
+				timeval_to_usec(
+					priv->phandle->scan_time_start));
 			PRINTM(MINFO,
 			       "%s : start_timeval=%d:%d end_timeval=%d:%d inter=%llu scan_time=%llu\n",
 			       __func__,
@@ -1611,10 +2108,10 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			       priv->phandle->scan_time_start.time_usec,
 			       priv->phandle->scan_time_end.time_sec,
 			       priv->phandle->scan_time_end.time_usec,
-			       (t_u64)(timeval_to_usec
-				       (priv->phandle->scan_time_end) -
-				       timeval_to_usec(priv->phandle->
-						       scan_time_start)),
+			       (t_u64)(timeval_to_usec(
+					       priv->phandle->scan_time_end) -
+				       timeval_to_usec(
+					       priv->phandle->scan_time_start)),
 			       priv->phandle->scan_time);
 			priv->phandle->scan_time_start.time_sec = 0;
 			priv->phandle->scan_time_start.time_usec = 0;
@@ -1629,7 +2126,8 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 
 	case MLAN_EVENT_ID_DRV_OBSS_SCAN_PARAM:
 		memmove((pmevent->event_buf + strlen(CUS_EVT_OBSS_SCAN_PARAM) +
-			 1), pmevent->event_buf, pmevent->event_len);
+			 1),
+			pmevent->event_buf, pmevent->event_len);
 		moal_memcpy_ext(priv->phandle, pmevent->event_buf,
 				(t_u8 *)CUS_EVT_OBSS_SCAN_PARAM,
 				strlen(CUS_EVT_OBSS_SCAN_PARAM),
@@ -1637,15 +2135,14 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		pmevent->event_buf[strlen(CUS_EVT_OBSS_SCAN_PARAM)] = 0;
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len +
-				     strlen(CUS_EVT_OBSS_SCAN_PARAM));
+					     strlen(CUS_EVT_OBSS_SCAN_PARAM));
 
 #ifdef STA_WEXT
 		if (IS_STA_WEXT(cfg80211_wext)) {
 			memset(&wrqu, 0, sizeof(union iwreq_data));
-			wrqu.data.pointer = pmevent->event_buf;
-			wrqu.data.length =
-				pmevent->event_len +
-				strlen(CUS_EVT_OBSS_SCAN_PARAM) + 1;
+			wrqu.data.pointer = (t_u8 __user *)pmevent->event_buf;
+			wrqu.data.length = pmevent->event_len +
+					   strlen(CUS_EVT_OBSS_SCAN_PARAM) + 1;
 			wireless_send_event(priv->netdev, IWEVCUSTOM, &wrqu,
 					    pmevent->event_buf);
 		}
@@ -1661,15 +2158,14 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		pmevent->event_buf[strlen(CUS_EVT_BW_CHANGED)] = 0;
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len +
-				     strlen(CUS_EVT_BW_CHANGED));
+					     strlen(CUS_EVT_BW_CHANGED));
 
 #ifdef STA_WEXT
 		if (IS_STA_WEXT(cfg80211_wext)) {
 			memset(&wrqu, 0, sizeof(union iwreq_data));
-			wrqu.data.pointer = pmevent->event_buf;
-			wrqu.data.length =
-				pmevent->event_len +
-				strlen(CUS_EVT_BW_CHANGED) + 1;
+			wrqu.data.pointer = (t_u8 __user *)pmevent->event_buf;
+			wrqu.data.length = pmevent->event_len +
+					   strlen(CUS_EVT_BW_CHANGED) + 1;
 			wireless_send_event(priv->netdev, IWEVCUSTOM, &wrqu,
 					    pmevent->event_buf);
 		}
@@ -1683,6 +2179,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 		priv->auth_flag = 0;
 		priv->host_mlme = MFALSE;
+		priv->auth_alg = 0xFFFF;
 #endif
 #endif
 #ifdef STA_WEXT
@@ -1703,6 +2200,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			priv->rate_index = AUTO_RATE;
 		}
 #endif /* REASSOCIATION */
+		moal_connection_status_check_pmqos(pmoal);
 		break;
 
 	case MLAN_EVENT_ID_FW_MIC_ERR_UNI:
@@ -1760,22 +2258,21 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #ifdef STA_CFG80211
 		if (IS_STA_CFG80211(cfg80211_wext)) {
 #if CFG80211_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
-			cfg80211_cqm_rssi_notify(priv->netdev,
-						 NL80211_CQM_RSSI_THRESHOLD_EVENT_LOW,
+			cfg80211_cqm_rssi_notify(
+				priv->netdev,
+				NL80211_CQM_RSSI_THRESHOLD_EVENT_LOW,
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-						 *(t_s16 *)pmevent->event_buf,
+				*(t_s16 *)pmevent->event_buf,
 #endif
-						 GFP_KERNEL);
+				GFP_KERNEL);
 			priv->last_event |= EVENT_BCN_RSSI_LOW;
 #endif
 			if (!hw_test && priv->roaming_enabled)
 				woal_config_bgscan_and_rssi(priv, MTRUE);
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-			woal_cfg80211_rssi_monitor_event(priv,
-							 *(t_s16 *)pmevent->
-							 event_buf);
+			woal_cfg80211_rssi_monitor_event(
+				priv, *(t_s16 *)pmevent->event_buf);
 #endif
-
 		}
 #endif
 		woal_broadcast_event(priv, CUS_EVT_BEACON_RSSI_LOW,
@@ -1791,22 +2288,21 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		if (IS_STA_CFG80211(cfg80211_wext)) {
 			if (!priv->mrvl_rssi_low) {
 #if CFG80211_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
-				cfg80211_cqm_rssi_notify(priv->netdev,
-							 NL80211_CQM_RSSI_THRESHOLD_EVENT_HIGH,
+				cfg80211_cqm_rssi_notify(
+					priv->netdev,
+					NL80211_CQM_RSSI_THRESHOLD_EVENT_HIGH,
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-							 *(t_s16 *)pmevent->
-							 event_buf,
+					*(t_s16 *)pmevent->event_buf,
 #endif
-							 GFP_KERNEL);
+					GFP_KERNEL);
 #endif
-				woal_set_rssi_threshold(priv,
-							MLAN_EVENT_ID_FW_BCN_RSSI_HIGH,
-							MOAL_NO_WAIT);
+				woal_set_rssi_threshold(
+					priv, MLAN_EVENT_ID_FW_BCN_RSSI_HIGH,
+					MOAL_NO_WAIT);
 			}
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-			woal_cfg80211_rssi_monitor_event(priv,
-							 *(t_s16 *)pmevent->
-							 event_buf);
+			woal_cfg80211_rssi_monitor_event(
+				priv, *(t_s16 *)pmevent->event_buf);
 #endif
 		}
 #endif
@@ -1902,10 +2398,21 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 					       priv->cfg_bssid, NULL, 0,
 					       WLAN_CAPABILITY_ESS,
 					       WLAN_CAPABILITY_ESS);
-			if (bss)
+			if (bss) {
 				cfg80211_unlink_bss(priv->wdev->wiphy, bss);
+				cfg80211_put_bss(priv->wdev->wiphy, bss);
+			}
 			if (!hw_test && priv->roaming_enabled)
 				woal_config_bgscan_and_rssi(priv, MFALSE);
+			else {
+				cfg80211_cqm_rssi_notify(
+					priv->netdev,
+					NL80211_CQM_RSSI_THRESHOLD_EVENT_LOW,
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+					0,
+#endif
+					GFP_KERNEL);
+			}
 			priv->last_event |= EVENT_PRE_BCN_LOST;
 		}
 #endif
@@ -1926,13 +2433,13 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		pmevent->event_buf[strlen(FW_DEBUG_INFO)] = 0;
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len +
-				     strlen(FW_DEBUG_INFO) + 1);
+					     strlen(FW_DEBUG_INFO) + 1);
 		break;
 	case MLAN_EVENT_ID_FW_WMM_CONFIG_CHANGE:
 #ifdef STA_WEXT
 		if (IS_STA_WEXT(cfg80211_wext))
-			woal_send_iwevcustom_event(priv,
-						   WMM_CONFIG_CHANGE_INDICATION);
+			woal_send_iwevcustom_event(
+				priv, WMM_CONFIG_CHANGE_INDICATION);
 #endif
 		woal_broadcast_event(priv, WMM_CONFIG_CHANGE_INDICATION,
 				     strlen(WMM_CONFIG_CHANGE_INDICATION));
@@ -1981,19 +2488,19 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		break;
 	case MLAN_EVENT_ID_DRV_DBG_DUMP:
 		priv->phandle->driver_status = MTRUE;
+		ref_handle = (moal_handle *)priv->phandle->pref_mac;
+		if (ref_handle)
+			ref_handle->driver_status = MTRUE;
+		if (drvdbg & MFW_D)
+			auto_fw_dump = MTRUE;
+
 		woal_moal_debug_info(priv, NULL, MFALSE);
-		woal_broadcast_event(priv, CUS_EVT_DRIVER_HANG,
-				     strlen(CUS_EVT_DRIVER_HANG));
-#ifdef STA_CFG80211
-#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-		if (IS_STA_OR_UAP_CFG80211(cfg80211_wext))
-			woal_cfg80211_vendor_event(priv, event_hang,
-						   CUS_EVT_DRIVER_HANG,
-						   strlen(CUS_EVT_DRIVER_HANG));
-#endif
-#endif
-		woal_process_hang(priv->phandle);
+		if (!auto_fw_dump && !handle->fw_dump)
+			woal_process_hang(priv->phandle);
 		wifi_status = 2;
+		break;
+	case MLAN_EVENT_ID_DRV_WIFI_STATUS:
+		wifi_status = *(t_u16 *)(pmevent->event_buf + sizeof(t_u32));
 		break;
 	case MLAN_EVENT_ID_FW_BG_SCAN:
 		if (priv->media_connected == MTRUE)
@@ -2013,30 +2520,44 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			if (priv->sched_scanning &&
 			    !priv->phandle->cfg80211_suspend) {
 				mlan_scan_resp scan_resp;
-				woal_get_scan_table(priv, MOAL_NO_WAIT,
-						    &scan_resp);
-				PRINTM(MIOCTL,
-				       "Trigger mlan get bgscan result\n");
+				if (MLAN_STATUS_SUCCESS ==
+				    woal_get_scan_table(priv, MOAL_NO_WAIT,
+							&scan_resp))
+					PRINTM(MIOCTL,
+					       "Triggered mlan get bgscan result\n");
 			}
 #endif
 			if (!hw_test && priv->roaming_enabled
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)
 			    && !priv->phandle->cfg80211_suspend
 #endif
-				) {
+			) {
 				priv->roaming_required = MTRUE;
-#ifdef ANDROID_KERNEL
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 5, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 				__pm_wakeup_event(&priv->phandle->ws,
 						  ROAMING_WAKE_LOCK_TIMEOUT);
 #else
-				wake_lock_timeout(&priv->phandle->wake_lock,
-						  msecs_to_jiffies
-						  (ROAMING_WAKE_LOCK_TIMEOUT));
+				wake_lock_timeout(
+					&priv->phandle->wake_lock,
+					msecs_to_jiffies(
+						ROAMING_WAKE_LOCK_TIMEOUT));
 #endif
+#ifdef REASSOCIATION
+				wake_up_interruptible(
+					&priv->phandle->reassoc_thread.wait_q);
 #endif
-				wake_up_interruptible(&priv->phandle->
-						      reassoc_thread.wait_q);
+			} else {
+#if CFG80211_VERSION_CODE > KERNEL_VERSION(2, 6, 35)
+				if (priv->mrvl_rssi_low) {
+					cfg80211_cqm_rssi_notify(
+						priv->netdev,
+						NL80211_CQM_RSSI_THRESHOLD_EVENT_LOW,
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+						0,
+#endif
+						GFP_KERNEL);
+				}
+#endif
 			}
 		}
 #endif
@@ -2059,14 +2580,10 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			    !priv->phandle->cfg80211_suspend) {
 				woal_inform_bss_from_scan_result(priv, NULL,
 								 MOAL_NO_WAIT);
-				cfg80211_sched_scan_results(priv->wdev->wiphy
-#if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 12, 0)
-							    ,
-							    priv->bg_scan_reqid
-#endif
-					);
+				PRINTM(MMSG,
+				       "wlan: Report sched_scan result\n");
+				woal_report_sched_scan_result(priv);
 				priv->last_event = 0;
-				woal_bgscan_stop_event(priv);
 				PRINTM(MEVENT,
 				       "Reporting Sched_Scan results\n");
 			}
@@ -2101,9 +2618,10 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 						   NL80211_RADAR_CAC_ABORTED,
 						   GFP_KERNEL);
 #endif
-				cfg80211_radar_event(priv->wdev->wiphy,
-						     &priv->phandle->
-						     dfs_channel, GFP_KERNEL);
+				cfg80211_radar_event(
+					priv->wdev->wiphy,
+					&priv->phandle->dfs_channel,
+					GFP_KERNEL);
 			} else {
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 				cfg80211_cac_event(priv->netdev,
@@ -2134,7 +2652,8 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				PRINTM(MEVENT, "radar detected during CAC \n");
 				woal_cancel_timer(&priv->phandle->cac_timer);
 				priv->phandle->is_cac_timer_set = MFALSE;
-				/* downstream: cancel the unfinished CAC in Firmware */
+				/* downstream: cancel the unfinished CAC in
+				 * Firmware*/
 				woal_11h_cancel_chan_report_ioctl(priv,
 								  MOAL_NO_WAIT);
 				/* upstream: inform cfg80211 */
@@ -2148,9 +2667,10 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 						   NL80211_RADAR_CAC_ABORTED,
 						   GFP_KERNEL);
 #endif
-				cfg80211_radar_event(priv->wdev->wiphy,
-						     &priv->phandle->
-						     dfs_channel, GFP_KERNEL);
+				cfg80211_radar_event(
+					priv->wdev->wiphy,
+					&priv->phandle->dfs_channel,
+					GFP_KERNEL);
 
 				memset(&priv->phandle->dfs_channel, 0,
 				       sizeof(priv->phandle->dfs_channel));
@@ -2160,16 +2680,20 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				       " Radar event for incorrect inferface \n");
 			}
 		} else {
-			PRINTM(MEVENT, "radar detected during BSS active \n");
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 			if (moal_extflg_isset(priv->phandle, EXT_DFS_OFFLOAD))
-				woal_cfg80211_dfs_vendor_event(priv,
-							       event_dfs_radar_detected,
-							       &priv->chan);
-			else
+				woal_cfg80211_dfs_vendor_event(
+					priv, event_dfs_radar_detected,
+					&priv->chan);
+			else {
 #endif
-				cfg80211_radar_event(priv->wdev->wiphy,
-						     &priv->chan, GFP_KERNEL);
+				if (priv->uap_host_based && priv->bss_started)
+					cfg80211_radar_event(priv->wdev->wiphy,
+							     &priv->chan,
+							     GFP_KERNEL);
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
+			}
+#endif
 		}
 #endif /* CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 12, 0 */
 #endif /* UAP_CFG80211 */
@@ -2186,27 +2710,26 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 
 	case MLAN_EVENT_ID_FW_CHAN_SWITCH_COMPLETE:
 #if defined(UAP_CFG80211) || defined(STA_CFG80211)
-		pchan_info = (chan_band_info *) pmevent->event_buf;
+		pchan_info = (chan_band_info *)pmevent->event_buf;
 		if (IS_STA_OR_UAP_CFG80211(cfg80211_wext)) {
 			PRINTM(MMSG,
 			       "CSA/ECSA: Switch to new channel %d complete!\n",
 			       pchan_info->channel);
 			priv->channel = pchan_info->channel;
 #ifdef UAP_CFG80211
-#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3,12,0)
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 12, 0)
 			if (priv->csa_chan.chan &&
 			    (pchan_info->channel ==
 			     priv->csa_chan.chan->hw_value)) {
-				moal_memcpy_ext(priv->phandle, &priv->chan,
-						&priv->csa_chan,
-						sizeof(struct
-						       cfg80211_chan_def),
-						sizeof(struct
-						       cfg80211_chan_def));
+				moal_memcpy_ext(
+					priv->phandle, &priv->chan,
+					&priv->csa_chan,
+					sizeof(struct cfg80211_chan_def),
+					sizeof(struct cfg80211_chan_def));
 			}
 #endif
 #endif
-#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3,8,0)
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 			if (MFALSE
 #ifdef UAP_CFG80211
 			    || priv->uap_host_based
@@ -2214,7 +2737,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #ifdef STA_CFG80211
 			    || priv->sme_current.ssid_len
 #endif
-				) {
+			) {
 				PRINTM(MEVENT,
 				       "CHAN_SWITCH: 11n=%d, chan=%d, center_chan=%d, band=%d, width=%d, 2Offset=%d\n",
 				       pchan_info->is_11n_enabled,
@@ -2255,8 +2778,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		/* simulate HSCFG_CANCEL command */
 		woal_cancel_hs(priv, MOAL_NO_WAIT);
 #ifdef STA_SUPPORT
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_STA);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_STA);
 #ifdef STA_WEXT
 		if (IS_STA_WEXT(cfg80211_wext) && pmpriv)
 			woal_send_iwevcustom_event(pmpriv, CUS_EVT_HS_WAKEUP);
@@ -2266,8 +2788,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 					     strlen(CUS_EVT_HS_WAKEUP));
 #endif /*STA_SUPPORT */
 #ifdef UAP_SUPPORT
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_UAP);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_UAP);
 		if (pmpriv) {
 			pmevent->event_id = UAP_EVENT_ID_HS_WAKEUP;
 			woal_broadcast_event(pmpriv, (t_u8 *)&pmevent->event_id,
@@ -2277,8 +2798,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		break;
 	case MLAN_EVENT_ID_DRV_HS_ACTIVATED:
 #ifdef STA_SUPPORT
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_STA);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_STA);
 #ifdef STA_WEXT
 		if (IS_STA_WEXT(cfg80211_wext) && pmpriv)
 			woal_send_iwevcustom_event(pmpriv,
@@ -2289,14 +2809,14 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 					     strlen(CUS_EVT_HS_ACTIVATED));
 #endif /* STA_SUPPORT */
 #if defined(UAP_SUPPORT)
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_UAP);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_UAP);
 		if (pmpriv) {
 			pmevent->event_id = UAP_EVENT_ID_DRV_HS_ACTIVATED;
 			woal_broadcast_event(pmpriv, (t_u8 *)&pmevent->event_id,
 					     sizeof(t_u32));
 		}
 #endif
+		memset(&pm_info, 0, sizeof(mlan_ds_ps_info));
 		if (priv->phandle->suspend_fail == MFALSE) {
 			woal_get_pm_info(priv, &pm_info);
 			if (pm_info.is_suspend_allowed == MTRUE) {
@@ -2311,8 +2831,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		break;
 	case MLAN_EVENT_ID_DRV_HS_DEACTIVATED:
 #ifdef STA_SUPPORT
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_STA);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_STA);
 #ifdef STA_WEXT
 		if (IS_STA_WEXT(cfg80211_wext) && pmpriv)
 			woal_send_iwevcustom_event(pmpriv,
@@ -2323,8 +2842,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 					     strlen(CUS_EVT_HS_DEACTIVATED));
 #endif /* STA_SUPPORT */
 #if defined(UAP_SUPPORT)
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_UAP);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_UAP);
 		if (pmpriv) {
 			pmevent->event_id = UAP_EVENT_ID_DRV_HS_DEACTIVATED;
 			woal_broadcast_event(pmpriv, (t_u8 *)&pmevent->event_id,
@@ -2335,8 +2853,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		break;
 #ifdef UAP_SUPPORT
 	case MLAN_EVENT_ID_UAP_FW_BSS_START:
-		if (priv->hist_data)
-			woal_hist_data_reset(priv);
+		woal_hist_data_reset(priv);
 		priv->bss_started = MTRUE;
 		priv->skip_cac = MFALSE;
 		if (!netif_carrier_ok(priv->netdev))
@@ -2350,8 +2867,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				     pmevent->event_len);
 #ifdef STA_SUPPORT
 #ifdef STA_CFG80211
-		pmpriv = woal_get_priv((moal_handle *)pmoal_handle,
-				       MLAN_BSS_ROLE_STA);
+		pmpriv = woal_get_priv((moal_handle *)pmoal, MLAN_BSS_ROLE_STA);
 		if (IS_STA_CFG80211(cfg80211_wext) && pmpriv)
 			woal_set_scan_time(pmpriv, ACTIVE_SCAN_CHAN_TIME,
 					   PASSIVE_SCAN_CHAN_TIME,
@@ -2374,8 +2890,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 	case MLAN_EVENT_ID_DRV_UAP_CHAN_INFO:
 #ifdef UAP_CFG80211
 		if (IS_UAP_CFG80211(cfg80211_wext)) {
-			chan_band_info *pchan_info =
-				(chan_band_info *) pmevent->event_buf;
+			pchan_info = (chan_band_info *)pmevent->event_buf;
 			PRINTM(MEVENT,
 			       "UAP: 11n=%d, chan=%d, center_chan=%d, band=%d, width=%d, 2Offset=%d\n",
 			       pchan_info->is_11n_enabled, pchan_info->channel,
@@ -2383,8 +2898,7 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			       pchan_info->bandcfg.chanBand,
 			       pchan_info->bandcfg.chanWidth,
 			       pchan_info->bandcfg.chan2Offset);
-			if (priv->uap_host_based &&
-			    (priv->channel != pchan_info->channel))
+			if (priv->uap_host_based)
 				woal_channel_switch_event(priv, pchan_info);
 		}
 #endif
@@ -2397,31 +2911,31 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		woal_wake_queue(priv->netdev);
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len);
+		moal_connection_status_check_pmqos(pmoal);
 		break;
 	case MLAN_EVENT_ID_UAP_FW_BSS_IDLE:
 		priv->media_connected = MFALSE;
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len);
+		moal_connection_status_check_pmqos(pmoal);
 		break;
-	case MLAN_EVENT_ID_UAP_FW_MIC_COUNTERMEASURES:
-		{
-			t_u16 status = 0;
-			status = *(t_u16 *)(pmevent->event_buf + 4);
-			if (status) {
-				priv->media_connected = MFALSE;
-				woal_stop_queue(priv->netdev);
-				if (netif_carrier_ok(priv->netdev))
-					netif_carrier_off(priv->netdev);
-			} else {
-				priv->media_connected = MTRUE;
-				if (!netif_carrier_ok(priv->netdev))
-					netif_carrier_on(priv->netdev);
-				woal_wake_queue(priv->netdev);
-			}
-			woal_broadcast_event(priv, pmevent->event_buf,
-					     pmevent->event_len);
+	case MLAN_EVENT_ID_UAP_FW_MIC_COUNTERMEASURES: {
+		t_u16 status = 0;
+		status = *(t_u16 *)(pmevent->event_buf + 4);
+		if (status) {
+			priv->media_connected = MFALSE;
+			woal_stop_queue(priv->netdev);
+			if (netif_carrier_ok(priv->netdev))
+				netif_carrier_off(priv->netdev);
+		} else {
+			priv->media_connected = MTRUE;
+			if (!netif_carrier_ok(priv->netdev))
+				netif_carrier_on(priv->netdev);
+			woal_wake_queue(priv->netdev);
 		}
-		break;
+		woal_broadcast_event(priv, pmevent->event_buf,
+				     pmevent->event_len);
+	} break;
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)
 	case MLAN_EVENT_ID_FW_REMAIN_ON_CHAN_EXPIRED:
@@ -2433,30 +2947,23 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			    (priv->auth_flag & HOST_MLME_AUTH_PENDING)) {
 				priv->auth_flag = 0;
 				priv->host_mlme = MFALSE;
+				priv->auth_alg = 0xFFFF;
 			}
 			priv->phandle->remain_on_channel = MFALSE;
 			if (priv->phandle->cookie &&
 			    !priv->phandle->is_remain_timer_set) {
 				cfg80211_remain_on_channel_expired(
 #if CFG80211_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
-									  priv->
-									  netdev,
+					priv->netdev,
 #else
-									  priv->
-									  wdev,
+					priv->wdev,
 #endif
-									  priv->
-									  phandle->
-									  cookie,
-									  &priv->
-									  phandle->
-									  chan,
+					priv->phandle->cookie,
+					&priv->phandle->chan,
 #if CFG80211_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
-									  priv->
-									  phandle->
-									  channel_type,
+					priv->phandle->channel_type,
 #endif
-									  GFP_ATOMIC);
+					GFP_ATOMIC);
 				priv->phandle->cookie = 0;
 			}
 		}
@@ -2466,46 +2973,54 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 	case MLAN_EVENT_ID_UAP_FW_STA_CONNECT:
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 		if (IS_STA_OR_UAP_CFG80211(cfg80211_wext)) {
-			struct station_info sinfo = { 0 };
+			struct station_info *sinfo = NULL;
 			t_u8 addr[ETH_ALEN];
-
-			sinfo.filled = 0;
-			sinfo.generation = 0;
-			/* copy the station mac address */
-			memset(addr, 0xFF, ETH_ALEN);
-			moal_memcpy_ext(priv->phandle, addr, pmevent->event_buf,
-					ETH_ALEN, ETH_ALEN);
-		/** these field add in kernel 3.2, but some
+			sinfo = kzalloc(sizeof(struct station_info),
+					GFP_ATOMIC);
+			if (sinfo) {
+				sinfo->filled = 0;
+				sinfo->generation = 0;
+				/* copy the station mac address */
+				memset(addr, 0xFF, ETH_ALEN);
+				moal_memcpy_ext(priv->phandle, addr,
+						pmevent->event_buf, ETH_ALEN,
+						ETH_ALEN);
+				/** these field add in kernel 3.2, but some
 				 * kernel do have the pacth to support it,
 				 * like T3T and pxa978T 3.0.31 JB, these
 				 * patch are needed to support
 				 * wpa_supplicant 2.x */
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 0, 31)
-			if (pmevent->event_len > ETH_ALEN) {
+				if (pmevent->event_len > ETH_ALEN) {
 #if CFG80211_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
-				/* set station info filled flag */
-				sinfo.filled |= STATION_INFO_ASSOC_REQ_IES;
+					/* set station info filled flag */
+					sinfo->filled |=
+						STATION_INFO_ASSOC_REQ_IES;
 #endif
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 18, 0)
-				sinfo.pertid = NULL;
+					sinfo->pertid = NULL;
 #endif
-				/* get the assoc request ies and length */
-				sinfo.assoc_req_ies =
-					(const t_u8 *)(pmevent->event_buf +
-						       ETH_ALEN);
-				sinfo.assoc_req_ies_len =
-					pmevent->event_len - ETH_ALEN;
-
-			}
+					/* get the assoc request ies and length
+					 */
+					sinfo->assoc_req_ies =
+						(const t_u8
+							 *)(pmevent->event_buf +
+							    ETH_ALEN);
+					sinfo->assoc_req_ies_len =
+						pmevent->event_len - ETH_ALEN;
+				}
 #endif /* KERNEL_VERSION */
-			if (priv->netdev && priv->wdev)
-				cfg80211_new_sta(priv->netdev,
-						 (t_u8 *)addr, &sinfo,
-						 GFP_KERNEL);
+				if (priv->netdev && priv->wdev)
+					cfg80211_new_sta(priv->netdev,
+							 (t_u8 *)addr, sinfo,
+							 GFP_KERNEL);
+				kfree(sinfo);
+			}
 		}
 #endif /* UAP_CFG80211 */
 		memmove((pmevent->event_buf + strlen(CUS_EVT_STA_CONNECTED) +
-			 1), pmevent->event_buf, pmevent->event_len);
+			 1),
+			pmevent->event_buf, pmevent->event_len);
 		moal_memcpy_ext(priv->phandle, pmevent->event_buf,
 				(t_u8 *)CUS_EVT_STA_CONNECTED,
 				strlen(CUS_EVT_STA_CONNECTED),
@@ -2513,11 +3028,11 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		pmevent->event_buf[strlen(CUS_EVT_STA_CONNECTED)] = 0;
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len +
-				     strlen(CUS_EVT_STA_CONNECTED));
+					     strlen(CUS_EVT_STA_CONNECTED));
 #ifdef UAP_WEXT
 		if (IS_UAP_WEXT(cfg80211_wext)) {
 			memset(&wrqu, 0, sizeof(union iwreq_data));
-			wrqu.data.pointer = pmevent->event_buf;
+			wrqu.data.pointer = (t_u8 __user *)pmevent->event_buf;
 			if ((pmevent->event_len +
 			     strlen(CUS_EVT_STA_CONNECTED) + 1) > IW_CUSTOM_MAX)
 				wrqu.data.length =
@@ -2537,22 +3052,20 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		if (IS_UAP_CFG80211(cfg80211_wext)) {
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
-		    /**Forward Deauth, Auth and disassoc frame to Host*/
+			/**Forward Deauth, Auth and disassoc frame to Host*/
 			if (moal_extflg_isset(priv->phandle, EXT_HOST_MLME)) {
-				t_u16 reason_code =
-					woal_le16_to_cpu(*(t_u16 *)pmevent->
-							 event_buf);
+				t_u16 reason_code = woal_le16_to_cpu(
+					*(t_u16 *)pmevent->event_buf);
 				PRINTM(MCMND, "deauth reason code =0x%x\n",
 				       reason_code);
-		     /** BIT 14 indicate deauth is initiated by FW */
+				/** BIT 14 indicate deauth is initiated by FW */
 				if (reason_code & MBIT(14))
-					woal_host_mlme_disconnect(priv, 0,
-								  pmevent->
-								  event_buf +
-								  2);
+					woal_host_mlme_disconnect(
+						priv, 0,
+						pmevent->event_buf + 2);
 			} else
 #endif
-			if (priv->netdev && priv->wdev)
+				if (priv->netdev && priv->wdev)
 				cfg80211_del_sta(priv->netdev,
 						 pmevent->event_buf + 2,
 						 GFP_KERNEL);
@@ -2561,7 +3074,8 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		}
 #endif /* UAP_CFG80211 */
 		memmove((pmevent->event_buf + strlen(CUS_EVT_STA_DISCONNECTED) +
-			 1), pmevent->event_buf, pmevent->event_len);
+			 1),
+			pmevent->event_buf, pmevent->event_len);
 		moal_memcpy_ext(priv->phandle, pmevent->event_buf,
 				(t_u8 *)CUS_EVT_STA_DISCONNECTED,
 				strlen(CUS_EVT_STA_DISCONNECTED),
@@ -2569,15 +3083,14 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		pmevent->event_buf[strlen(CUS_EVT_STA_DISCONNECTED)] = 0;
 		woal_broadcast_event(priv, pmevent->event_buf,
 				     pmevent->event_len +
-				     strlen(CUS_EVT_STA_DISCONNECTED));
+					     strlen(CUS_EVT_STA_DISCONNECTED));
 
 #ifdef UAP_WEXT
 		if (IS_UAP_WEXT(cfg80211_wext)) {
 			memset(&wrqu, 0, sizeof(union iwreq_data));
-			wrqu.data.pointer = pmevent->event_buf;
-			wrqu.data.length =
-				pmevent->event_len +
-				strlen(CUS_EVT_STA_DISCONNECTED) + 1;
+			wrqu.data.pointer = (t_u8 __user *)pmevent->event_buf;
+			wrqu.data.length = pmevent->event_len +
+					   strlen(CUS_EVT_STA_DISCONNECTED) + 1;
 			wireless_send_event(priv->netdev, IWEVCUSTOM, &wrqu,
 					    pmevent->event_buf);
 		}
@@ -2594,17 +3107,17 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 		if (IS_STA_OR_UAP_CFG80211(cfg80211_wext)) {
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)
-			if (priv->netdev
-			    && priv->netdev->ieee80211_ptr->wiphy->mgmt_stypes
-			    && priv->mgmt_subtype_mask) {
-				/* frmctl + durationid + addr1 + addr2 + addr3 + seqctl */
-#define PACKET_ADDR4_POS        (2 + 2 + 6 + 6 + 6 + 2)
+			if (priv->netdev &&
+			    priv->netdev->ieee80211_ptr->wiphy->mgmt_stypes &&
+			    priv->mgmt_subtype_mask) {
+				/* frmctl + durationid + addr1 + addr2 + addr3 +
+				 * seqctl */
+#define PACKET_ADDR4_POS (2 + 2 + 6 + 6 + 6 + 2)
 				t_u8 *pkt;
 				int freq =
-					priv->phandle->
-					remain_on_channel ? priv->phandle->chan.
-					center_freq :
-					woal_get_active_intf_freq(priv);
+					priv->phandle->remain_on_channel ?
+						priv->phandle->chan.center_freq :
+						woal_get_active_intf_freq(priv);
 				if (!freq) {
 					if (!priv->phandle->chan.center_freq) {
 						PRINTM(MINFO,
@@ -2614,153 +3127,137 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 					freq = priv->phandle->chan.center_freq;
 				}
 
-				pkt = ((t_u8 *)pmevent->event_buf
-				       + sizeof(pmevent->event_id));
+				pkt = ((t_u8 *)pmevent->event_buf +
+				       sizeof(pmevent->event_id));
 
 				/* move addr4 */
 				memmove(pkt + PACKET_ADDR4_POS,
 					pkt + PACKET_ADDR4_POS + ETH_ALEN,
 					pmevent->event_len -
-					sizeof(pmevent->event_id)
-					- PACKET_ADDR4_POS - ETH_ALEN);
+						sizeof(pmevent->event_id) -
+						PACKET_ADDR4_POS - ETH_ALEN);
 #ifdef WIFI_DIRECT_SUPPORT
-				if (ieee80211_is_action
-				    (((struct ieee80211_mgmt *)pkt)->
-				     frame_control))
-					woal_cfg80211_display_p2p_actframe(pkt,
-									   pmevent->
-									   event_len
-									   -
-									   sizeof
-									   (pmevent->
-									    event_id)
-									   -
-									   MLAN_MAC_ADDR_LENGTH,
-									   ieee80211_get_channel
-									   (priv->
-									    wdev->
-									    wiphy,
-									    freq),
-									   MFALSE);
+				if (ieee80211_is_action(
+					    ((struct ieee80211_mgmt *)pkt)
+						    ->frame_control))
+					woal_cfg80211_display_p2p_actframe(
+						pkt,
+						pmevent->event_len -
+							sizeof(pmevent->event_id) -
+							MLAN_MAC_ADDR_LENGTH,
+						ieee80211_get_channel(
+							priv->wdev->wiphy,
+							freq),
+						MFALSE);
 #endif
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
-		    /**Forward Deauth, Auth and disassoc frame to Host*/
+				/**Forward Deauth, Auth and disassoc frame to
+				 * Host*/
 				if (priv->host_mlme &&
 				    (GET_BSS_ROLE(priv) != MLAN_BSS_ROLE_UAP) &&
-				    (ieee80211_is_deauth
-				     (((struct ieee80211_mgmt *)pkt)->
-				      frame_control)
-				     ||
-				     ieee80211_is_auth(((struct ieee80211_mgmt
-							 *)pkt)->frame_control)
-				     ||
-				     ieee80211_is_disassoc(((struct
-							     ieee80211_mgmt *)
-							    pkt)->
-							   frame_control))) {
+				    (ieee80211_is_deauth(
+					     ((struct ieee80211_mgmt *)pkt)
+						     ->frame_control) ||
+				     ieee80211_is_auth(
+					     ((struct ieee80211_mgmt *)pkt)
+						     ->frame_control) ||
+				     ieee80211_is_disassoc(
+					     ((struct ieee80211_mgmt *)pkt)
+						     ->frame_control))) {
+					if (ieee80211_is_auth(
+						    ((struct ieee80211_mgmt *)
+							     pkt)
+							    ->frame_control)) {
+						PRINTM(MEVENT,
+						       "HostMlme %s: Received auth frame type = 0x%x\n",
+						       priv->netdev->name,
+						       priv->auth_alg);
 
-					if (ieee80211_is_auth
-					    (((struct ieee80211_mgmt *)pkt)->
-					     frame_control)) {
-						if (priv->
-						    auth_flag &
+						if (priv->auth_flag &
 						    HOST_MLME_AUTH_PENDING) {
-							PRINTM(MEVENT,
-							       "HostMlme %s: Receive auth\n",
-							       priv->netdev->
-							       name);
-							priv->auth_flag &=
-								~HOST_MLME_AUTH_PENDING;
-							priv->auth_flag |=
-								HOST_MLME_AUTH_DONE;
-							priv->phandle->
-								host_mlme_priv =
-								priv;
-							queue_work(priv->
-								   phandle->
-								   evt_workqueue,
-								   &priv->
-								   phandle->
-								   host_mlme_work);
+							if (priv->auth_alg !=
+							    WLAN_AUTH_SAE) {
+								priv->auth_flag &=
+									~HOST_MLME_AUTH_PENDING;
+								priv->auth_flag |=
+									HOST_MLME_AUTH_DONE;
+								priv->phandle
+									->host_mlme_priv =
+									priv;
+								queue_work(
+									priv->phandle
+										->evt_workqueue,
+									&priv->phandle
+										 ->host_mlme_work);
+							}
 						} else {
 							PRINTM(MERROR,
-							       "HostMlme %s: Drop auth pkt,auth_flag=0x%x\n",
-							       priv->netdev->
-							       name,
-							       priv->auth_flag);
+							       "HostMlme %s: Drop auth frame, auth_flag=0x%x auth_alg=0x%x\n",
+							       priv->netdev
+								       ->name,
+							       priv->auth_flag,
+							       priv->auth_alg);
 							break;
 						}
 					} else {
 						PRINTM(MEVENT,
 						       "HostMlme %s: Receive deauth/disassociate\n",
 						       priv->netdev->name);
-						woal_mgmt_frame_register(priv,
-									 IEEE80211_STYPE_DEAUTH,
-									 MFALSE);
-						woal_mgmt_frame_register(priv,
-									 IEEE80211_STYPE_DISASSOC,
-									 MFALSE);
-						priv->host_mlme = MFALSE;
-						priv->auth_flag = 0;
 						if (!priv->wdev->current_bss) {
 							PRINTM(MEVENT,
-							       "HostMlme: Drop deauth/disassociate, we already disconnected\n");
+							       "HostMlme: Drop deauth/disassociate, current_bss = null\n");
 							break;
 						}
+						priv->cfg_disconnect = MTRUE;
+						woal_mgmt_frame_register(
+							priv,
+							IEEE80211_STYPE_DEAUTH,
+							MFALSE);
+						woal_mgmt_frame_register(
+							priv,
+							IEEE80211_STYPE_DISASSOC,
+							MFALSE);
+						woal_send_disconnect_to_system(
+							priv,
+							DEF_DEAUTH_REASON_CODE);
+						priv->host_mlme = MFALSE;
+						priv->auth_flag = 0;
+						priv->auth_alg = 0xFFFF;
 					}
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)
-					mutex_lock(&priv->wdev->mtx);
-					cfg80211_rx_mlme_mgmt(priv->netdev,
-							      pkt,
-							      pmevent->
-							      event_len -
-							      sizeof(pmevent->
-								     event_id)
-							      -
-							      MLAN_MAC_ADDR_LENGTH);
-					mutex_unlock(&priv->wdev->mtx);
+					woal_rx_mgmt_pkt_event(
+						priv, pkt,
+						pmevent->event_len -
+							sizeof(pmevent->event_id) -
+							MLAN_MAC_ADDR_LENGTH);
 #else
-					if (ieee80211_is_deauth
-					    (((struct ieee80211_mgmt *)pkt)->
-					     frame_control))
-						cfg80211_send_deauth(priv->
-								     netdev,
-								     pkt,
-								     pmevent->
-								     event_len -
-								     sizeof
-								     (pmevent->
-								      event_id)
-								     -
-								     MLAN_MAC_ADDR_LENGTH);
-					else if (ieee80211_is_auth
-						 (((struct ieee80211_mgmt *)
-						   pkt)->frame_control))
-						cfg80211_send_rx_auth(priv->
-								      netdev,
-								      pkt,
-								      pmevent->
-								      event_len
-								      -
-								      sizeof
-								      (pmevent->
-								       event_id)
-								      -
-								      MLAN_MAC_ADDR_LENGTH);
-					else if (ieee80211_is_disassoc
-						 (((struct ieee80211_mgmt *)
-						   pkt)->frame_control))
-						cfg80211_send_disassoc(priv->
-								       netdev,
-								       pkt,
-								       pmevent->
-								       event_len
-								       -
-								       sizeof
-								       (pmevent->
-									event_id)
-								       -
-								       MLAN_MAC_ADDR_LENGTH);
+					if (ieee80211_is_deauth(
+						    ((struct ieee80211_mgmt *)
+							     pkt)
+							    ->frame_control))
+						cfg80211_send_deauth(
+							priv->netdev, pkt,
+							pmevent->event_len -
+								sizeof(pmevent->event_id) -
+								MLAN_MAC_ADDR_LENGTH);
+					else if (ieee80211_is_auth(
+							 ((struct ieee80211_mgmt
+								   *)pkt)
+								 ->frame_control))
+						cfg80211_send_rx_auth(
+							priv->netdev, pkt,
+							pmevent->event_len -
+								sizeof(pmevent->event_id) -
+								MLAN_MAC_ADDR_LENGTH);
+					else if (ieee80211_is_disassoc(
+							 ((struct ieee80211_mgmt
+								   *)pkt)
+								 ->frame_control))
+						cfg80211_send_disassoc(
+							priv->netdev, pkt,
+							pmevent->event_len -
+								sizeof(pmevent->event_id) -
+								MLAN_MAC_ADDR_LENGTH);
 
 #endif
 				} else
@@ -2768,54 +3265,48 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)
 					cfg80211_rx_mgmt(
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
-								priv->wdev,
+						priv->wdev,
 #else
-								priv->netdev,
+						priv->netdev,
 #endif
-								freq, 0,
-								((const t_u8 *)
-								 pmevent->
-								 event_buf) +
-								sizeof(pmevent->
-								       event_id),
-								pmevent->
-								event_len -
-								sizeof(pmevent->
-								       event_id)
-								-
-								MLAN_MAC_ADDR_LENGTH
+						freq, 0,
+						((const t_u8 *)
+							 pmevent->event_buf) +
+							sizeof(pmevent->event_id),
+						pmevent->event_len -
+							sizeof(pmevent->event_id) -
+							MLAN_MAC_ADDR_LENGTH
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 12, 0)
-								, 0
+						,
+						0
 #endif
 #if CFG80211_VERSION_CODE < KERNEL_VERSION(3, 18, 0)
-								, GFP_ATOMIC
+						,
+						GFP_ATOMIC
 #endif
-						);
+					);
 #else
-					cfg80211_rx_mgmt(priv->netdev, freq,
-							 ((const t_u8 *)
-							  pmevent->event_buf) +
-							 sizeof(pmevent->
-								event_id),
-							 pmevent->event_len -
-							 sizeof(pmevent->
-								event_id) -
-							 MLAN_MAC_ADDR_LENGTH,
-							 GFP_ATOMIC);
+				cfg80211_rx_mgmt(
+					priv->netdev, freq,
+					((const t_u8 *)pmevent->event_buf) +
+						sizeof(pmevent->event_id),
+					pmevent->event_len -
+						sizeof(pmevent->event_id) -
+						MLAN_MAC_ADDR_LENGTH,
+					GFP_ATOMIC);
 #endif
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-				woal_packet_fate_monitor(priv, PACKET_TYPE_RX,
-							 RX_PKT_FATE_SUCCESS,
-							 FRAME_TYPE_80211_MGMT,
-							 0, 0,
-							 ((t_u8 *)pmevent->
-							  event_buf) +
-							 sizeof(pmevent->
-								event_id),
-							 pmevent->event_len -
-							 sizeof(pmevent->
-								event_id) -
-							 MLAN_MAC_ADDR_LENGTH);
+				woal_packet_fate_monitor(
+					priv, PACKET_TYPE_RX,
+					RX_PKT_FATE_SUCCESS,
+					FRAME_TYPE_80211_MGMT, 0, 0,
+					((t_u8 *)pmevent->event_buf) +
+						sizeof(pmevent->event_id),
+					pmevent->event_len -
+						sizeof(pmevent->event_id) -
+						MLAN_MAC_ADDR_LENGTH);
+#endif
 #endif
 			}
 #endif /* KERNEL_VERSION */
@@ -2841,15 +3332,16 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 		}
 		break;
 	case MLAN_EVENT_ID_DRV_MEAS_REPORT:
-		/* We have received measurement report, wakeup measurement wait queue */
+		/* We have received measurement report, wakeup measurement wait
+		 * queue */
 		PRINTM(MINFO, "Measurement Report\n");
 		/* Going out of CAC checking period */
 		if (priv->phandle->cac_period == MTRUE) {
 			priv->phandle->cac_period = MFALSE;
 			if (priv->phandle->meas_wait_q_woken == MFALSE) {
 				priv->phandle->meas_wait_q_woken = MTRUE;
-				wake_up_interruptible(&priv->phandle->
-						      meas_wait_q);
+				wake_up_interruptible(
+					&priv->phandle->meas_wait_q);
 			}
 
 			/* Execute delayed BSS START command */
@@ -2863,8 +3355,8 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				PRINTM(MMSG,
 				       "Now CAC measure period end. Execute delayed BSS Start command.\n");
 
-				req = woal_alloc_mlan_ioctl_req(sizeof
-								(mlan_ds_bss));
+				req = woal_alloc_mlan_ioctl_req(
+					sizeof(mlan_ds_bss));
 				if (!req) {
 					PRINTM(MERROR,
 					       "Failed to allocate ioctl request buffer\n");
@@ -2874,15 +3366,15 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				req->req_id = MLAN_IOCTL_BSS;
 				req->action = MLAN_ACT_SET;
 				bss->sub_command = MLAN_OID_BSS_START;
-				moal_memcpy_ext(priv->phandle,
-						&bss->param.ssid_bssid,
-						&priv->phandle->
-						delay_ssid_bssid,
-						sizeof(mlan_ssid_bssid),
-						sizeof(mlan_ssid_bssid));
+				moal_memcpy_ext(
+					priv->phandle, &bss->param.ssid_bssid,
+					&priv->phandle->delay_ssid_bssid,
+					sizeof(mlan_ssid_bssid),
+					sizeof(mlan_ssid_bssid));
 
-				if (woal_request_ioctl(priv, req, MOAL_NO_WAIT)
-				    != MLAN_STATUS_PENDING) {
+				if (woal_request_ioctl(priv, req,
+						       MOAL_NO_WAIT) !=
+				    MLAN_STATUS_PENDING) {
 					PRINTM(MERROR,
 					       "Delayed BSS Start operation failed!\n");
 					kfree(req);
@@ -2895,99 +3387,102 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
 			if (priv->uap_host_based &&
 			    moal_extflg_isset(priv->phandle, EXT_DFS_OFFLOAD))
-				woal_cfg80211_dfs_vendor_event(priv,
-							       event_dfs_cac_finished,
-							       &priv->chan);
+				woal_cfg80211_dfs_vendor_event(
+					priv, event_dfs_cac_finished,
+					&priv->chan);
 #endif
 #endif
 #endif
-
 		}
 		break;
-	case MLAN_EVENT_ID_FW_TX_STATUS:
-		{
-#if defined(STA_CFG80211) || defined(UAP_CFG80211)
-			unsigned long flag;
-			tx_status_event *tx_status =
-				(tx_status_event *)(pmevent->event_buf + 4);
-			struct tx_status_info *tx_info = NULL;
-			PRINTM(MINFO,
-			       "Receive Tx status: tx_token=%d, pkt_type=0x%x, status=%d tx_seq_num=%d\n",
-			       tx_status->tx_token_id, tx_status->packet_type,
-			       tx_status->status, priv->tx_seq_num);
-			spin_lock_irqsave(&priv->tx_stat_lock, flag);
-			tx_info =
-				woal_get_tx_info(priv, tx_status->tx_token_id);
-			if (tx_info) {
-				bool ack;
-				struct sk_buff *skb =
-					(struct sk_buff *)tx_info->tx_skb;
-				list_del(&tx_info->link);
-				spin_unlock_irqrestore(&priv->tx_stat_lock,
-						       flag);
-				if (!tx_status->status)
-					ack = true;
-				else
-					ack = false;
-#if defined(STA_CFG80211) || defined(UAP_CFG80211)
-				if (priv->phandle->remain_on_channel &&
-				    tx_info->cancel_remain_on_channel) {
-					remain_priv =
-						priv->phandle->priv[priv->
-								    phandle->
-								    remain_bss_index];
-					if (remain_priv) {
-						woal_cfg80211_remain_on_channel_cfg
-							(remain_priv,
-							 MOAL_NO_WAIT, MTRUE,
-							 &channel_status, NULL,
-							 0, 0);
-						priv->phandle->
-							remain_on_channel =
-							MFALSE;
-					}
-				}
+	case MLAN_EVENT_ID_DRV_TDLS_TEARDOWN_REQ:
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+#ifdef STA_CFG80211
+		if (IS_STA_CFG80211(cfg80211_wext)) {
+			tdls_tear_down_event *tdls_event =
+				(tdls_tear_down_event *)pmevent->event_buf;
+			cfg80211_tdls_oper_request(priv->netdev,
+						   tdls_event->peer_mac_addr,
+						   NL80211_TDLS_TEARDOWN,
+						   tdls_event->reason_code,
+						   GFP_KERNEL);
+		}
 #endif
-				PRINTM(MEVENT, "Wlan: Tx status=%d\n", ack);
+#endif
+		break;
+	case MLAN_EVENT_ID_FW_TX_STATUS: {
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
-				if (tx_info->tx_cookie) {
+		unsigned long flag;
+		tx_status_event *tx_status =
+			(tx_status_event *)(pmevent->event_buf + 4);
+		struct tx_status_info *tx_info = NULL;
+		PRINTM(MINFO,
+		       "Receive Tx status: tx_token=%d, pkt_type=0x%x, status=%d tx_seq_num=%d\n",
+		       tx_status->tx_token_id, tx_status->packet_type,
+		       tx_status->status, priv->tx_seq_num);
+		spin_lock_irqsave(&priv->tx_stat_lock, flag);
+		tx_info = woal_get_tx_info(priv, tx_status->tx_token_id);
+		if (tx_info) {
+			bool ack;
+			struct sk_buff *skb = (struct sk_buff *)tx_info->tx_skb;
+			list_del(&tx_info->link);
+			spin_unlock_irqrestore(&priv->tx_stat_lock, flag);
+			if (!tx_status->status)
+				ack = true;
+			else
+				ack = false;
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+			if (priv->phandle->remain_on_channel &&
+			    tx_info->cancel_remain_on_channel) {
+				remain_priv =
+					priv->phandle->priv
+						[priv->phandle->remain_bss_index];
+				if (remain_priv) {
+					woal_cfg80211_remain_on_channel_cfg(
+						remain_priv, MOAL_NO_WAIT,
+						MTRUE, &channel_status, NULL, 0,
+						0);
+					priv->phandle->remain_on_channel =
+						MFALSE;
+				}
+			}
+#endif
+			PRINTM(MEVENT, "Wlan: Tx status=%d\n", ack);
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+			if (tx_info->tx_cookie) {
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
 #if CFG80211_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
-					cfg80211_mgmt_tx_status(priv->netdev,
-								tx_info->
-								tx_cookie,
-								skb->data,
-								skb->len, ack,
-								GFP_ATOMIC);
+				cfg80211_mgmt_tx_status(priv->netdev,
+							tx_info->tx_cookie,
+							skb->data, skb->len,
+							ack, GFP_ATOMIC);
 #else
-					cfg80211_mgmt_tx_status(priv->wdev,
-								tx_info->
-								tx_cookie,
-								skb->data,
-								skb->len, ack,
-								GFP_ATOMIC);
+				cfg80211_mgmt_tx_status(priv->wdev,
+							tx_info->tx_cookie,
+							skb->data, skb->len,
+							ack, GFP_ATOMIC);
 #endif
 #endif
-				}
+			}
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 14, 0)
-				woal_packet_fate_monitor(priv, PACKET_TYPE_TX,
-							 ack ? TX_PKT_FATE_ACKED
-							 : TX_PKT_FATE_SENT,
-							 FRAME_TYPE_80211_MGMT,
-							 0, 0, skb->data,
-							 skb->len);
+			woal_packet_fate_monitor(priv, PACKET_TYPE_TX,
+						 ack ? TX_PKT_FATE_ACKED :
+						       TX_PKT_FATE_SENT,
+						 FRAME_TYPE_80211_MGMT, 0, 0,
+						 skb->data, skb->len);
 #endif
 #endif
-				dev_kfree_skb_any(skb);
-				kfree(tx_info);
-			} else
-				spin_unlock_irqrestore(&priv->tx_stat_lock,
-						       flag);
 #endif
+			dev_kfree_skb_any(skb);
+			kfree(tx_info);
+		} else {
+			spin_unlock_irqrestore(&priv->tx_stat_lock, flag);
 		}
-		break;
+#endif
+	} break;
 	case MLAN_EVENT_ID_DRV_FT_RESPONSE:
-#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3,10,0)
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
 #ifdef STA_CFG80211
 		if (IS_STA_CFG80211(cfg80211_wext)) {
 			struct cfg80211_ft_event_params ft_event;
@@ -3005,9 +3500,11 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 			ft_event.target_ap = priv->target_ap_bssid;
 			ft_event.ies = pmevent->event_buf + ETH_ALEN;
 			ft_event.ies_len = pmevent->event_len - ETH_ALEN;
-			/*TSPEC info is needed by RIC, However the TS operation is configured by mlanutl */
-			/*So do not add RIC temporally */
-			/*when add RIC, 1. query TS status, 2. copy tspec from addts command */
+			/*TSPEC info is needed by RIC, However the TS operation
+			 * is configured by mlanutl*/
+			/*So do not add RIC temporally*/
+			/*when add RIC, 1. query TS status, 2. copy tspec from
+			 * addts command*/
 			ft_event.ric_ies = NULL;
 			ft_event.ric_ies_len = 0;
 
@@ -3019,7 +3516,6 @@ moal_recv_event(IN t_void *pmoal_handle, IN pmlan_event pmevent)
 				priv->ft_wait_condition = MTRUE;
 				wake_up(&priv->ft_wait_q);
 			}
-
 		}
 #endif
 #endif
@@ -3035,16 +3531,16 @@ done:
 /**
  *  @brief This function prints the debug message in mlan
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param level    debug level
  *  @param pformat  point to string format buf
  *
  *  @return         N/A
  */
-t_void
-moal_print(IN t_void *pmoal_handle, IN t_u32 level, IN char *pformat, IN ...)
+__attribute__((format(printf, 3, 4))) t_void
+moal_print(t_void *pmoal, t_u32 level, char *pformat, IN...)
 {
-#ifdef	DEBUG_LEVEL1
+#ifdef DEBUG_LEVEL1
 	va_list args;
 
 	if (level & MHEX_DUMP) {
@@ -3088,21 +3584,21 @@ moal_print(IN t_void *pmoal_handle, IN t_u32 level, IN char *pformat, IN ...)
 /**
  *  @brief This function prints the network interface name
  *
- *  @param pmoal_handle Pointer to the MOAL context
+ *  @param pmoal Pointer to the MOAL context
  *  @param bss_index    BSS index
  *  @param level        debug level
  *
  *  @return            N/A
  */
-t_void
-moal_print_netintf(IN t_void *pmoal_handle, IN t_u32 bss_index, IN t_u32 level)
+t_void moal_print_netintf(t_void *pmoal, t_u32 bss_index, t_u32 level)
 {
 #ifdef DEBUG_LEVEL1
-	moal_handle *phandle = (moal_handle *)pmoal_handle;
+	moal_handle *phandle = (moal_handle *)pmoal;
 
 	if (phandle) {
-		if ((bss_index < MLAN_MAX_BSS_NUM) && phandle->priv[bss_index]
-		    && phandle->priv[bss_index]->netdev) {
+		if ((bss_index < MLAN_MAX_BSS_NUM) &&
+		    phandle->priv[bss_index] &&
+		    phandle->priv[bss_index]->netdev) {
 			if (drvdbg & level)
 				printk("%s: ",
 				       phandle->priv[bss_index]->netdev->name);
@@ -3114,13 +3610,12 @@ moal_print_netintf(IN t_void *pmoal_handle, IN t_u32 bss_index, IN t_u32 level)
 /**
  *  @brief This function asserts the existence of the passed argument
  *
- *  @param pmoal_handle     A pointer to moal_private structure
+ *  @param pmoal     A pointer to moal_private structure
  *  @param cond             Condition to check
  *
  *  @return                 N/A
  */
-t_void
-moal_assert(IN t_void *pmoal_handle, IN t_u32 cond)
+t_void moal_assert(t_void *pmoal, t_u32 cond)
 {
 	if (!cond) {
 		panic("Assert failed: Panic!");
@@ -3130,7 +3625,7 @@ moal_assert(IN t_void *pmoal_handle, IN t_u32 cond)
 /**
  *  @brief This function save the histogram data
  *
- *  @param pmoal_handle     A pointer to moal_private structure
+ *  @param pmoal     A pointer to moal_private structure
  *  @param bss_index        BSS index
  *  @param rx_rate          rx rate index
  *  @param snr              snr
@@ -3139,16 +3634,46 @@ moal_assert(IN t_void *pmoal_handle, IN t_u32 cond)
  *
  *  @return                 N/A
  */
-t_void
-moal_hist_data_add(IN t_void *pmoal_handle, IN t_u32 bss_index,
-		   IN t_u16 rx_rate, IN t_s8 snr, IN t_s8 nflr, IN t_u8 antenna)
+t_void moal_hist_data_add(t_void *pmoal, t_u32 bss_index, t_u16 rx_rate,
+			  t_s8 snr, t_s8 nflr, t_u8 antenna)
 {
 	moal_private *priv = NULL;
-	priv = woal_bss_index_to_priv(pmoal_handle, bss_index);
+	priv = woal_bss_index_to_priv(pmoal, bss_index);
 	if (priv && antenna >= priv->phandle->card_info->histogram_table_num)
 		antenna = 0;
 	if (priv && priv->hist_data[antenna])
 		woal_hist_data_add(priv, rx_rate, snr, nflr, antenna);
+}
+
+/**
+ *  @brief This function update the peer signal
+ *
+ *  @param pmoal     A pointer to moal_private structure
+ *  @param bss_index        BSS index
+ *  @param peer_addr        peer address
+ *  @param snr              snr
+ *  @param nflr             noise floor
+ *
+ *  @return                 N/A
+ */
+t_void moal_updata_peer_signal(t_void *pmoal, t_u32 bss_index, t_u8 *peer_addr,
+			       t_s8 snr, t_s8 nflr)
+{
+	moal_private *priv = NULL;
+	struct tdls_peer *peer = NULL;
+	unsigned long flags;
+	priv = woal_bss_index_to_priv(pmoal, bss_index);
+	if (priv && priv->enable_auto_tdls) {
+		spin_lock_irqsave(&priv->tdls_lock, flags);
+		list_for_each_entry (peer, &priv->tdls_list, link) {
+			if (!memcmp(peer->peer_addr, peer_addr, ETH_ALEN)) {
+				peer->rssi = nflr - snr;
+				peer->rssi_jiffies = jiffies;
+				break;
+			}
+		}
+		spin_unlock_irqrestore(&priv->tdls_lock, flags);
+	}
 }
 
 /**
@@ -3162,8 +3687,7 @@ moal_hist_data_add(IN t_void *pmoal_handle, IN t_u32 bss_index,
  *  @param base  divisor
  *  @return      returns 64-bit quotient
  */
-t_u64
-moal_do_div(IN t_u64 num, IN t_u32 base)
+t_u64 moal_do_div(t_u64 num, t_u32 base)
 {
 	t_u64 val = num;
 	do_div(val, base);
@@ -3174,15 +3698,14 @@ moal_do_div(IN t_u64 num, IN t_u32 base)
 /**
  *  @brief Performs wait event
  *
- *  @param pmoal_handle   t_void
+ *  @param pmoal   t_void
  *  @param bss_index      index of priv
  *  @return      MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_wait_hostcmd_complete(IN t_void *pmoal_handle, IN t_u32 bss_index)
+mlan_status moal_wait_hostcmd_complete(t_void *pmoal, t_u32 bss_index)
 {
 	mlan_status status = MLAN_STATUS_SUCCESS;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	moal_private *priv = woal_bss_index_to_priv(handle, bss_index);
 	long time_left = 0;
 
@@ -3194,10 +3717,9 @@ moal_wait_hostcmd_complete(IN t_void *pmoal_handle, IN t_u32 bss_index)
 	}
 
 	priv->hostcmd_wait_condition = MFALSE;
-	time_left =
-		wait_event_timeout(priv->hostcmd_wait_q,
-				   priv->hostcmd_wait_condition,
-				   MOAL_IOCTL_TIMEOUT);
+	time_left = wait_event_timeout(priv->hostcmd_wait_q,
+				       priv->hostcmd_wait_condition,
+				       MOAL_IOCTL_TIMEOUT);
 
 	if (!time_left) {
 		PRINTM(MERROR, "moal_wait_event: wait timeout ");
@@ -3212,15 +3734,14 @@ done:
 /**
  *  @brief wake up esa wait_q
  *
- *  @param pmoal_handle   t_void
+ *  @param pmoal   t_void
  *  @param bss_index      index of priv
  *  @return      MLAN_STATUS_SUCCESS
  */
-mlan_status
-moal_notify_hostcmd_complete(IN t_void *pmoal_handle, IN t_u32 bss_index)
+mlan_status moal_notify_hostcmd_complete(t_void *pmoal, t_u32 bss_index)
 {
 	mlan_status status = MLAN_STATUS_SUCCESS;
-	moal_handle *handle = (moal_handle *)pmoal_handle;
+	moal_handle *handle = (moal_handle *)pmoal;
 	moal_private *priv = woal_bss_index_to_priv(handle, bss_index);
 
 	ENTER();

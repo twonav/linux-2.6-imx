@@ -3,7 +3,7 @@
  *  @brief This file declares the exported symbols from MLAN.
  *
  *
- *  Copyright 2014-2020 NXP
+ *  Copyright 2008-2020 NXP
  *
  *  This software file (the File) is distributed by NXP
  *  under the terms of the GNU General Public License Version 2, June 1991
@@ -45,6 +45,7 @@ EXPORT_SYMBOL(mlan_ioctl);
 EXPORT_SYMBOL(mlan_main_process);
 EXPORT_SYMBOL(mlan_rx_process);
 EXPORT_SYMBOL(mlan_select_wmm_queue);
+EXPORT_SYMBOL(mlan_process_deaggr_pkt);
 #if defined(SDIO) || defined(PCIE)
 EXPORT_SYMBOL(mlan_interrupt);
 #if defined(SYSKT)
@@ -57,6 +58,8 @@ EXPORT_SYMBOL(mlan_is_main_process_running);
 #ifdef PCIE
 EXPORT_SYMBOL(mlan_set_int_mode);
 #endif
+EXPORT_SYMBOL(mlan_disable_host_int);
+EXPORT_SYMBOL(mlan_enable_host_int);
 
 MODULE_DESCRIPTION("M-WLAN MLAN Driver");
 MODULE_AUTHOR("NXP");
