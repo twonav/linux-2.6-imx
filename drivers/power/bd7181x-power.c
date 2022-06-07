@@ -68,19 +68,9 @@
 //VBAT Low voltage detection Threshold
 #define VBAT_LOW_STEP		16
 
-//#define RS_30mOHM		/* we have 10mOhm */
-
 #define VBAT_OCV_DIFF 50 // ESTIMATION: OCV is aproximatelly 0.05V higher than CV
 #define VBAT_PRE_CHARGE_DIFF 50
 #define VBAT_FAST_CHARGE_DIFF 100
-
-#ifdef RS_30mOHM
-#define A10s_mAh(s)		((s) * 1000 / (360 * 3))
-#define mAh_A10s(m)		((m) * (360 * 3) / 1000)
-#else
-#define A10s_mAh(s)		((s) * 1000 / 360)
-#define mAh_A10s(m)		((m) * 360 / 1000)
-#endif
 
 #define THR_RELAX_CURRENT	10		/* mA */ // Coulomb counter related
 #define THR_RELAX_TIME		(60 * 60)	/* sec. */ // Coulomb counter related
@@ -247,24 +237,54 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	}		
 };				
 
+/*
+Rsense configuration:
+6.9mOhm -> factor 0.69
+10mOhm  -> factor 1
+30mOhm  -> factor 3
+
+NOTE: Terra has Rsense 6.9mOhms, all other devices have 10mOhms
+
+*/
+static u32 rsense_capacity_factor = 360; // (* factor)
+static u32 rsense_current_factor = 1000; // (/ factor)
+
 static struct tn_power_values_st tn_power_values;
 
-static void twonav_identify_power_type(void) { 
+static void twonav_init_type(void) {
 	if(strstr(hwtype, "trailplus") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
+		rsense_capacity_factor = 360; // TODO: not known yet
+		rsense_current_factor = 1000; // TODO: not known yet
 	}
 	else if(strstr(hwtype, "trail") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
+		rsense_capacity_factor = 360;
+		rsense_current_factor = 1000;
 	}
 	else if(strstr(hwtype, "crosstop") != NULL) {
-		tn_power_values = TN_POWER_CROSS;		
+		tn_power_values = TN_POWER_CROSS;
+		rsense_capacity_factor = 360;
+		rsense_current_factor = 1000;
 	}	
 	else if(strstr(hwtype, "terra") != NULL) {
-		tn_power_values = TN_POWER_TERRA;		
+		tn_power_values = TN_POWER_TERRA;
+		rsense_capacity_factor = 248; // 360 * 0.69
+		rsense_current_factor = 1449; // 1000 / 0.69
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
-		tn_power_values = TN_POWER_AVENTURA;		
+		tn_power_values = TN_POWER_AVENTURA;
+		rsense_capacity_factor = 360;
+		rsense_current_factor = 1000;
 	}
+}
+
+static u32 A10s_mAh(u32 val) {
+	return (val * 1000 / rsense_capacity_factor);
+}
+
+static int mAh_A10s(int val) {
+	return (val * rsense_capacity_factor / 1000);
 }
 
 static int replacable_battery = 0;
@@ -594,11 +614,7 @@ static int bd7181x_get_vbat_curr(struct bd7181x_power *pwr, int *vcell, int *cur
 	}
 
 	*vcell = tmp_vcell * 1000;
-#ifdef RS_30mOHM
-	*curr = tmp_curr * 1000 / 3;
-#else
-	*curr = tmp_curr * 1000;
-#endif
+	*curr = tmp_curr * rsense_current_factor;
 	return 0;
 }
 
@@ -616,11 +632,8 @@ static int bd7181x_get_current_ds_adc(struct bd7181x_power *pwr) {
 	if (r & CURDIR_Discharging) {
 		r = -(r & ~CURDIR_Discharging);
 	}
-#ifdef RS_30mOHM
-	return r * 1000 / 3;
-#else
-	return r * 1000;
-#endif
+
+	return r * rsense_current_factor;
 }
 
 /** @brief get system average voltage
@@ -2079,8 +2092,9 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_MAX:
 		{
 			u8 colapse_cur = bd7181x_reg_read(pwr->mfd, BD7181X_REG_IGNORE_0);
-			if (colapse_cur < COLAPSE_REG_DETECTION_VAL)
+			if (colapse_cur < COLAPSE_REG_DETECTION_VAL) {
 				val->intval = 100000 + colapse_cur * 50000;
+			}
 			else{
 				switch(pwr->charge_type) {
 					case CHG_STATE_TRICKLE_CHARGE:
@@ -2093,7 +2107,7 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 						val->intval = MAX_CURRENT;
 						break;
 					case CHG_STATE_TOP_OFF:
-						val->intval = get_iterm_current();
+						val->intval = get_iterm_current() * 10000;
 						break;
 					default:
 						val->intval = MAX_CURRENT;
@@ -2817,7 +2831,7 @@ static int bd7181x_power_probe(struct platform_device *pdev)
 	/* Start Coulomb Counter */
 	/* bd7181x_set_bits(pwr->mfd, BD7181x_REG_CC_CTRL, CCNTENB); */
 
-	twonav_identify_power_type();
+	twonav_init_type();
 
 	bd7181x_init_hardware(pwr);
 
