@@ -13,12 +13,12 @@
 		wlan_switch {
 			label = "wlan_switch";
 			gpios = <&gpio1 31 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
+			default-state = "off";
 		};
 		wlan_enable {
 			label = "wlan_enable";
 			gpios = <&gpio1 29 GPIO_ACTIVE_HIGH>;
-			default-state = "on";
+			default-state = "off";
 		};
 	};
 };
