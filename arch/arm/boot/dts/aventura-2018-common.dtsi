@@ -52,11 +52,12 @@
 			gpio-key,wakeup;
 		};
 
-		init-gpios-aventura {
-			compatible = "gpio-leds";
-			pinctrl-names = "default";
-			pinctrl-0 = <&pinctrl_sdcard>;
-		};
+	};
+
+	init-gpios-aventura {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_sdcard>;
 	};
 };
 
