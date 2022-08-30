@@ -68,11 +68,6 @@
 			gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
-		amp_switch {
-			label = "amp_switch";
-			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
-			default-state = "off";
-		};
 		sd_switch {
 			label = "sd_switch";
 			gpios = <&gpio4 23 GPIO_ACTIVE_HIGH>;

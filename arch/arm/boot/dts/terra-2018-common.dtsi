@@ -74,11 +74,6 @@
 			gpios = <&gpio1 1 GPIO_ACTIVE_HIGH>;
 			default-state = "on";
 		};
-		amp_switch {
-			label = "amp_switch";
-			gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
-			default-state = "off";
-		};
 	};
 
 	codec1: max98357a@0 {
@@ -137,7 +132,8 @@
 	imx6ul-evk {	
 		pinctrl_terra: terragrp {
 			fsl,pins = <				
-				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0 /* AMP_SWITCH */
+				MX6UL_PAD_JTAG_TMS__GPIO1_IO11			0x1b0b0 /* AMP_SWITCH max98390 */
+				MX6UL_PAD_JTAG_TCK__GPIO1_IO14			0x1b0b0 /* AMP_SWITCH max98357a */
 				MX6UL_PAD_GPIO1_IO01__GPIO1_IO01		0x1b0b1 /* RESETB */
 				MX6UL_PAD_LCD_RESET__GPIO3_IO04		0x1b0b1
 				MX6UL_PAD_LCD_DATA00__GPIO3_IO05	0x1b0b1
