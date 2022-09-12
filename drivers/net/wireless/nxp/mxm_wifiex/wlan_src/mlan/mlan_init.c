@@ -6,18 +6,27 @@
  *
  *  Copyright 2008-2021 NXP
  *
- *  This software file (the File) is distributed by NXP
- *  under the terms of the GNU General Public License Version 2, June 1991
- *  (the License).  You may use, redistribute and/or modify the File in
- *  accordance with the terms and conditions of the License, a copy of which
- *  is available by writing to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *  NXP CONFIDENTIAL
+ *  The source code contained or described herein and all documents related to
+ *  the source code (Materials) are owned by NXP, its
+ *  suppliers and/or its licensors. Title to the Materials remains with NXP,
+ *  its suppliers and/or its licensors. The Materials contain
+ *  trade secrets and proprietary and confidential information of NXP, its
+ *  suppliers and/or its licensors. The Materials are protected by worldwide
+ *  copyright and trade secret laws and treaty provisions. No part of the
+ *  Materials may be used, copied, reproduced, modified, published, uploaded,
+ *  posted, transmitted, distributed, or disclosed in any way without NXP's
+ *  prior express written permission.
  *
- *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- *  this warranty disclaimer.
+ *  No license under any patent, copyright, trade secret or other intellectual
+ *  property right is granted to or conferred upon you by disclosure or delivery
+ *  of the Materials, either expressly, by implication, inducement, estoppel or
+ *  otherwise. Any license under such intellectual property rights must be
+ *  express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
+ *
  *
  */
 
@@ -240,9 +249,10 @@ mlan_status wlan_allocate_adapter(pmlan_adapter pmadapter)
 	t_u32 buf_size;
 	BSSDescriptor_t *ptemp_scan_table = MNULL;
 	t_u8 chan_2g[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14};
-	t_u8 chan_5g[] = {12,  16,  34,	 38,  42,  46,	36,  40,  44,  48,  52,
-			  56,  60,  64,	 100, 104, 108, 112, 116, 120, 124, 128,
-			  132, 136, 140, 144, 149, 153, 157, 161, 165};
+	t_u8 chan_5g[] = {12,  16,  34,	 38,  42,  46,	36,  40,  44,
+			  48,  52,  56,	 60,  64,  100, 104, 108, 112,
+			  116, 120, 124, 128, 132, 136, 140, 144, 149,
+			  153, 157, 161, 165, 169, 173, 177};
 #endif
 #ifdef SDIO
 	t_u32 max_mp_regs = 0;
@@ -603,6 +613,7 @@ mlan_status wlan_init_priv(pmlan_private priv)
 	priv->hotspot_cfg = 0;
 
 	priv->intf_hr_len = pmadapter->ops.intf_header_len;
+	memset(pmadapter, &priv->chan_rep_req, 0, sizeof(priv->chan_rep_req));
 #ifdef USB
 	if (IS_USB(pmadapter->card_type)) {
 		pusb_tx_aggr =
@@ -722,6 +733,8 @@ t_void wlan_init_adapter(pmlan_adapter pmadapter)
 	pmadapter->last_init_cmd = 0;
 	pmadapter->pending_ioctl = MFALSE;
 	pmadapter->scan_processing = MFALSE;
+	pmadapter->fw_roaming = MFALSE;
+	pmadapter->userset_passphrase = MFALSE;
 	pmadapter->cmd_timer_is_set = MFALSE;
 	pmadapter->dnld_cmd_in_secs = 0;
 
@@ -957,7 +970,7 @@ t_void wlan_init_adapter(pmlan_adapter pmadapter)
 				EVT_RW_PTR_ROLLOVER_IND;
 		}
 #endif
-#if defined(PCIE9098) || defined(PCIE9097)
+#if defined(PCIE9098) || defined(PCIE9097) || defined(PCIENW62X)
 		if (pmadapter->pcard_pcie->reg->use_adma) {
 			pmadapter->pcard_pcie->rxbd_wrptr =
 				pmadapter->pcard_pcie->txrx_bd_size;
@@ -1154,7 +1167,10 @@ mlan_status wlan_init_lock_list(pmlan_adapter pmadapter)
 	util_init_list_head((t_void *)pmadapter->pmoal_handle,
 			    &pmadapter->scan_pending_q, MTRUE,
 			    pmadapter->callbacks.moal_init_lock);
-
+	/* Initialize ext_cmd_pending_q */
+	util_init_list_head((t_void *)pmadapter->pmoal_handle,
+			    &pmadapter->ext_cmd_pending_q, MTRUE,
+			    pmadapter->callbacks.moal_init_lock);
 	/* Initialize ioctl_pending_q */
 	util_init_list_head((t_void *)pmadapter->pmoal_handle,
 			    &pmadapter->ioctl_pending_q, MTRUE,
@@ -1244,6 +1260,10 @@ t_void wlan_free_lock_list(pmlan_adapter pmadapter)
 
 	util_free_list_head((t_void *)pmadapter->pmoal_handle,
 			    &pmadapter->scan_pending_q,
+			    pmadapter->callbacks.moal_free_lock);
+
+	util_free_list_head((t_void *)pmadapter->pmoal_handle,
+			    &pmadapter->ext_cmd_pending_q,
 			    pmadapter->callbacks.moal_free_lock);
 
 	util_free_list_head((t_void *)pmadapter->pmoal_handle,
@@ -1896,7 +1916,9 @@ static mlan_status wlan_init_interface(pmlan_adapter pmadapter)
 				pmadapter->priv[i]->bss_role =
 					MLAN_BSS_ROLE_STA;
 			else if (pmadapter->bss_attr[i].bss_type ==
-				 MLAN_BSS_TYPE_UAP)
+					 MLAN_BSS_TYPE_UAP ||
+				 pmadapter->bss_attr[i].bss_type ==
+					 MLAN_BSS_TYPE_DFS)
 				pmadapter->priv[i]->bss_role =
 					MLAN_BSS_ROLE_UAP;
 #ifdef WIFI_DIRECT_SUPPORT

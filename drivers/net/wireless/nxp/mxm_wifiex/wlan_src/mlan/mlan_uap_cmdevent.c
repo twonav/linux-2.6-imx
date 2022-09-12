@@ -3,20 +3,29 @@
  *  @brief This file contains the handling of AP mode command and event
  *
  *
- *  Copyright 2009-2021 NXP
+ *  Copyright 2009-2022 NXP
  *
- *  This software file (the File) is distributed by NXP
- *  under the terms of the GNU General Public License Version 2, June 1991
- *  (the License).  You may use, redistribute and/or modify the File in
- *  accordance with the terms and conditions of the License, a copy of which
- *  is available by writing to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *  NXP CONFIDENTIAL
+ *  The source code contained or described herein and all documents related to
+ *  the source code (Materials) are owned by NXP, its
+ *  suppliers and/or its licensors. Title to the Materials remains with NXP,
+ *  its suppliers and/or its licensors. The Materials contain
+ *  trade secrets and proprietary and confidential information of NXP, its
+ *  suppliers and/or its licensors. The Materials are protected by worldwide
+ *  copyright and trade secret laws and treaty provisions. No part of the
+ *  Materials may be used, copied, reproduced, modified, published, uploaded,
+ *  posted, transmitted, distributed, or disclosed in any way without NXP's
+ *  prior express written permission.
  *
- *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- *  this warranty disclaimer.
+ *  No license under any patent, copyright, trade secret or other intellectual
+ *  property right is granted to or conferred upon you by disclosure or delivery
+ *  of the Materials, either expressly, by implication, inducement, estoppel or
+ *  otherwise. Any license under such intellectual property rights must be
+ *  express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
+ *
  *
  */
 
@@ -714,7 +723,8 @@ static mlan_status wlan_uap_cmd_ap_config(pmlan_private pmpriv,
 	t_u16 i;
 	t_u16 ac;
 #if defined(PCIE9098) || defined(SD9098) || defined(USB9098) ||                \
-	defined(PCIE9097) || defined(SD9097) || defined(USB9097)
+	defined(PCIE9097) || defined(SD9097) || defined(USB9097) ||            \
+	defined(SDNW62X) || defined(PCIENW62X) || defined(USBNW62X)
 	int rx_mcs_supp = 0;
 #endif
 
@@ -1099,7 +1109,9 @@ static mlan_status wlan_uap_cmd_ap_config(pmlan_private pmpriv,
 		tlv_auth_type = (MrvlIEtypes_auth_type_t *)tlv;
 		tlv_auth_type->header.type =
 			wlan_cpu_to_le16(TLV_TYPE_AUTH_TYPE);
-		tlv_auth_type->header.len = wlan_cpu_to_le16(sizeof(t_u8));
+		tlv_auth_type->header.len =
+			wlan_cpu_to_le16(sizeof(MrvlIEtypes_auth_type_t) -
+					 sizeof(MrvlIEtypesHeader_t));
 		tlv_auth_type->auth_type =
 			(t_u8)bss->param.bss_config.auth_mode;
 		cmd_size += sizeof(MrvlIEtypes_auth_type_t);
@@ -1342,8 +1354,10 @@ static mlan_status wlan_uap_cmd_ap_config(pmlan_private pmpriv,
 			   bss->param.bss_config.supported_mcs_set, 16,
 			   sizeof(tlv_htcap->ht_cap.supported_mcs_set));
 #if defined(PCIE9098) || defined(SD9098) || defined(USB9098) ||                \
-	defined(PCIE9097) || defined(SD9097) || defined(USB9097)
+	defined(PCIE9097) || defined(SD9097) || defined(USB9097) ||            \
+	defined(SDNW62X) || defined(PCIENW62X) || defined(USBNW62X)
 		if (IS_CARD9098(pmpriv->adapter->card_type) ||
+		    IS_CARDNW62X(pmpriv->adapter->card_type) ||
 		    IS_CARD9097(pmpriv->adapter->card_type)) {
 			if (bss->param.bss_config.supported_mcs_set[0]) {
 				if (bss->param.bss_config.bandcfg.chanBand ==
@@ -1842,6 +1856,8 @@ static mlan_status wlan_uap_cmd_sys_configure(pmlan_private pmpriv,
 				MRVL_ACTION_CHAN_SWITCH_ANNOUNCE);
 			// mode reserve for future use
 			tlv_chan_switch->mode = 0;
+			tlv_chan_switch->num_pkt =
+				bss->param.chanswitch.chan_switch_count;
 			if (bss->param.chanswitch.new_oper_class) {
 				tlv_chan_switch->header.len = wlan_cpu_to_le16(
 					sizeof(MrvlIEtypes_action_chan_switch_t) -
@@ -1855,8 +1871,7 @@ static mlan_status wlan_uap_cmd_sys_configure(pmlan_private pmpriv,
 					sizeof(IEEEtypes_Header_t);
 				ecsa_ie->chan_switch_mode =
 					bss->param.chanswitch.chan_switch_mode;
-				ecsa_ie->chan_switch_count =
-					bss->param.chanswitch.chan_switch_count;
+				ecsa_ie->chan_switch_count = 0;
 				ecsa_ie->new_channel_num =
 					bss->param.chanswitch.new_channel_num;
 				ecsa_ie->new_oper_class =
@@ -1876,8 +1891,7 @@ static mlan_status wlan_uap_cmd_sys_configure(pmlan_private pmpriv,
 					sizeof(IEEEtypes_Header_t);
 				csa_ie->chan_switch_mode =
 					bss->param.chanswitch.chan_switch_mode;
-				csa_ie->chan_switch_count =
-					bss->param.chanswitch.chan_switch_count;
+				csa_ie->chan_switch_count = 0;
 				csa_ie->new_channel_num =
 					bss->param.chanswitch.new_channel_num;
 				cmd->size += sizeof(IEEEtypes_ChanSwitchAnn_t);
@@ -2250,6 +2264,13 @@ static mlan_status wlan_uap_ret_cmd_ap_config(pmlan_private pmpriv,
 			tlv_auth_type = (MrvlIEtypes_auth_type_t *)tlv;
 			bss->param.bss_config.auth_mode =
 				tlv_auth_type->auth_type;
+			if (tlv_len == (sizeof(MrvlIEtypes_auth_type_t) -
+					sizeof(MrvlIEtypesHeader_t))) {
+				bss->param.bss_config.pwe_derivation =
+					tlv_auth_type->PWE_derivation;
+				bss->param.bss_config.transition_disable =
+					tlv_auth_type->transition_disable;
+			}
 			break;
 		case TLV_TYPE_UAP_ENCRYPT_PROTOCOL:
 			tlv_encrypt_protocol =
@@ -2933,6 +2954,10 @@ static mlan_status wlan_uap_cmd_snmp_mib(pmlan_private pmpriv,
 			psnmp_mib->buf_size = wlan_cpu_to_le16(sizeof(t_u8));
 			psnmp_mib->value[0] = *((t_u8 *)pdata_buf);
 			cmd->size += sizeof(t_u8);
+			break;
+		case Dot11H_fakeRadar:
+			psnmp_mib->oid = wlan_cpu_to_le16((t_u16)cmd_oid);
+			psnmp_mib->buf_size = 0;
 			break;
 		default:
 			PRINTM(MERROR, "Unsupported OID.\n");
@@ -4661,6 +4686,7 @@ mlan_status wlan_ops_uap_prepare_cmd(t_void *priv, t_u16 cmd_no,
 	case HostCmd_CMD_TARGET_ACCESS:
 	case HostCmd_CMD_802_11_EEPROM_ACCESS:
 	case HostCmd_CMD_BCA_REG_ACCESS:
+	case HostCmd_CMD_REG_ACCESS:
 		ret = wlan_cmd_reg_access(pmpriv, cmd_ptr, cmd_action,
 					  pdata_buf);
 		break;
@@ -4698,6 +4724,10 @@ mlan_status wlan_ops_uap_prepare_cmd(t_void *priv, t_u16 cmd_no,
 		cmd_ptr->size = wlan_cpu_to_le16(
 			sizeof(HostCmd_DS_CHAN_REGION_CFG) + S_DS_GEN);
 		cmd_ptr->params.reg_cfg.action = wlan_cpu_to_le16(cmd_action);
+		break;
+	case HostCmd_CMD_802_11_NET_MONITOR:
+		ret = wlan_cmd_net_monitor(pmpriv, cmd_ptr, cmd_action,
+					   pdata_buf);
 		break;
 	case HostCmd_CMD_PACKET_AGGR_CTRL:
 		ret = wlan_cmd_packet_aggr_ctrl(pmpriv, cmd_ptr, cmd_action,
@@ -4790,6 +4820,17 @@ mlan_status wlan_ops_uap_prepare_cmd(t_void *priv, t_u16 cmd_no,
 	case HostCmd_CMD_HAL_PHY_CFG:
 		ret = wlan_cmd_hal_phy_cfg(pmpriv, cmd_ptr, cmd_action,
 					   pdata_buf);
+		break;
+	case HostCmd_CMD_MC_AGGR_CFG:
+		ret = wlan_cmd_mc_aggr_cfg(pmpriv, cmd_ptr, cmd_action,
+					   pdata_buf);
+		break;
+	case HostCmd_CMD_GET_CH_LOAD:
+		ret = wlan_cmd_get_ch_load(pmpriv, cmd_ptr, cmd_action,
+					   pdata_buf);
+		break;
+	case HostCmd_DS_GET_SENSOR_TEMP:
+		wlan_cmd_get_sensor_temp(pmpriv, cmd_ptr, cmd_action);
 		break;
 	default:
 		PRINTM(MERROR, "PREP_CMD: unknown command- %#x\n", cmd_no);
@@ -4966,6 +5007,9 @@ mlan_status wlan_ops_uap_process_cmdresp(t_void *priv, t_u16 cmdresp_no,
 		break;
 	case HostCmd_CMD_SET_BSS_MODE:
 		break;
+	case HostCmd_CMD_802_11_NET_MONITOR:
+		ret = wlan_ret_net_monitor(pmpriv, resp, pioctl_buf);
+		break;
 	case HostCmd_CMD_RECONFIGURE_TX_BUFF:
 		wlan_set_tx_pause_flag(pmpriv, MFALSE);
 
@@ -5067,6 +5111,7 @@ mlan_status wlan_ops_uap_process_cmdresp(t_void *priv, t_u16 cmdresp_no,
 	case HostCmd_CMD_TARGET_ACCESS:
 	case HostCmd_CMD_802_11_EEPROM_ACCESS:
 	case HostCmd_CMD_BCA_REG_ACCESS:
+	case HostCmd_CMD_REG_ACCESS:
 		ret = wlan_ret_reg_access(pmpriv->adapter, cmdresp_no, resp,
 					  pioctl_buf);
 		break;
@@ -5170,6 +5215,15 @@ mlan_status wlan_ops_uap_process_cmdresp(t_void *priv, t_u16 cmdresp_no,
 	case HostCmd_CMD_UAP_BEACON_STUCK_CFG:
 		ret = wlan_ret_set_get_beacon_stuck_cfg(pmpriv, resp,
 							pioctl_buf);
+		break;
+	case HostCmd_CMD_MC_AGGR_CFG:
+		ret = wlan_ret_mc_aggr_cfg(pmpriv, resp, pioctl_buf);
+		break;
+	case HostCmd_CMD_GET_CH_LOAD:
+		ret = wlan_ret_ch_load(pmpriv, resp, pioctl_buf);
+		break;
+	case HostCmd_DS_GET_SENSOR_TEMP:
+		ret = wlan_ret_get_sensor_temp(pmpriv, resp, pioctl_buf);
 		break;
 	default:
 		PRINTM(MERROR, "CMD_RESP: Unknown command response %#x\n",
@@ -5457,14 +5511,20 @@ mlan_status wlan_ops_uap_process_event(t_void *priv)
 			   pevent->event_len, pevent->event_len);
 		wlan_11h_print_event_radar_detected(pmpriv, pevent, &channel);
 		*((t_u8 *)pevent->event_buf) = channel;
+		if (pmpriv->bss_type == MLAN_BSS_TYPE_DFS) {
+			wlan_recv_event(priv, MLAN_EVENT_ID_FW_RADAR_DETECTED,
+					pevent);
+			pevent->event_id = 0; /* clear to avoid
+						 resending at end of fcn
+					       */
+			break;
+		}
 		if (!pmpriv->intf_state_11h.is_11h_host) {
 			if (pmadapter->state_rdh.stage == RDH_OFF) {
 				pmadapter->state_rdh.stage = RDH_CHK_INTFS;
 				wlan_11h_radar_detected_handling(pmadapter,
 								 pmpriv);
-				if (pmpriv->uap_host_based)
-					wlan_recv_event(
-						priv,
+				wlan_recv_event(priv,
 						MLAN_EVENT_ID_FW_RADAR_DETECTED,
 						pevent);
 			} else {
@@ -5515,6 +5575,17 @@ mlan_status wlan_ops_uap_process_event(t_void *priv)
 		/* Handle / pass event data, and free buffer */
 		ret = wlan_11h_handle_event_chanrpt_ready(pmpriv, pevent,
 							  &channel);
+		if (pmpriv->bss_type == MLAN_BSS_TYPE_DFS) {
+			*((t_u8 *)pevent->event_buf) =
+				pmpriv->adapter->state_dfs.dfs_radar_found;
+			*((t_u8 *)pevent->event_buf + 1) = channel;
+			wlan_recv_event(pmpriv,
+					MLAN_EVENT_ID_FW_CHANNEL_REPORT_RDY,
+					pevent);
+			pevent->event_id = 0; /* clear to avoid resending at end
+						 of fcn */
+			break;
+		}
 		if (pmpriv->intf_state_11h.is_11h_host) {
 			*((t_u8 *)pevent->event_buf) =
 				pmpriv->adapter->state_dfs.dfs_radar_found;
@@ -5639,6 +5710,10 @@ mlan_status wlan_ops_uap_process_event(t_void *priv)
 		break;
 	case EVENT_VDLL_IND:
 		wlan_process_vdll_event(pmpriv, pmbuf);
+		break;
+	case EVENT_CSI:
+		PRINTM(MEVENT, "EVENT: EVENT_CSI on UAP\n");
+		wlan_process_csi_event(pmpriv);
 		break;
 
 	case EVENT_FW_HANG_REPORT:

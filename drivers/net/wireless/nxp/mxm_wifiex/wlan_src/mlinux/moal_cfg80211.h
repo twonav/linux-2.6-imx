@@ -3,20 +3,28 @@
  * @brief This file contains the CFG80211 specific defines.
  *
  *
- * Copyright 2011-2021 NXP
+ * Copyright 2011-2022 NXP
  *
- * This software file (the File) is distributed by NXP
- * under the terms of the GNU General Public License Version 2, June 1991
- * (the License).  You may use, redistribute and/or modify the File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ * NXP CONFIDENTIAL
+ * The source code contained or described herein and all documents related to
+ * the source code (Materials) are owned by NXP, its
+ * suppliers and/or its licensors. Title to the Materials remains with NXP,
+ * its suppliers and/or its licensors. The Materials contain
+ * trade secrets and proprietary and confidential information of NXP, its
+ * suppliers and/or its licensors. The Materials are protected by worldwide
+ * copyright and trade secret laws and treaty provisions. No part of the
+ * Materials may be used, copied, reproduced, modified, published, uploaded,
+ * posted, transmitted, distributed, or disclosed in any way without NXP's prior
+ * express written permission.
  *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery
+ * of the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be
+ * express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
  *
  */
 
@@ -324,9 +332,7 @@ int woal_cfg80211_del_virtual_intf(struct wiphy *wiphy,
 int woal_cfg80211_del_virtual_intf(struct wiphy *wiphy, struct net_device *dev);
 #endif
 
-#if defined(WIFI_DIRECT_SUPPORT)
 void woal_remove_virtual_interface(moal_handle *handle);
-#endif
 
 #ifdef WIFI_DIRECT_SUPPORT
 /* Group Owner Negotiation Req */
@@ -490,8 +496,10 @@ mlan_status woal_chandef_create(moal_private *priv,
 #if KERNEL_VERSION(4, 20, 0) <= CFG80211_VERSION_CODE
 void woal_cfg80211_setup_he_cap(moal_private *priv,
 				struct ieee80211_supported_band *band);
-void woal_cfg80211_free_iftype_data(struct wiphy *wiphy);
 #endif
+
+void woal_cfg80211_free_bands(struct wiphy *wiphy);
+struct ieee80211_supported_band *woal_setup_wiphy_bands(t_u8 ieee_band);
 
 void woal_clear_all_mgmt_ies(moal_private *priv, t_u8 wait_option);
 int woal_cfg80211_mgmt_frame_ie(
@@ -512,4 +520,8 @@ void woal_cfg80211_setup_vht_cap(moal_private *priv,
 int woal_cfg80211_assoc(moal_private *priv, void *sme, t_u8 wait_option,
 			pmlan_ds_misc_assoc_rsp assoc_rsp);
 
+void woal_clear_wiphy_dfs_state(struct wiphy *wiphy);
+void woal_update_channel_dfs_state(t_u8 channel, t_u8 dfs_state);
+int woal_get_wiphy_chan_dfs_state(struct wiphy *wiphy,
+				  mlan_ds_11h_chan_dfs_state *ch_dfs_state);
 #endif /* _MOAL_CFG80211_H_ */

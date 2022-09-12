@@ -5,18 +5,26 @@
  *
  * Copyright 2008-2021 NXP
  *
- * This software file (the File) is distributed by NXP
- * under the terms of the GNU General Public License Version 2, June 1991
- * (the License).  You may use, redistribute and/or modify the File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ * NXP CONFIDENTIAL
+ * The source code contained or described herein and all documents related to
+ * the source code (Materials) are owned by NXP, its
+ * suppliers and/or its licensors. Title to the Materials remains with NXP,
+ * its suppliers and/or its licensors. The Materials contain
+ * trade secrets and proprietary and confidential information of NXP, its
+ * suppliers and/or its licensors. The Materials are protected by worldwide
+ * copyright and trade secret laws and treaty provisions. No part of the
+ * Materials may be used, copied, reproduced, modified, published, uploaded,
+ * posted, transmitted, distributed, or disclosed in any way without NXP's prior
+ * express written permission.
  *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery
+ * of the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be
+ * express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
  *
  */
 
@@ -153,6 +161,8 @@ static const struct iw_priv_args woal_private_args[] = {
 #endif
 	{WOAL_SLEEP_PARAMS, IW_PRIV_TYPE_INT | 16, IW_PRIV_TYPE_INT | 16,
 	 "sleepparams"},
+	{WOAL_NET_MONITOR, IW_PRIV_TYPE_INT | 16, IW_PRIV_TYPE_INT | 16,
+	 "netmon"},
 	{WOAL_DFS_TESTING, IW_PRIV_TYPE_INT | 16, IW_PRIV_TYPE_INT | 16,
 	 "dfstesting"},
 	{WOAL_MGMT_FRAME_CTRL, IW_PRIV_TYPE_INT | 16, IW_PRIV_TYPE_INT | 16,
@@ -2465,31 +2475,42 @@ done:
 static mlan_status woal_wext_request_scan(moal_private *priv, t_u8 wait_option,
 					  mlan_802_11_ssid *req_ssid)
 {
-	wlan_user_scan_cfg scan_req;
+	wlan_user_scan_cfg *scan_req;
 	mlan_scan_cfg scan_cfg;
+	mlan_status status;
 	ENTER();
 	if (!woal_is_any_interface_active(priv->phandle)) {
 		LEAVE();
 		return woal_request_scan(priv, wait_option, req_ssid);
 	}
+	scan_req = (wlan_user_scan_cfg *)kmalloc(sizeof(wlan_user_scan_cfg),
+						 GFP_KERNEL);
+	if (!scan_req) {
+		PRINTM(MERROR, "Malloc buffer failed\n");
+		LEAVE();
+		return MLAN_STATUS_FAILURE;
+	}
+
 	memset(&scan_cfg, 0, sizeof(scan_cfg));
-	memset(&scan_req, 0, sizeof(scan_req));
+	memset(scan_req, 0, sizeof(wlan_user_scan_cfg));
 	if (req_ssid && req_ssid->ssid_len != 0) {
-		moal_memcpy_ext(priv->phandle, scan_req.ssid_list[0].ssid,
+		moal_memcpy_ext(priv->phandle, scan_req->ssid_list[0].ssid,
 				req_ssid->ssid, req_ssid->ssid_len,
 				MLAN_MAX_SSID_LENGTH);
-		scan_req.ssid_list[0].max_len = 0;
+		scan_req->ssid_list[0].max_len = 0;
 	}
 	woal_get_scan_config(priv, &scan_cfg);
 	if (scan_cfg.scan_chan_gap)
-		scan_req.scan_chan_gap = scan_cfg.scan_chan_gap;
+		scan_req->scan_chan_gap = scan_cfg.scan_chan_gap;
 	else
-		scan_req.scan_chan_gap = priv->phandle->scan_chan_gap;
+		scan_req->scan_chan_gap = priv->phandle->scan_chan_gap;
 	/** indicate FW, gap is optional */
-	if (scan_req.scan_chan_gap && priv->phandle->pref_mac)
-		scan_req.scan_chan_gap |= GAP_FLAG_OPTIONAL;
+	if (scan_req->scan_chan_gap && priv->phandle->pref_mac)
+		scan_req->scan_chan_gap |= GAP_FLAG_OPTIONAL;
+	status = woal_request_userscan(priv, wait_option, scan_req);
+	kfree(scan_req);
 	LEAVE();
-	return woal_request_userscan(priv, wait_option, &scan_req);
+	return status;
 }
 
 /**

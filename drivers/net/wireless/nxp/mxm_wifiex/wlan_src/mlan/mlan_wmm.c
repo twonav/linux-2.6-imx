@@ -5,18 +5,27 @@
  *
  *  Copyright 2008-2021 NXP
  *
- *  This software file (the File) is distributed by NXP
- *  under the terms of the GNU General Public License Version 2, June 1991
- *  (the License).  You may use, redistribute and/or modify the File in
- *  accordance with the terms and conditions of the License, a copy of which
- *  is available by writing to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *  NXP CONFIDENTIAL
+ *  The source code contained or described herein and all documents related to
+ *  the source code (Materials) are owned by NXP, its
+ *  suppliers and/or its licensors. Title to the Materials remains with NXP,
+ *  its suppliers and/or its licensors. The Materials contain
+ *  trade secrets and proprietary and confidential information of NXP, its
+ *  suppliers and/or its licensors. The Materials are protected by worldwide
+ *  copyright and trade secret laws and treaty provisions. No part of the
+ *  Materials may be used, copied, reproduced, modified, published, uploaded,
+ *  posted, transmitted, distributed, or disclosed in any way without NXP's
+ *  prior express written permission.
  *
- *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- *  this warranty disclaimer.
+ *  No license under any patent, copyright, trade secret or other intellectual
+ *  property right is granted to or conferred upon you by disclosure or delivery
+ *  of the Materials, either expressly, by implication, inducement, estoppel or
+ *  otherwise. Any license under such intellectual property rights must be
+ *  express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
+ *
  *
  */
 
@@ -1110,13 +1119,13 @@ static int wlan_dequeue_tx_packet(pmlan_adapter pmadapter)
 			}
 		}
 	}
-	if (!ptr->is_11n_enabled ||
+	if (!ptr->is_wmm_enabled ||
 	    (ptr->ba_status || ptr->del_ba_count >= DEL_BA_THRESHOLD)
 #ifdef STA_SUPPORT
 	    || priv->wps.session_enable
 #endif /* STA_SUPPORT */
 	) {
-		if (ptr->is_11n_enabled && ptr->ba_status &&
+		if (ptr->is_wmm_enabled && ptr->ba_status &&
 		    ptr->amsdu_in_ampdu &&
 		    wlan_is_amsdu_allowed(priv, ptr, tid) &&
 		    (wlan_num_pkts_in_txq(priv, ptr, pmadapter->tx_buf_size) >=
@@ -1668,8 +1677,8 @@ void wlan_ralist_add(mlan_private *priv, t_u8 *ra)
 		ra_list->ba_status = BA_STREAM_NOT_SETUP;
 		ra_list->amsdu_in_ampdu = MFALSE;
 		if (queuing_ra_based(priv)) {
-			ra_list->is_11n_enabled = wlan_is_11n_enabled(priv, ra);
-			if (ra_list->is_11n_enabled)
+			ra_list->is_wmm_enabled = wlan_is_11n_enabled(priv, ra);
+			if (ra_list->is_wmm_enabled)
 				ra_list->max_amsdu =
 					get_station_max_amsdu_size(priv, ra);
 			ra_list->tx_pause = wlan_is_tx_pause(priv, ra);
@@ -1678,25 +1687,25 @@ void wlan_ralist_add(mlan_private *priv, t_u8 *ra)
 			ra_list->tx_pause = MFALSE;
 			status = wlan_get_tdls_link_status(priv, ra);
 			if (MTRUE == wlan_is_tdls_link_setup(status)) {
-				ra_list->is_11n_enabled =
+				ra_list->is_wmm_enabled =
 					is_station_11n_enabled(priv, ra);
-				if (ra_list->is_11n_enabled)
+				if (ra_list->is_wmm_enabled)
 					ra_list->max_amsdu =
 						get_station_max_amsdu_size(priv,
 									   ra);
 				ra_list->is_tdls_link = MTRUE;
 			} else {
-				ra_list->is_11n_enabled = IS_11N_ENABLED(priv);
-				if (ra_list->is_11n_enabled)
+				ra_list->is_wmm_enabled = IS_11N_ENABLED(priv);
+				if (ra_list->is_wmm_enabled)
 					ra_list->max_amsdu = priv->max_amsdu;
 			}
 		}
 
 		PRINTM_NETINTF(MDATA, priv);
-		PRINTM(MDATA, "ralist %p: is_11n_enabled=%d max_amsdu=%d\n",
-		       ra_list, ra_list->is_11n_enabled, ra_list->max_amsdu);
+		PRINTM(MDATA, "ralist %p: is_wmm_enabled=%d max_amsdu=%d\n",
+		       ra_list, ra_list->is_wmm_enabled, ra_list->max_amsdu);
 
-		if (ra_list->is_11n_enabled) {
+		if (ra_list->is_wmm_enabled) {
 			ra_list->packet_count = 0;
 			ra_list->ba_packet_threshold =
 				wlan_get_random_ba_threshold(pmadapter);
@@ -2008,15 +2017,15 @@ int wlan_ralist_update(mlan_private *priv, t_u8 *old_ra, t_u8 *new_ra)
 			update_count++;
 
 			if (queuing_ra_based(priv)) {
-				ra_list->is_11n_enabled =
+				ra_list->is_wmm_enabled =
 					wlan_is_11n_enabled(priv, new_ra);
-				if (ra_list->is_11n_enabled)
+				if (ra_list->is_wmm_enabled)
 					ra_list->max_amsdu =
 						get_station_max_amsdu_size(
 							priv, new_ra);
 			} else {
-				ra_list->is_11n_enabled = IS_11N_ENABLED(priv);
-				if (ra_list->is_11n_enabled)
+				ra_list->is_wmm_enabled = IS_11N_ENABLED(priv);
+				if (ra_list->is_wmm_enabled)
 					ra_list->max_amsdu = priv->max_amsdu;
 			}
 
@@ -2029,7 +2038,7 @@ int wlan_ralist_update(mlan_private *priv, t_u8 *old_ra, t_u8 *new_ra)
 			PRINTM(MINFO,
 			       "ralist_update: %p, %d, " MACSTR "-->" MACSTR
 			       "\n",
-			       ra_list, ra_list->is_11n_enabled,
+			       ra_list, ra_list->is_wmm_enabled,
 			       MAC2STR(ra_list->ra), MAC2STR(new_ra));
 
 			memcpy_ext(priv->adapter, ra_list->ra, new_ra,

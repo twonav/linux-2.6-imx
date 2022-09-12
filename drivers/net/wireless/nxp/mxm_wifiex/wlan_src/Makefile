@@ -1,21 +1,40 @@
-# SPDX-License-Identifier: GPL-2.0-only
 #  File: Makefile
 #
-#  Copyright 2014-2020 NXP
+#  Copyright 2014-2022 NXP
 #
-#  This software file (the File) is distributed by NXP
-#  under the terms of the GNU General Public License Version 2, June 1991
-#  (the License).  You may use, redistribute and/or modify the File in
-#  accordance with the terms and conditions of the License, a copy of which
-#  is available by writing to the Free Software Foundation, Inc.,
-#  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
-#  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+#  NXP CONFIDENTIAL
+#  The source code contained or described herein and all documents related to
+#  the source code (Materials) are owned by NXP, its
+#  suppliers and/or its licensors. Title to the Materials remains with NXP,
+#  its suppliers and/or its licensors. The Materials contain
+#  trade secrets and proprietary and confidential information of NXP, its
+#  suppliers and/or its licensors. The Materials are protected by worldwide copyright
+#  and trade secret laws and treaty provisions. No part of the Materials may be
+#  used, copied, reproduced, modified, published, uploaded, posted,
+#  transmitted, distributed, or disclosed in any way without NXP's prior
+#  express written permission.
 #
-#  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
-#  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
-#  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
-#  this warranty disclaimer.
+#  No license under any patent, copyright, trade secret or other intellectual
+#  property right is granted to or conferred upon you by disclosure or delivery
+#  of the Materials, either expressly, by implication, inducement, estoppel or
+#  otherwise. Any license under such intellectual property rights must be
+#  express and approved by NXP in writing.
 #
+#  Alternatively, this software may be distributed under the terms of GPL v2.
+#  SPDX-License-Identifier:    GPL-2.0
+#
+
+CONFIG_COMPATDIR=n
+ifeq ($(CONFIG_COMPATDIR), y)
+COMPATDIR=/lib/modules/$(KERNELVERSION_X86)/build/compat-wireless-3.2-rc1-1/include
+CC ?=		$(CROSS_COMPILE)gcc -I$(COMPATDIR)
+else
+CC ?=		$(CROSS_COMPILE)gcc -I$(COMPATDIR)
+endif
+
+LD ?=		$(CROSS_COMPILE)ld
+BACKUP=		/root/backup
+YMD=		`date +%Y%m%d%H%M`
 
 #############################################################################
 # Configuration Options
@@ -33,11 +52,18 @@ CONFIG_USB8997=n
 CONFIG_PCIE8997=n
 CONFIG_SD8987=y
 CONFIG_SD9097=n
+CONFIG_SD9177=n
+CONFIG_SD8801=n
+CONFIG_USB8801=n
 CONFIG_USB9097=n
 CONFIG_PCIE9097=n
 CONFIG_SD9098=n
 CONFIG_USB9098=n
 CONFIG_PCIE9098=n
+CONFIG_SDNW62X=n
+CONFIG_PCIENW62X=n
+CONFIG_USBNW62X=n
+
 
 # Debug Option
 # DEBUG LEVEL n/1/2:
@@ -55,8 +81,10 @@ CONFIG_UAP_SUPPORT=y
 # Enable WIFIDIRECT support
 CONFIG_WIFI_DIRECT_SUPPORT=y
 
+
 # Re-association in driver
 CONFIG_REASSOCIATION=y
+
 
 # Manufacturing firmware support
 CONFIG_MFG_CMD_SUPPORT=y
@@ -64,8 +92,7 @@ CONFIG_MFG_CMD_SUPPORT=y
 # OpenWrt support
 CONFIG_OPENWRT_SUPPORT=n
 
-# Big-endian platform
-CONFIG_BIG_ENDIAN=n
+
 
 ifeq ($(CONFIG_DRV_EMBEDDED_SUPPLICANT), y)
 CONFIG_EMBEDDED_SUPP_AUTH=y
@@ -83,24 +110,48 @@ CONFIG_SDIO_SUSPEND_RESUME=y
 # DFS testing support
 CONFIG_DFS_TESTING_SUPPORT=y
 
+
+
+
+# Use static link for app build
+export CONFIG_STATIC_LINK=y
 CONFIG_ANDROID_KERNEL=n
 
 #32bit app over 64bit kernel support
 CONFIG_USERSPACE_32BIT_OVER_KERNEL_64BIT=n
+
 
 #############################################################################
 # Select Platform Tools
 #############################################################################
 
 MODEXT = ko
-ccflags-y += -I$(M)/mlan
+ccflags-y += -I$(PWD)/mlan
 ccflags-y += -DLINUX
 
+
+
+
+
+
+ARCH ?= arm64
+CONFIG_IMX_SUPPORT=y
+ifeq ($(CONFIG_IMX_SUPPORT),y)
+ccflags-y += -DIMX_SUPPORT
+endif
+KERNELDIR ?= /usr/src/arm/linux_5_10_y_kernel/linux-nxp
+CROSS_COMPILE ?= /opt/fsl-imx-internal-xwayland/5.10-gatesgarth/sysroots/x86_64-pokysdk-linux/usr/bin/aarch64-poky-linux/aarch64-poky-linux-
+
 LD += -S
+
+BINDIR = ../bin_wlan
+APPDIR= $(shell if test -d "mapp"; then echo mapp; fi)
 
 #############################################################################
 # Compiler Flags
 #############################################################################
+
+	ccflags-y += -I$(KERNELDIR)/include
 
 	ccflags-y += -DFPNUM='"92"'
 
@@ -143,10 +194,6 @@ endif
 
 ifeq ($(CONFIG_MFG_CMD_SUPPORT),y)
 	ccflags-y += -DMFG_CMD_SUPPORT
-endif
-
-ifeq ($(CONFIG_BIG_ENDIAN),y)
-	ccflags-y += -DBIG_ENDIAN_SUPPORT
 endif
 
 ifeq ($(CONFIG_USERSPACE_32BIT_OVER_KERNEL_64BIT),y)
@@ -207,9 +254,25 @@ ifeq ($(CONFIG_SD9097),y)
 	CONFIG_SDIO=y
 	ccflags-y += -DSD9097
 endif
+ifeq ($(CONFIG_SDNW62X),y)
+	CONFIG_SDIO=y
+	ccflags-y += -DSDNW62X
+endif
+ifeq ($(CONFIG_SD9177),y)
+	CONFIG_SDIO=y
+	ccflags-y += -DSD9177
+endif
+ifeq ($(CONFIG_SD8801),y)
+	CONFIG_SDIO=y
+	ccflags-y += -DSD8801
+endif
 ifeq ($(CONFIG_SD9098),y)
 	CONFIG_SDIO=y
 	ccflags-y += -DSD9098
+endif
+ifeq ($(CONFIG_USB8801),y)
+	CONFIG_MUSB=y
+	ccflags-y += -DUSB8801
 endif
 ifeq ($(CONFIG_USB8897),y)
 	CONFIG_MUSB=y
@@ -226,6 +289,10 @@ endif
 ifeq ($(CONFIG_USB9097),y)
 	CONFIG_MUSB=y
 	ccflags-y += -DUSB9097
+endif
+ifeq ($(CONFIG_USBNW62X),y)
+	CONFIG_MUSB=y
+	ccflags-y += -DUSBNW62X
 endif
 ifeq ($(CONFIG_USB9098),y)
 	CONFIG_MUSB=y
@@ -247,6 +314,10 @@ ifeq ($(CONFIG_PCIE9098),y)
 	CONFIG_PCIE=y
 	ccflags-y += -DPCIE9098
 endif
+ifeq ($(CONFIG_PCIENW62X),y)
+	CONFIG_PCIE=y
+	ccflags-y += -DPCIENW62X
+endif
 ifeq ($(CONFIG_SDIO),y)
 	ccflags-y += -DSDIO
 	ccflags-y += -DSDIO_MMC
@@ -258,18 +329,44 @@ ifeq ($(CONFIG_PCIE),y)
 	ccflags-y += -DPCIE
 endif
 
+ifeq ($(CONFIG_MAC80211_SUPPORT),y)
+	ccflags-y += -DMAC80211_SUPPORT
+endif
+ifeq ($(CONFIG_MAC80211_SUPPORT_UAP),y)
+	ccflags-y += -DMAC80211_SUPPORT_UAP
+endif
+ifeq ($(CONFIG_MAC80211_SUPPORT_MESH),y)
+	ccflags-y += -DMAC80211_SUPPORT_MESH
+endif
+
 # add -Wno-packed-bitfield-compat when GCC version greater than 4.4
 GCC_VERSION := $(shell echo `gcc -dumpversion | cut -f1-2 -d.` \>= 4.4 | sed -e 's/\./*100+/g' | bc )
 ifeq ($(GCC_VERSION),1)
 	ccflags-y += -Wno-packed-bitfield-compat
 endif
-	ccflags-y += -Wno-stringop-overflow
-	ccflags-y += -Wno-tautological-compare
-	ccflags-y += -Wno-packed-bitfield-compat
-
+WimpGCC_VERSION := $(shell echo `gcc -dumpversion | cut -f1 -d.`| bc )
+ifeq ($(shell test $(WimpGCC_VERSION) -ge 7; echo $$?),0)
+ccflags-y += -Wimplicit-fallthrough=3
+endif
+#ccflags-y += -Wunused-but-set-variable
+#ccflags-y += -Wmissing-prototypes
+#ccflags-y += -Wold-style-definition
+#ccflags-y += -Wtype-limits
+#ccflags-y += -Wsuggest-attribute=format
+#ccflags-y += -Wmissing-include-dirs
+#ccflags-y += -Wshadow
+#ccflags-y += -Wsign-compare
+#ccflags-y += -Wunused-macros
+#ccflags-y += -Wmissing-field-initializers
+#ccflags-y += -Wstringop-truncation
+#ccflags-y += -Wmisleading-indentation
+#ccflags-y += -Wunused-const-variable
+ccflags-y += -Wno-array-bounds
 #############################################################################
 # Make Targets
 #############################################################################
+
+ifneq ($(KERNELRELEASE),)
 
 ifeq ($(CONFIG_WIRELESS_EXT),y)
 ifeq ($(CONFIG_WEXT_PRIV),y)
@@ -380,6 +477,10 @@ endif
 endif
 endif
 
+
+
+
+
 MOALOBJS =	mlinux/moal_main.o \
 		mlinux/moal_ioctl.o \
 		mlinux/moal_shim.o \
@@ -450,7 +551,18 @@ MOALOBJS += mlinux/moal_proc.o
 MOALOBJS += mlinux/moal_debug.o
 endif
 
-obj-$(CONFIG_MXMWIFIEX) := mlan.o
+ifeq ($(CONFIG_MAC80211_SUPPORT),y)
+MOALOBJS += mlinux/moal_mac80211.o
+MLANOBJS += mlan/mlan_mac80211.o
+endif
+
+
+
+
+
+
+
+obj-m := mlan.o
 mlan-objs := $(MLANOBJS)
 
 ifeq ($(CONFIG_MUSB),y)
@@ -462,22 +574,84 @@ endif
 ifeq ($(CONFIG_PCIE),y)
 MOALOBJS += mlinux/moal_pcie.o
 endif
-
-obj-$(CONFIG_MXMWIFIEX) += moal.o
+obj-m += moal.o
 moal-objs := $(MOALOBJS)
+
+# Otherwise we were called directly from the command line; invoke the kernel build system.
+else
+
+default:
+	$(MAKE) -C $(KERNELDIR) M=$(PWD) ARCH=$(ARCH) CROSS_COMPILE=$(CROSS_COMPILE) modules
+
+endif
+
+###############################################################
+
+export		CC LD ccflags-y KERNELDIR
+
+.PHONY: mapp/mlanutl clean distclean
+	@echo "Finished Making NXP Wlan Linux Driver"
+
+mapp/mlanutl:
+	$(MAKE) -C $@
+
+echo:
+
+appsbuild:
+
+	@if [ ! -d $(BINDIR) ]; then \
+		mkdir $(BINDIR); \
+	fi
+
+	cp -f README_MLAN $(BINDIR)
+	cp -rf mapp/mlanconfig/config $(BINDIR)
+
+ifneq ($(APPDIR),)
+	$(MAKE) -C mapp/mlanutl $@ INSTALLDIR=$(BINDIR)
+endif
+
+build:		echo default
+
+	@if [ ! -d $(BINDIR) ]; then \
+		mkdir $(BINDIR); \
+	fi
+
+	cp -f mlan.$(MODEXT) $(BINDIR)/mlan$(DBG).$(MODEXT)
+
+	cp -f moal.$(MODEXT) $(BINDIR)/moal$(DBG).$(MODEXT)
+	cp -rpf script/load $(BINDIR)/
+	cp -rpf script/unload $(BINDIR)/
+
+	cp -f README_MLAN $(BINDIR)
+	cp -rf mapp/mlanconfig/config $(BINDIR)
+
+ifneq ($(APPDIR),)
+	$(MAKE) -C mapp/mlanutl $@ INSTALLDIR=$(BINDIR)
+endif
 
 clean:
 	-find . -name "*.o" -exec rm {} \;
 	-find . -name "*.ko" -exec rm {} \;
 	-find . -name ".*.cmd" -exec rm {} \;
 	-find . -name "*.mod.c" -exec rm {} \;
-	-find . -name "*.mod" -exec rm {} \;
 	-find . -name "Module.symvers" -exec rm {} \;
 	-find . -name "Module.markers" -exec rm {} \;
 	-find . -name "modules.order" -exec rm {} \;
 	-find . -name ".*.dwo" -exec rm {} \;
 	-find . -name "*dwo" -exec rm {} \;
 	-rm -rf .tmp_versions
+ifneq ($(APPDIR),)
+	$(MAKE) -C mapp/mlanutl $@
+endif
+#ifdef SDIO
+#endif // SDIO
+
+install: default
+
+	cp -f mlan.$(MODEXT) $(INSTALLDIR)/mlan$(DBG).$(MODEXT)
+	cp -f moal.$(MODEXT) $(INSTALLDIR)/moal$(DBG).$(MODEXT)
+	echo $(INSTALLDIR)
+	echo "MX Driver Installed"
 
 distclean:
 	-find . -name "*.o" -exec rm {} \;
@@ -495,3 +669,8 @@ distclean:
 	-find . -name ".*.dwo" -exec rm {} \;
 	-find . -name "*dwo" -exec rm {} \;
 	-rm -rf .tmp_versions
+ifneq ($(APPDIR),)
+	$(MAKE) -C mapp/mlanutl $@
+endif
+
+# End of file

@@ -5,18 +5,27 @@
  *
  *  Copyright 2008-2021 NXP
  *
- *  This software file (the File) is distributed by NXP
- *  under the terms of the GNU General Public License Version 2, June 1991
- *  (the License).  You may use, redistribute and/or modify the File in
- *  accordance with the terms and conditions of the License, a copy of which
- *  is available by writing to the Free Software Foundation, Inc.,
- *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ *  NXP CONFIDENTIAL
+ *  The source code contained or described herein and all documents related to
+ *  the source code (Materials) are owned by NXP, its
+ *  suppliers and/or its licensors. Title to the Materials remains with NXP,
+ *  its suppliers and/or its licensors. The Materials contain
+ *  trade secrets and proprietary and confidential information of NXP, its
+ *  suppliers and/or its licensors. The Materials are protected by worldwide
+ *  copyright and trade secret laws and treaty provisions. No part of the
+ *  Materials may be used, copied, reproduced, modified, published, uploaded,
+ *  posted, transmitted, distributed, or disclosed in any way without NXP's
+ *  prior express written permission.
  *
- *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- *  this warranty disclaimer.
+ *  No license under any patent, copyright, trade secret or other intellectual
+ *  property right is granted to or conferred upon you by disclosure or delivery
+ *  of the Materials, either expressly, by implication, inducement, estoppel or
+ *  otherwise. Any license under such intellectual property rights must be
+ *  express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
+ *
  *
  */
 
@@ -1330,7 +1339,7 @@ static TxBAStreamTbl *wlan_11n_get_txbastream_status(mlan_private *priv,
  *
  *  @return             N/A
  */
-static void wlan_fill_cap_info(mlan_private *priv, HTCap_t *ht_cap, t_u8 bands)
+static void wlan_fill_cap_info(mlan_private *priv, HTCap_t *ht_cap, t_u16 bands)
 {
 	t_u32 usr_dot_11n_dev_cap;
 
@@ -1419,7 +1428,8 @@ static void wlan_fill_cap_info(mlan_private *priv, HTCap_t *ht_cap, t_u8 bands)
  *
  *  @return             N/A
  */
-static void wlan_reset_cap_info(mlan_private *priv, HTCap_t *ht_cap, t_u8 bands)
+static void wlan_reset_cap_info(mlan_private *priv, HTCap_t *ht_cap,
+				t_u16 bands)
 {
 	t_u32 usr_dot_11n_dev_cap;
 
@@ -1513,8 +1523,10 @@ void wlan_fill_ht_cap_tlv(mlan_private *priv, MrvlIETypes_HTCap_t *pht_cap,
 
 	rx_mcs_supp = GET_RXMCSSUPP(priv->usr_dev_mcs_support);
 #if defined(PCIE9098) || defined(SD9098) || defined(USB9098) ||                \
-	defined(PCIE9097) || defined(SD9097) || defined(USB9097)
+	defined(PCIE9097) || defined(SD9097) || defined(USB9097) ||            \
+	defined(SDNW62X) || defined(PCIENW62X) || defined(USBNW62X)
 	if (IS_CARD9098(pmadapter->card_type) ||
+	    IS_CARDNW62X(pmadapter->card_type) ||
 	    IS_CARD9097(pmadapter->card_type)) {
 		if (bands & BAND_A)
 			rx_mcs_supp = MIN(
@@ -1587,8 +1599,10 @@ void wlan_fill_ht_cap_ie(mlan_private *priv, IEEEtypes_HTCap_t *pht_cap,
 
 	rx_mcs_supp = GET_RXMCSSUPP(priv->usr_dev_mcs_support);
 #if defined(PCIE9098) || defined(SD9098) || defined(USB9098) ||                \
-	defined(PCIE9097) || defined(SD9097) || defined(USB9097)
+	defined(PCIE9097) || defined(SD9097) || defined(USB9097) ||            \
+	defined(SDNW62X) || defined(PCIENW62X) || defined(USBNW62X)
 	if (IS_CARD9098(pmadapter->card_type) ||
+	    IS_CARDNW62X(pmadapter->card_type) ||
 	    IS_CARD9097(pmadapter->card_type)) {
 		if (bands & BAND_A)
 			rx_mcs_supp = MIN(
@@ -2294,7 +2308,7 @@ t_u8 wlan_get_second_channel_offset(mlan_private *priv, int chan)
 	t_u8 chan2Offset = SEC_CHAN_NONE;
 
 	/* Special Case: 20Mhz-only Channel */
-	if (chan == 165)
+	if (priv->adapter->region_code != COUNTRY_CODE_US && chan == 165)
 		return chan2Offset;
 
 	switch (chan) {
@@ -2310,6 +2324,8 @@ t_u8 wlan_get_second_channel_offset(mlan_private *priv, int chan)
 	case 140:
 	case 149:
 	case 157:
+	case 165:
+	case 173:
 		chan2Offset = SEC_CHAN_ABOVE;
 		break;
 	case 40:
@@ -2324,6 +2340,8 @@ t_u8 wlan_get_second_channel_offset(mlan_private *priv, int chan)
 	case 144:
 	case 153:
 	case 161:
+	case 169:
+	case 177:
 		chan2Offset = SEC_CHAN_BELOW;
 		break;
 	}
@@ -2555,7 +2573,7 @@ int wlan_cmd_append_11n_tlv(mlan_private *pmpriv, BSSDescriptor_t *pbss_desc,
 		pchan_list->chan_scan_param[0].chan_number =
 			pbss_desc->pht_info->ht_info.pri_chan;
 		pchan_list->chan_scan_param[0].bandcfg.chanBand =
-			wlan_band_to_radio_type((t_u8)pbss_desc->bss_band);
+			wlan_band_to_radio_type(pbss_desc->bss_band);
 		/* support the VHT if the network to be join has the VHT
 		 * operation */
 		if (ISSUPP_11ACENABLED(pmadapter->fw_cap_info) &&
@@ -3127,7 +3145,7 @@ int wlan_get_txbastream_tbl(mlan_private *priv, tx_ba_stream_tbl *buf)
  *
  *  @return 0--not allowed, other value allowed
  */
-t_u8 wlan_11n_bandconfig_allowed(mlan_private *pmpriv, t_u8 bss_band)
+t_u8 wlan_11n_bandconfig_allowed(mlan_private *pmpriv, t_u16 bss_band)
 {
 	if (pmpriv->bss_mode == MLAN_BSS_MODE_IBSS) {
 		if (bss_band & BAND_G)
