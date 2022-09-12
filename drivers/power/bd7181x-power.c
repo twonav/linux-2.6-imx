@@ -262,7 +262,7 @@ static void twonav_init_type(void) {
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;
 	}
-	else if(strstr(hwtype, "crosstop") != NULL) {
+	else if(strstr(hwtype, "cross") != NULL) {
 		tn_power_values = TN_POWER_CROSS;
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;

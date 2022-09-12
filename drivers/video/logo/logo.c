@@ -24,34 +24,6 @@ MODULE_PARM_DESC(nologo, "Disables startup logo");
 static char *hwtype = "twonav-trail-2018";
 module_param(hwtype, charp, 0644);
 
-static bool isTwoNavAventura2(void) {
-	return (strcmp(hwtype, "twonav-aventura-2018") == 0);
-}
-
-static bool isOSAventura2(void) {
-	return (strcmp(hwtype, "os-aventura-2018") == 0);
-}
-
-static bool isTwoNavTrail2(void) {
-	return (strcmp(hwtype, "twonav-trail-2018") == 0);
-}
-
-static bool isTwoNavTerra(void) {
-	return (strcmp(hwtype, "twonav-terra-2018") == 0);
-}
-
-static bool isOSTrail2(void) {
-	return (strcmp(hwtype, "os-trail-2018") == 0);
-}
-
-static bool isTwoNavCross(void) {
-	return (strcmp(hwtype, "twonav-crosstop-2018") == 0);
-}
-
-static bool isTwoNavTrailPlus(void) {
-	return (strcmp(hwtype, "twonav-trailplus-2018") == 0);
-}
-
 /*
  * Logos are located in the initdata, and will be freed in kernel_init.
  * Use late_init to mark the logos as freed to prevent any further use.
@@ -152,12 +124,12 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 #ifdef CONFIG_LOGO_FLASHER_SMALL_CLUT224
 		logo = &logo_flasher_small_clut224;
 #endif		
-		if (isTwoNavCross()) {
+		if(strstr(hwtype, "cross") != NULL) {
 			logo = &logo_twonav_crosstop_clut224;
 		}
-		else if (isOSAventura2() || isOSTrail2()) {
+		else if(strstr(hwtype, "os-") != NULL) {
 			logo = &logo_os_trail_aventura_clut224;
-		}
+		}		
 		else { 
 			// terra, aventura, trail, trailplus
 			logo = &logo_twonav_trail_aventura_clut224;
