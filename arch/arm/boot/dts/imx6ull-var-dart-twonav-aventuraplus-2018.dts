@@ -1,0 +1,15 @@
+/*
+ * Copyright (C) 2020 CompeGPS Team S.L.
+ * All rights reserved
+ *
+ */
+ 
+#define WIFI
+#define EMMC
+
+#include "aventuraplus-2018-common.dtsi"
+
+/ {
+	model = "twonav-aventuraplus-2018";
+	compatible = "fsl,imx6ull-var-dart", "fsl,imx6ull";
+};
