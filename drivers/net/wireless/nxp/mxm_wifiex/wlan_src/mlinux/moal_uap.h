@@ -1,22 +1,30 @@
 /** @file moal_uap.h
  *
- * @brief This file contains uap driver specific defines etc.
+ * @brief This file contains wlan driver specific defines etc.
  *
  *
- * Copyright 2008-2020 NXP
+ * Copyright 2009-2022 NXP
  *
- * This software file (the File) is distributed by NXP
- * under the terms of the GNU General Public License Version 2, June 1991
- * (the License).  You may use, redistribute and/or modify the File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ * NXP CONFIDENTIAL
+ * The source code contained or described herein and all documents related to
+ * the source code (Materials) are owned by NXP, its
+ * suppliers and/or its licensors. Title to the Materials remains with NXP,
+ * its suppliers and/or its licensors. The Materials contain
+ * trade secrets and proprietary and confidential information of NXP, its
+ * suppliers and/or its licensors. The Materials are protected by worldwide
+ * copyright and trade secret laws and treaty provisions. No part of the
+ * Materials may be used, copied, reproduced, modified, published, uploaded,
+ * posted, transmitted, distributed, or disclosed in any way without NXP's prior
+ * express written permission.
  *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery
+ * of the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be
+ * express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
  *
  */
 
@@ -201,10 +209,12 @@ typedef struct _cac_timer_status {
 typedef struct _skip_cac_para {
 	/** subcmd */
 	t_u32 subcmd;
-	/** Set/Get */
+	/** Set */
 	t_u32 action;
-	/** enable/disable deepsleep*/
+	/** enable/disable skip cac*/
 	t_u16 skip_cac;
+	/** channel */
+	t_u8 channel;
 } skip_cac_para;
 
 /** radio control command */
@@ -481,6 +491,8 @@ typedef struct _snmp_mib_para {
 /** Oid for 802.11H enable/disable */
 #define OID_80211H_ENABLE 0x000a
 
+int woal_uap_11h_ctrl(moal_private *priv, t_u32 enable);
+
 /** dfs_testing parameters */
 typedef struct _dfs_testing_param {
 	/** subcmd */
@@ -527,6 +539,10 @@ typedef struct _domain_info_param {
 /** MAX domain TLV length */
 #define MAX_DOMAIN_TLV_LEN                                                     \
 	(TLV_HEADER_LEN + COUNTRY_CODE_LEN + (SUB_BAND_LEN * MAX_SUB_BANDS))
+
+/** Get/Set channel DFS state */
+int woal_11h_chan_dfs_state(moal_private *priv, t_u8 action,
+			    mlan_ds_11h_chan_dfs_state *ch_dfs_state);
 
 int woal_set_get_uap_power_mode(moal_private *priv, t_u32 action,
 				mlan_ds_ps_mgmt *ps_mgmt);

@@ -5,18 +5,26 @@
  *
  * Copyright 2008-2021 NXP
  *
- * This software file (the File) is distributed by NXP
- * under the terms of the GNU General Public License Version 2, June 1991
- * (the License).  You may use, redistribute and/or modify the File in
- * accordance with the terms and conditions of the License, a copy of which
- * is available by writing to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
- * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
+ * NXP CONFIDENTIAL
+ * The source code contained or described herein and all documents related to
+ * the source code (Materials) are owned by NXP, its
+ * suppliers and/or its licensors. Title to the Materials remains with NXP,
+ * its suppliers and/or its licensors. The Materials contain
+ * trade secrets and proprietary and confidential information of NXP, its
+ * suppliers and/or its licensors. The Materials are protected by worldwide
+ * copyright and trade secret laws and treaty provisions. No part of the
+ * Materials may be used, copied, reproduced, modified, published, uploaded,
+ * posted, transmitted, distributed, or disclosed in any way without NXP's prior
+ * express written permission.
  *
- * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
- * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
- * this warranty disclaimer.
+ * No license under any patent, copyright, trade secret or other intellectual
+ * property right is granted to or conferred upon you by disclosure or delivery
+ * of the Materials, either expressly, by implication, inducement, estoppel or
+ * otherwise. Any license under such intellectual property rights must be
+ * express and approved by NXP in writing.
+ *
+ *  Alternatively, this software may be distributed under the terms of GPL v2.
+ *  SPDX-License-Identifier:    GPL-2.0
  *
  */
 
@@ -1783,6 +1791,145 @@ static int woal_mem_read_write(moal_private *priv, struct iwreq *wrq)
 			goto done;
 		}
 		wrq->u.data.length = 1;
+	}
+
+done:
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
+	LEAVE();
+	return ret;
+}
+
+/**
+ *  @brief Set/Get network monitor configurations
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param wrq          A pointer to iwreq structure
+ *
+ *  @return             0 --success, otherwise fail
+ */
+static int woal_net_monitor_ioctl(moal_private *priv, struct iwreq *wrq)
+{
+	int user_data_len = wrq->u.data.length;
+	int data[5] = {0}, copy_len;
+	int ret = 0;
+	mlan_ioctl_req *req = NULL;
+	mlan_ds_misc_cfg *misc = NULL;
+	mlan_ds_misc_net_monitor *net_mon = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
+
+	ENTER();
+
+	copy_len = MIN(sizeof(data), sizeof(int) * user_data_len);
+	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_misc_cfg));
+	if (req == NULL) {
+		LEAVE();
+		return -ENOMEM;
+	}
+	misc = (mlan_ds_misc_cfg *)req->pbuf;
+	net_mon = (mlan_ds_misc_net_monitor *)&misc->param.net_mon;
+	misc->sub_command = MLAN_OID_MISC_NET_MONITOR;
+	req->req_id = MLAN_IOCTL_MISC_CFG;
+
+	if (!user_data_len) {
+		req->action = MLAN_ACT_GET;
+	} else if (user_data_len == 1 || user_data_len == 4 ||
+		   user_data_len == 5) {
+		if (copy_from_user(data, wrq->u.data.pointer, copy_len)) {
+			PRINTM(MERROR, "Copy from user failed\n");
+			ret = -EFAULT;
+			goto done;
+		}
+		if (data[0] != MTRUE && data[0] != MFALSE) {
+			PRINTM(MERROR,
+			       "NET_MON: Activity should be enable(=1)/disable(=0)\n");
+			ret = -EINVAL;
+			goto done;
+		}
+		net_mon->enable_net_mon = data[0];
+		if (data[0] == MTRUE) {
+			int i;
+			if (user_data_len != 4 && user_data_len != 5) {
+				PRINTM(MERROR,
+				       "NET_MON: Invalid number of args!\n");
+				ret = -EINVAL;
+				goto done;
+			}
+			/* Supported filter flags */
+			if (!data[1] ||
+			    data[1] & ~(MLAN_NETMON_DATA_FRAME |
+					MLAN_NETMON_MANAGEMENT_FRAME |
+					MLAN_NETMON_CONTROL_FRAME)) {
+				PRINTM(MERROR,
+				       "NET_MON: Invalid filter flag\n");
+				ret = -EINVAL;
+				goto done;
+			}
+			/* Supported bands */
+			for (i = 0; i < (int)sizeof(SupportedInfraBand); i++)
+				if (data[2] == SupportedInfraBand[i])
+					break;
+			if (i == sizeof(SupportedInfraBand)) {
+				PRINTM(MERROR, "NET_MON: Invalid band\n");
+				ret = -EINVAL;
+				goto done;
+			}
+			/* Supported channel */
+			if (data[3] < 1 || data[3] > MLAN_MAX_CHANNEL) {
+				PRINTM(MERROR,
+				       "NET_MON: Invalid channel number\n");
+				ret = -EINVAL;
+				goto done;
+			}
+			if (user_data_len == 5) {
+				/* Secondary channel offset */
+				if (!(data[2] & (BAND_GN | BAND_AN))) {
+					PRINTM(MERROR,
+					       "No 11n in band, can not set "
+					       "secondary channel offset\n");
+					ret = -EINVAL;
+					goto done;
+				}
+				if ((data[4] != CHANNEL_BW_20MHZ) &&
+				    (data[4] != CHANNEL_BW_40MHZ_ABOVE) &&
+				    (data[4] != CHANNEL_BW_40MHZ_BELOW) &&
+				    (data[4] != CHANNEL_BW_80MHZ)) {
+					PRINTM(MERROR,
+					       "Invalid secondary channel bandwidth, "
+					       "only allowed 0, 1, 3 or 4\n");
+					ret = -EINVAL;
+					goto done;
+				}
+				net_mon->chan_bandwidth = data[4];
+			}
+			net_mon->filter_flag = data[1];
+			net_mon->band = data[2];
+			net_mon->channel = data[3];
+		}
+		req->action = MLAN_ACT_SET;
+	} else {
+		PRINTM(MERROR, "NET_MON: Invalid number of args!\n");
+		ret = -EINVAL;
+		goto done;
+	}
+
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
+		ret = -EFAULT;
+		goto done;
+	}
+
+	data[0] = net_mon->enable_net_mon;
+	data[1] = net_mon->filter_flag;
+	data[2] = net_mon->band;
+	data[3] = net_mon->channel;
+	data[4] = net_mon->chan_bandwidth;
+	wrq->u.data.length = 5;
+	if (copy_to_user(wrq->u.data.pointer, data,
+			 sizeof(int) * wrq->u.data.length)) {
+		PRINTM(MERROR, "Copy to user failed\n");
+		ret = -EFAULT;
+		goto done;
 	}
 
 done:
@@ -4587,17 +4734,26 @@ done:
 static int woal_set_user_scan_ext_ioctl(moal_private *priv, struct iwreq *wrq)
 {
 	int ret = 0;
-	wlan_user_scan_cfg scan_req;
+	wlan_user_scan_cfg *scan_req;
 	ENTER();
-	memset(&scan_req, 0x00, sizeof(scan_req));
-	if (copy_from_user(&scan_req, wrq->u.data.pointer,
-			   MIN(wrq->u.data.length, sizeof(scan_req)))) {
+	scan_req = (wlan_user_scan_cfg *)kmalloc(sizeof(wlan_user_scan_cfg),
+						 GFP_KERNEL);
+	if (!scan_req) {
+		PRINTM(MERROR, "Malloc buffer failed\n");
+		LEAVE();
+		return -ENOMEM;
+	}
+	memset(scan_req, 0x00, sizeof(wlan_user_scan_cfg));
+	if (copy_from_user(scan_req, wrq->u.data.pointer,
+			   MIN(wrq->u.data.length,
+			       sizeof(wlan_user_scan_cfg)))) {
 		PRINTM(MINFO, "Copy from user failed\n");
 		LEAVE();
 		return -EFAULT;
 	}
-	if (MLAN_STATUS_FAILURE == woal_do_scan(priv, &scan_req))
+	if (MLAN_STATUS_FAILURE == woal_do_scan(priv, scan_req))
 		ret = -EFAULT;
+	kfree(scan_req);
 	LEAVE();
 	return ret;
 }
@@ -6577,6 +6733,9 @@ int woal_wext_do_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
 			break;
 		case WOAL_SLEEP_PARAMS:
 			ret = woal_sleep_params_ioctl(priv, wrq);
+			break;
+		case WOAL_NET_MONITOR:
+			ret = woal_net_monitor_ioctl(priv, wrq);
 			break;
 		case WOAL_DFS_TESTING:
 			ret = woal_dfs_testing(priv, wrq);
