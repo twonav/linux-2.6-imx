@@ -4691,8 +4691,9 @@ done:
 		priv->phandle->scan_request = NULL;
 		priv->phandle->scan_priv = NULL;
 		spin_unlock_irqrestore(&priv->phandle->scan_req_lock, flags);
-	} else
-		PRINTM(MMSG, "wlan: %s START SCAN\n", dev->name);
+	} 
+	/*else
+		PRINTM(MMSG, "wlan: %s START SCAN\n", dev->name);*/
 	kfree(scan_req);
 	LEAVE();
 	return ret;
@@ -6481,7 +6482,7 @@ int woal_cfg80211_sched_scan_start(struct wiphy *wiphy, struct net_device *dev,
 	       MAC2STR(priv->scan_cfg.random_mac));
 	if (MLAN_STATUS_SUCCESS ==
 	    woal_request_bgscan(priv, MOAL_IOCTL_WAIT, &priv->scan_cfg)) {
-		PRINTM(MMSG, "wlan: sched scan start\n");
+		//PRINTM(MMSG, "wlan: sched scan start\n");
 		priv->sched_scanning = MTRUE;
 		priv->bg_scan_start = MTRUE;
 		priv->bg_scan_reported = MFALSE;
