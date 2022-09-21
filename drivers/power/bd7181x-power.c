@@ -42,14 +42,12 @@
 #define VBAT_CHG2					0x13 // 4.1V
 #define VBAT_CHG3					0x10 // 4.04V
 #define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
-#define OVP_MNT_THR 				0x16 // OVP:4.25V Recharge-threshold: VBAT_CHG1/2/3 - 0.05V
 
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	// uA
 #define TRICKLE_CURRENT		25000	// uA
 #define PRECHARGE_CURRENT	300000	// uA
-#define FAST_CHARGE_CURRENT 10	// 0x0A -> 1A
 
 #define DCIN_DETECTION_THRESHOLD 0x35 // 0x35-> 53 * (80mV) -> 4.24V
 
@@ -106,17 +104,42 @@ static char *hwtype = "twonav-trail-2018";
 module_param(hwtype, charp, 0644);
 
 struct tn_power_values_st {
+	// Termination current: Charging Termination Current for Fast Charge 10 mA to 200 mA range. Depends on Rsense value
 	int term_current;
+	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range. Depends on Rsense value
+	int fast_charge_current;
 	int capacity;
+	// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps.
+	// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
+	// When voltage becomes lower than this value a low voltage signal is sent
 	int low_voltage_th;
+	// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm). Depends on Rsense value
+	// Note: there are 3 thresholds available
+	int over_current_threshold;
+	// Charging Termination Battery voltage threshold for Fast Charge.
+	// During constant voltage charge phase voltage must be higher than this value
+	// IMPORTANT: fast charge termination voltage has to be HIGHER than recharge threshold
+	int fast_charge_termination_voltage;
+	// Battery voltage maintenance threshold. The charger starts re-charging when VBAT ≦ VBAT_MNT.
+	// After reaching 100% charge is stoped, charger gets disconnected and battery will starts discharging. When voltage drops under this value
+	// charging is restarted (saw effect). Normally there should not be a big voltage drop when charger get disconnecte because device is powered from USB.
+	// If there is a voltage drop, becauste there might be components connected dirrectly to the battery (i.e. Terra), there will be a significant drop in
+	// voltage. In this case recharge threshold must be lower than the "dropped" value, otherwise recharge will start immediatelly and the green led will
+	// not be lit
+	int recharge_threshold;
 	int ocv_table[OCV_TABLE_SIZE];
 };
 
 static const struct tn_power_values_st TN_POWER_CROSS = {
+	// Ext MOSFET and Rsns=10mOh
 	.term_current = 0x06,
+	.fast_charge_current = 0x0A, // 1A -> 0x0A (100mA steps)
 	.capacity = 3300,
 	.low_voltage_th = 0x00D6, // 0x00D6 (214) * 16mV = 3.4297V,
-		.ocv_table = {
+	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V : Voltage has to be higher than 4.184V when charging with constant voltage
+	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V : Recharg will start when voltage drops under 4.15V
+	.over_current_threshold = 0xAB, // 0XAB -> 171 * 64mA(step) = 1094.4mA
+	.ocv_table = {
 			4200000,
 			4194870,
 			4119010,
@@ -145,9 +168,14 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 
 
 static const struct tn_power_values_st TN_POWER_TRAIL = {
+	// Ext MOSFET and Rsns=10mOh
 	.term_current = 0x05,
+	.fast_charge_current = 0x0A,
 	.capacity = 4000,
 	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
+	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
+	.over_current_threshold = 0xAB, // 1100mA
 	.ocv_table = {
 			4200000,
 			4165665,
@@ -176,9 +204,14 @@ static const struct tn_power_values_st TN_POWER_TRAIL = {
 };
 
 static const struct tn_power_values_st TN_POWER_AVENTURA = {
+	// Ext MOSFET and Rsns=10mOh
 	.term_current = 0x06,
+	.fast_charge_current = 0x0A,
 	.capacity = 6000,
 	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
+	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
+	.over_current_threshold = 0xAB, // 1100mA
 	.ocv_table = {	
 			4200000,
 			4191700,
@@ -207,9 +240,18 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 };
 
 static const struct tn_power_values_st TN_POWER_TERRA = {
-	.term_current = 0x06, // 0.02C = 53mA
+	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
+	.term_current = 0x05, // Theoretical term current 0.02C=2650*0.02=53mA. With 14.5mA steps register should be 53/14.5=4. We will use 5 (72.5mA) for safety
+	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7
 	.capacity = 2650,
-	.low_voltage_th = 0x0C8, // 0x00C8 (200) * 16mV = 3.2V,
+	.low_voltage_th = 0x0C8, // 0x00C8 (200) * 16mV (step) = 3.2V
+	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
+	// Because Murata chip cannot enter low power modes and is connected dirrectly to the battery, when 100% is reached
+	// and charger gets disconnected, a significant voltage drop (from 4.2 -> 4.16) is caused. With a recharge threshold of
+	// 4.1V the recharge cycle happens every hour, 100%->97%->100%. If we increase the threshold to 4.15V the cycle will be much shorter and this
+	// can reduce battery life. Until we do something about the recharge threshold should be set to 4.1V.
+	.recharge_threshold = 0x15, // 0.1V -> 4.2-0.1=4.1V
+	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
 	.ocv_table = {	
 			4200000,
 			4186800,
@@ -299,6 +341,22 @@ static int supports_replacable_battery(void) {
 
 static int get_iterm_current(void) {
 	return tn_power_values.term_current;
+}
+
+static int get_recharge_threshold(void) {
+	return tn_power_values.recharge_threshold;
+}
+
+static int get_fast_charge_termination_voltage(void) {
+	return tn_power_values.fast_charge_termination_voltage;
+}
+
+static int get_fast_charge_current(void) {
+	return tn_power_values.fast_charge_current;
+}
+
+static int get_over_current_threshold(void) {
+	return tn_power_values.over_current_threshold;
 }
 
 static int get_battery_capacity(void) {
@@ -761,10 +819,10 @@ static int bd7181x_charge_status(struct bd7181x_power *pwr)
 	case CHG_STATE_TRICKLE_CHARGE: // TRICKLE
 	case CHG_STATE_PRE_CHARGE: // PRE-CHARGING
 	case CHG_STATE_FAST_CHARGE: // FAST-CHARGING
-	case CHG_STATE_TOP_OFF: // TERMINATION CURRENT REACHED
 		pwr->rpt_status = POWER_SUPPLY_STATUS_CHARGING;
 		pwr->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		break;
+	case CHG_STATE_TOP_OFF: // TERMINATION CURRENT REACHED
 	case CHG_STATE_DONE:
 		ret = 0;
 		pwr->rpt_status = POWER_SUPPLY_STATUS_FULL;
@@ -1362,7 +1420,7 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 	return 0;
 }
 
-/** Init registers on every startup
+/** Init registers on EVERY startup
  */
 static void bd7181x_init_registers(struct bd7181x *mfd)
 {
@@ -1392,18 +1450,18 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
 
 	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, FAST_CHARGE_CURRENT); // 0x4C 1A (0x0A) with Ext MOSFET and Rsns=10mOhm
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, get_fast_charge_current());
 
 	// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, get_iterm_current());
 
 	// Battery over-voltage detection threshold. 4.25V
-	// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.1V ****************** IMPORTANT ******************
-	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, OVP_MNT_THR);
+	// Battery voltage maintenance/recharge threshold : VBAT_CHG1/2/3 - 0.XXX
+	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_2, get_recharge_threshold());
 
 	// Charging Termination Battery voltage threshold for Fast Charge.
-	// VBAT_DONE = VBAT_CHG1/2/3 - 0.016V
-	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, 0x62);
+	// VBAT_DONE = VBAT_CHG1/2/3 - 0.0XX
+	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, get_fast_charge_termination_voltage());
 
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 }
@@ -1531,7 +1589,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 		/* Mask Relax decision by PMU STATE */ // 0xE6
 		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK); // Enable Relax State detection // What is relax state and what is it used for
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
 
 		/* Set Battery Capacity Monitor threshold1 as 90% */
 		cc_batcap1_th = get_battery_capacity() * 9 / 10;
@@ -1541,9 +1599,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* Enable LED ON when charging */ // 0x0E
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
 
-		// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm).
-		// Note: there are 3 thresholds available
-		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, 0xAB); // 1100mA
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, get_over_current_threshold()); // 1100mA
 
 		// Battery over-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
@@ -1562,9 +1618,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		pwr->state_machine = STAT_INITIALIZED;	// STAT_INITIALIZED
 	}
 
-	/* VBAT Low voltage detection Setting */ // 0x58
-	// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps
-	// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
 	bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, get_lowbatt_voltage_th());
 
 	pwr->temp = bd7181x_get_temp(pwr);
@@ -1609,7 +1662,7 @@ static int conditional_max_reached(int *counter, int condition, int max) {
 	return ret;
 }
 
-// Led Control - disable when not charging
+// Led Control - disable when not charging and plugged
 static void bd7181x_led_control(struct bd7181x_power *pwr) {
 	int avg_curr;
 	int r;
@@ -1621,10 +1674,11 @@ static void bd7181x_led_control(struct bd7181x_power *pwr) {
 	}
 
 	avg_curr = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_IBAT_U);
-
-	if ((dcin_online == 1) &&
-		(avg_curr & IBAT_SA_DIR_Discharging) &&
-		(pwr->charge_type != CHG_STATE_DONE)) {
+	if ((dcin_online == 1) && // plugged
+		(avg_curr & IBAT_SA_DIR_Discharging) && // 0x8000 : if discharging while plugged turn led OFF
+		!((pwr->charge_type == CHG_STATE_DONE) || (pwr->charge_type == CHG_STATE_TOP_OFF)) // not DONE or TOP_OFF state
+	   )
+	{
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_GPO, GPO1_OUT_LED_OFF);
 	}
 	else {
