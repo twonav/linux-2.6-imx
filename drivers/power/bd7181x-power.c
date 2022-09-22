@@ -103,6 +103,9 @@
 static char *hwtype = "twonav-trail-2018";
 module_param(hwtype, charp, 0644);
 
+static char *mmc_name = "TX2932"; // Kingston 32G
+module_param(mmc_name, charp, 0644);
+
 struct tn_power_values_st {
 	// Termination current: Charging Termination Current for Fast Charge 10 mA to 200 mA range. Depends on Rsense value
 	int term_current;
@@ -135,7 +138,7 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 	.term_current = 0x06,
 	.fast_charge_current = 0x0A, // 1A -> 0x0A (100mA steps)
 	.capacity = 3300,
-	.low_voltage_th = 0x00D6, // 0x00D6 (214) * 16mV = 3.4297V,
+	.low_voltage_th = 0x00D4, // 3400 / 16mV = 212 -> 0x00D4
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V : Voltage has to be higher than 4.184V when charging with constant voltage
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V : Recharg will start when voltage drops under 4.15V
 	.over_current_threshold = 0xAB, // 0XAB -> 171 * 64mA(step) = 1094.4mA
@@ -166,13 +169,12 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 	}
 };
 
-
 static const struct tn_power_values_st TN_POWER_TRAIL = {
 	// Ext MOSFET and Rsns=10mOh
 	.term_current = 0x05,
 	.fast_charge_current = 0x0A,
 	.capacity = 4000,
-	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.low_voltage_th = 0x00D0, // 3340 / 16mV = 208 -> 0x00D0
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
 	.over_current_threshold = 0xAB, // 1100mA
@@ -208,7 +210,7 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 	.term_current = 0x06,
 	.fast_charge_current = 0x0A,
 	.capacity = 6000,
-	.low_voltage_th = 0x00BF, // 0x00BF (191) * 16mV = 3.056V,
+	.low_voltage_th = 0x00D0, // 3331 / 16mV = 208 -> 0x00D0
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
 	.over_current_threshold = 0xAB, // 1100mA
@@ -244,7 +246,7 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	.term_current = 0x05, // Theoretical term current 0.02C=2650*0.02=53mA. With 14.5mA steps register should be 53/14.5=4. We will use 5 (72.5mA) for safety
 	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7
 	.capacity = 2650,
-	.low_voltage_th = 0x0C8, // 0x00C8 (200) * 16mV (step) = 3.2V
+	.low_voltage_th = 0x0C8, // 3200 * 16mV (step) = 200 -> 0x00C8
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	// Because Murata chip cannot enter low power modes and is connected dirrectly to the battery, when 100% is reached
 	// and charger gets disconnected, a significant voltage drop (from 4.2 -> 4.16) is caused. With a recharge threshold of
@@ -294,25 +296,43 @@ static u32 rsense_current_factor = 1000; // (/ factor)
 static struct tn_power_values_st tn_power_values;
 
 static void twonav_init_type(void) {
+
+	/* We can differentiate between mmcs using kernel parameter mmc_name
+	// Kingston 32GB: TX2932
+	// Kingston 16GB: TB2916
+	// Kingston 32GB: TA2932
+	// Toshiba 16GB:  016G30
+	*/
+
 	if(strstr(hwtype, "trailplus") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
-		rsense_capacity_factor = 360; // TODO: not known yet
-		rsense_current_factor = 1000; // TODO: not known yet
+		rsense_capacity_factor = 248; // verify
+		rsense_current_factor = 1449; // verify
 	}
 	else if(strstr(hwtype, "trail") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;
 	}
+	else if(strstr(hwtype, "crossplus") != NULL) {
+		tn_power_values = TN_POWER_CROSS;
+		rsense_capacity_factor = 248;
+		rsense_current_factor = 1449;
+	}
 	else if(strstr(hwtype, "cross") != NULL) {
 		tn_power_values = TN_POWER_CROSS;
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;
-	}	
+	}
 	else if(strstr(hwtype, "terra") != NULL) {
 		tn_power_values = TN_POWER_TERRA;
 		rsense_capacity_factor = 248; // 360 * 0.69
 		rsense_current_factor = 1449; // 1000 / 0.69
+	}
+	else if(strstr(hwtype, "aventuraplus") != NULL) {
+		tn_power_values = TN_POWER_AVENTURA;
+		rsense_capacity_factor = 248; // verify
+		rsense_current_factor = 1449; // verify
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
 		tn_power_values = TN_POWER_AVENTURA;
@@ -364,7 +384,7 @@ static int get_battery_capacity(void) {
 }
 
 static int get_lowbatt_voltage_th(void) {
-	return tn_power_values.low_voltage_th;	
+	return tn_power_values.low_voltage_th;
 }
 
 static int get_lowbatt_voltage(void) {	
