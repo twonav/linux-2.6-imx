@@ -138,7 +138,7 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 	.term_current = 0x06,
 	.fast_charge_current = 0x0A, // 1A -> 0x0A (100mA steps)
 	.capacity = 3300,
-	.low_voltage_th = 0x00D4, // 3400 / 16mV = 212 -> 0x00D4
+	.low_voltage_th = 0x00D6, // 0x00D6 (214) * 16mV = 3.4297V,
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V : Voltage has to be higher than 4.184V when charging with constant voltage
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V : Recharg will start when voltage drops under 4.15V
 	.over_current_threshold = 0xAB, // 0XAB -> 171 * 64mA(step) = 1094.4mA
