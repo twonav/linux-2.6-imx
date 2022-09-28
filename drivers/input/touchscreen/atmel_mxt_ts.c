@@ -4860,56 +4860,6 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 	}
 	
 	return count;
-}
-
-static ssize_t mxt_update_cfg_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	struct mxt_data *data = dev_get_drvdata(dev);
-	const struct firmware *cfg;
-	int ret, error;
-
-	data->sysfs_updating_config_fw = true;
-
-	if (data->crc_enabled)
-		data->irq_processing = false;
-
-	ret = request_firmware(&cfg, MXT_CFG_NAME, dev);
-	if (ret < 0) {
-		dev_err(dev, "Failure to request config file %s\n",
-			MXT_CFG_NAME);
-		ret = -ENOENT;
-		goto out;
-	} else {
-		dev_info(dev, "Found configuration file: %s\n",
-			MXT_CFG_NAME);
-	}
-
-	error = mxt_clear_cfg(data);
-
-	if (error)
-		dev_err(dev, "Failed clear configuration\n");
-
-	//Captures messages in buffer left over from clear_cfg()
-	error = mxt_process_messages_until_invalid(data);
-	if (error)
-		dev_err(dev, "Failed process configuration\n");
-
-	if (data->suspend_mode == MXT_SUSPEND_DEEP_SLEEP) {
-		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_RUN);
-	}
-
-	ret = mxt_configure_objects(data, cfg);
-
-	data->sysfs_updating_config_fw = false;
-	data->irq_processing = true;
-
-	if (ret)
-		goto release;
-
-	ret = count;
-
 release:
 	release_firmware(cfg);
 out:
