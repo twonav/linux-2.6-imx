@@ -418,13 +418,14 @@ dtb-$(CONFIG_SOC_IMX6UL) += \
 	#imx6ul-var-dart-sd_emmc.dtb
 dtb-$(CONFIG_SOC_IMX6ULL) += \
 	imx6ull-var-dart-twonav-trail-2018.dtb \
+	imx6ull-var-dart-twonav-trailplus-2018.dtb \
 	imx6ull-var-dart-twonav-aventura-2018.dtb \
+	imx6ull-var-dart-twonav-aventuraplus-2018.dtb \
 	imx6ull-var-dart-twonav-crosstop-2018.dtb \
+	imx6ull-var-dart-twonav-crossplus-2018.dtb \
 	imx6ull-var-dart-twonav-terra-2018.dtb \
 	imx6ull-var-dart-os-trail-2018.dtb \
 	imx6ull-var-dart-os-aventura-2018.dtb \
-	imx6ull-var-dart-os-crosstop-2018.dtb \
-	imx6ull-var-dart-os-terra-2018.dtb
 	#imx6ull-14x14-ddr3-arm2.dtb \
 	#imx6ull-14x14-ddr3-arm2-adc.dtb \
 	#imx6ull-14x14-ddr3-arm2-cs42888.dtb \
