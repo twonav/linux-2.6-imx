@@ -101,7 +101,4 @@ config LOGO_OS_TRAIL_AVENTURA_CLUT224
 config LOGO_TWONAV_CROSSTOP_CLUT224
 	bool "224-color TwoNav Crosstop screens logo"
 
-config LOGO_OS_CROSSTOP_CLUT224
-	bool "224-color OS Crosstop screens logo"
-
 endif # LOGO
