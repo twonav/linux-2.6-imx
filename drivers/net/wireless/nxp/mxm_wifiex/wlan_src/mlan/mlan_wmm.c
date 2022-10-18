@@ -5,27 +5,18 @@
  *
  *  Copyright 2008-2021 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -43,6 +34,7 @@ Change log:
 #include "mlan_main.h"
 #include "mlan_wmm.h"
 #include "mlan_11n.h"
+#include "mlan_11ax.h"
 #ifdef SDIO
 #include "mlan_sdio.h"
 #endif /* SDIO */
@@ -1652,6 +1644,47 @@ void wlan_wmm_setup_ac_downgrade(pmlan_private priv)
 }
 
 /**
+ *  @brief This function checks whether a station has WMM enabled or not
+ *
+ *  @param priv     A pointer to mlan_private
+ *  @param mac      station mac address
+ *  @return         MTRUE or MFALSE
+ */
+static t_u8 is_station_wmm_enabled(mlan_private *priv, t_u8 *mac)
+{
+	sta_node *sta_ptr = MNULL;
+	sta_ptr = wlan_get_station_entry(priv, mac);
+	if (sta_ptr) {
+		if (sta_ptr->is_11n_enabled || sta_ptr->is_11ax_enabled)
+			return MTRUE;
+	}
+	return MFALSE;
+}
+
+/**
+ *  @brief This function checks whether wmm is supported
+ *
+ *  @param priv     A pointer to mlan_private
+ *  @param ra       Address of the receiver STA
+ *
+ *  @return         MTRUE or MFALSE
+ */
+static int wlan_is_wmm_enabled(mlan_private *priv, t_u8 *ra)
+{
+	int ret = MFALSE;
+	ENTER();
+#ifdef UAP_SUPPORT
+	if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_UAP) {
+		if ((!(ra[0] & 0x01)) &&
+		    (priv->is_11n_enabled || priv->is_11ax_enabled))
+			ret = is_station_wmm_enabled(priv, ra);
+	}
+#endif /* UAP_SUPPORT */
+	LEAVE();
+	return ret;
+}
+
+/**
  *  @brief  Allocate and add a RA list for all TIDs with the given RA
  *
  *  @param priv  Pointer to the mlan_private driver data struct
@@ -1677,7 +1710,7 @@ void wlan_ralist_add(mlan_private *priv, t_u8 *ra)
 		ra_list->ba_status = BA_STREAM_NOT_SETUP;
 		ra_list->amsdu_in_ampdu = MFALSE;
 		if (queuing_ra_based(priv)) {
-			ra_list->is_wmm_enabled = wlan_is_11n_enabled(priv, ra);
+			ra_list->is_wmm_enabled = wlan_is_wmm_enabled(priv, ra);
 			if (ra_list->is_wmm_enabled)
 				ra_list->max_amsdu =
 					get_station_max_amsdu_size(priv, ra);
@@ -1688,7 +1721,7 @@ void wlan_ralist_add(mlan_private *priv, t_u8 *ra)
 			status = wlan_get_tdls_link_status(priv, ra);
 			if (MTRUE == wlan_is_tdls_link_setup(status)) {
 				ra_list->is_wmm_enabled =
-					is_station_11n_enabled(priv, ra);
+					is_station_wmm_enabled(priv, ra);
 				if (ra_list->is_wmm_enabled)
 					ra_list->max_amsdu =
 						get_station_max_amsdu_size(priv,
@@ -2018,7 +2051,7 @@ int wlan_ralist_update(mlan_private *priv, t_u8 *old_ra, t_u8 *new_ra)
 
 			if (queuing_ra_based(priv)) {
 				ra_list->is_wmm_enabled =
-					wlan_is_11n_enabled(priv, new_ra);
+					wlan_is_wmm_enabled(priv, new_ra);
 				if (ra_list->is_wmm_enabled)
 					ra_list->max_amsdu =
 						get_station_max_amsdu_size(
@@ -2356,13 +2389,11 @@ mlan_status wlan_ret_wmm_get_status(pmlan_private priv, t_u8 *ptlv,
  *  @param ppassoc_buf  Output parameter: Pointer to the TLV output buffer,
  *                      modified on return to point after the appended WMM TLV
  *  @param pwmm_ie      Pointer to the WMM IE for the BSS we are joining
- *  @param pht_cap      Pointer to the HT IE for the BSS we are joining
  *
  *  @return Length of data appended to the association tlv buffer
  */
 t_u32 wlan_wmm_process_association_req(pmlan_private priv, t_u8 **ppassoc_buf,
-				       IEEEtypes_WmmParameter_t *pwmm_ie,
-				       IEEEtypes_HTCap_t *pht_cap)
+				       IEEEtypes_WmmParameter_t *pwmm_ie)
 {
 	MrvlIEtypes_WmmParamSet_t *pwmm_tlv;
 	t_u32 ret_len = 0;
@@ -2387,10 +2418,7 @@ t_u32 wlan_wmm_process_association_req(pmlan_private priv, t_u8 **ppassoc_buf,
 	PRINTM(MINFO, "WMM: process assoc req: bss->wmmIe=0x%x\n",
 	       pwmm_ie->vend_hdr.element_id);
 
-	if ((priv->wmm_required ||
-	     (pht_cap && (pht_cap->ieee_hdr.element_id == HT_CAPABILITY) &&
-	      (priv->config_bands & BAND_GN || priv->config_bands & BAND_AN))) &&
-	    pwmm_ie->vend_hdr.element_id == WMM_IE) {
+	if (priv->wmm_required && pwmm_ie->vend_hdr.element_id == WMM_IE) {
 		pwmm_tlv = (MrvlIEtypes_WmmParamSet_t *)*ppassoc_buf;
 		pwmm_tlv->header.type = (t_u16)wmm_info_ie[0];
 		pwmm_tlv->header.type = wlan_cpu_to_le16(pwmm_tlv->header.type);

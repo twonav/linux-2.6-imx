@@ -5,26 +5,18 @@
  *
  * Copyright 2008-2022 NXP
  *
- * NXP CONFIDENTIAL
- * The source code contained or described herein and all documents related to
- * the source code (Materials) are owned by NXP, its
- * suppliers and/or its licensors. Title to the Materials remains with NXP,
- * its suppliers and/or its licensors. The Materials contain
- * trade secrets and proprietary and confidential information of NXP, its
- * suppliers and/or its licensors. The Materials are protected by worldwide
- * copyright and trade secret laws and treaty provisions. No part of the
- * Materials may be used, copied, reproduced, modified, published, uploaded,
- * posted, transmitted, distributed, or disclosed in any way without NXP's prior
- * express written permission.
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- * No license under any patent, copyright, trade secret or other intellectual
- * property right is granted to or conferred upon you by disclosure or delivery
- * of the Materials, either expressly, by implication, inducement, estoppel or
- * otherwise. Any license under such intellectual property rights must be
- * express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
  *
  */
 
@@ -145,8 +137,10 @@ Change log:
 #include <linux/suspend.h>
 #endif /* IMX_SUPPORT */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)
 #include <linux/pm_qos.h>
+#else
+#include <linux/pm_qos_params.h>
 #endif
 
 #ifndef MIN
@@ -220,6 +214,10 @@ Change log:
 #define IEEE80211_NUM_BANDS NUM_NL80211_BANDS
 #endif
 
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
+#define IEEE80211_BAND_6GHZ NL80211_BAND_6GHZ
+#endif
+
 /**
  * interface name
  */
@@ -266,6 +264,8 @@ typedef t_u8 BOOLEAN;
 #define CARD_TYPE_USB_USB 6
 /** card type PCIE_USB */
 #define CARD_TYPE_PCIE_USB 7
+/** card type SD9177_UART */
+#define CARD_TYPE_SD9177_UART 1 // As per datasheet/SoC design
 
 /** Driver version */
 extern char driver_version[];
@@ -390,9 +390,10 @@ static inline void woal_timer_handler(unsigned long fcontext)
 	pmoal_drv_timer timer = (pmoal_drv_timer)fcontext;
 #endif
 
-	timer->timer_function(timer->function_context);
+	if (!timer->timer_is_canceled)
+		timer->timer_function(timer->function_context);
 
-	if (timer->timer_is_periodic == MTRUE) {
+	if (timer->timer_is_periodic == MTRUE && !timer->timer_is_canceled) {
 		mod_timer(&timer->tl,
 			  jiffies + ((timer->time_period * HZ) / 1000));
 	} else {
@@ -817,10 +818,12 @@ typedef enum {
 #define CUS_EVT_RADAR_DETECTED "EVENT=RADAR_DETECTED"
 /** Custom event : CAC finished */
 #define CUS_EVT_CAC_FINISHED "EVENT=CAC_FINISHED"
+#ifdef UAP_SUPPORT
 void woal_move_to_next_channel(moal_private *priv);
 void woal_chan_event(moal_private *priv, t_u8 type, t_u8 channel, t_u8 radar);
 void woal_process_chan_event(moal_private *priv, t_u8 type, t_u8 channel,
 			     t_u8 radar);
+#endif
 
 /** Custom event : WEP ICV error */
 #define CUS_EVT_WEP_ICV_ERR "EVENT=WEP_ICV_ERR"
@@ -1426,10 +1429,6 @@ struct _moal_private {
 	wlan_bgscan_cfg scan_cfg;
 	/** sched scaning flag */
 	t_u8 sched_scanning;
-	/** sched_scan work queue */
-	struct workqueue_struct *sched_scan_workqueue;
-	/** sched_scan work */
-	struct delayed_work sched_scan_work;
 	/** bgscan request id */
 	t_u64 bg_scan_reqid;
 #ifdef STA_CFG80211
@@ -1693,6 +1692,12 @@ struct _moal_private {
 	void *rings[RING_ID_MAX];
 	t_u8 pkt_fate_monitor_enable;
 	void *packet_filter;
+	/** txwatchdog disable */
+	t_u8 txwatchdog_disable;
+
+	/** secure boot uuid lower and higher 8 bytes */
+	t_u64 uuid_lo;
+	t_u64 uuid_hi;
 };
 
 #ifdef SDIO
@@ -2058,7 +2063,6 @@ enum ext_mod_params {
 #endif
 #endif
 	EXT_TX_WORK,
-	EXT_RPS,
 	EXT_TX_SKB_CLONE,
 	EXT_PMQOS,
 	EXT_CHAN_TRACK,
@@ -2153,6 +2157,8 @@ typedef struct _moal_mod_para {
 	t_u16 inact_tmo;
 	char *reg_alpha2;
 	int dfs53cfg;
+	t_u8 mcs32;
+
 } moal_mod_para;
 
 void woal_tp_acnt_timer_func(void *context);
@@ -2544,6 +2550,8 @@ struct _moal_handle {
 	moal_drv_timer fw_dump_timer __ATTRIB_ALIGN__;
 	/** fw dump buffer total len */
 	t_u64 fw_dump_len;
+	/** fw dump status for each chip, useful in multichip drive */
+	BOOLEAN fw_dump_status;
 	/** Pointer of fw dump buffer */
 	t_u8 *fw_dump_buf;
 	/** FW dump full name */
@@ -2587,8 +2595,10 @@ struct _moal_handle {
 	/* feature_control */
 	t_u32 feature_control;
 	struct notifier_block woal_notifier;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0)
 #if IS_ENABLED(CONFIG_IPV6)
 	struct notifier_block woal_inet6_notifier;
+#endif
 #endif
 	mlan_ds_misc_keep_alive keep_alive[MAX_KEEP_ALIVE_ID];
 	struct net_device napi_dev;
@@ -3359,6 +3369,7 @@ int woal_enable_hs(moal_private *priv);
 /** Get wakeup reason */
 mlan_status woal_get_wakeup_reason(moal_private *priv,
 				   mlan_ds_hs_wakeup_reason *wakeup_reason);
+int woal_process_proc_hssetpara(moal_handle *handle, t_u8 *buf);
 #define FW_DUMP_INFO_LEN 0x280000
 /** mem dump header */
 typedef struct {
@@ -3776,7 +3787,9 @@ monitor_iface *woal_prepare_mon_if(moal_private *priv, const char *name,
 #endif
 
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
+#if KERNEL_VERSION(3, 14, 0) <= CFG80211_VERSION_CODE
 void woal_cfg80211_vendor_event_fw_dump(moal_private *priv);
+#endif
 #endif
 
 #ifdef STA_CFG80211

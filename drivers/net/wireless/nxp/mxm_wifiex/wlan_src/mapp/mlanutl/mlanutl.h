@@ -5,23 +5,18 @@
  *
  * Copyright 2011-2022 NXP
  *
- * NXP CONFIDENTIAL
- * The source code contained or described herein and all documents related to
- * the source code (Materials) are owned by NXP, its
- * suppliers and/or its licensors. Title to the Materials remains with NXP,
- * its suppliers and/or its licensors. The Materials contain
- * trade secrets and proprietary and confidential information of NXP, its
- * suppliers and/or its licensors. The Materials are protected by worldwide
- * copyright and trade secret laws and treaty provisions. No part of the
- * Materials may be used, copied, reproduced, modified, published, uploaded,
- * posted, transmitted, distributed, or disclosed in any way without NXP's prior
- * express written permission.
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- * No license under any patent, copyright, trade secret or other intellectual
- * property right is granted to or conferred upon you by disclosure or delivery
- * of the Materials, either expressly, by implication, inducement, estoppel or
- * otherwise. Any license under such intellectual property rights must be
- * express and approved by NXP in writing.
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
  *
  */
 /************************************************************************
@@ -148,13 +143,13 @@ enum _mlan_act_ioctl {
 #define ETH_ALEN 6
 #endif
 
-/** Action field value : get */
+/** Action field value: get */
 #define ACTION_GET 0
-/** Action field value : set */
+/** Action field value: set */
 #define ACTION_SET 1
-/** Action field value:  add */
+/** Action field value: add */
 #define ACTION_ADD 2
-/** Action field value:  remove */
+/** Action field value: remove */
 #define ACTION_REMOVE 3
 
 /** Maximum number of TID */
@@ -570,8 +565,8 @@ typedef struct MrvlIEtypes_Data_t {
 /** channel band */
 enum { BAND_2GHZ = 0,
        BAND_5GHZ = 1,
-       BAND_4GHZ = 2,
-       BAND_6GHZ = 3,
+       BAND_6GHZ = 2,
+       BAND_4GHZ = 3,
 };
 
 /** channel offset */

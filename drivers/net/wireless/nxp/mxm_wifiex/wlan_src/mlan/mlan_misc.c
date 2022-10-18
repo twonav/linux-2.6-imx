@@ -1,32 +1,23 @@
 /**
  * @file mlan_misc.c
  *
- *  @brief This file include Miscellaneous functions for MLAN module
+ *  @brief This file include miscellaneous functions for MLAN module
  *
  *
  *  Copyright 2009-2022 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -450,6 +441,7 @@ mlan_status wlan_get_info_debug_info(pmlan_adapter pmadapter,
 		debug_info->port_open = pmpriv->port_open;
 		debug_info->bypass_pkt_count = pmadapter->bypass_pkt_count;
 		debug_info->scan_processing = pmadapter->scan_processing;
+		debug_info->scan_state = pmadapter->scan_state;
 		debug_info->mlan_processing = pmadapter->mlan_processing;
 		debug_info->main_lock_flag = pmadapter->main_lock_flag;
 		debug_info->main_process_cnt = pmadapter->main_process_cnt;
@@ -2421,7 +2413,8 @@ mlan_status wlan_misc_ioctl_tdls_oper(pmlan_adapter pmadapter,
 					sta_ptr->max_amsdu =
 						MLAN_TX_DATA_BUF_SIZE_4K;
 				for (i = 0; i < MAX_NUM_TID; i++) {
-					if (sta_ptr->is_11n_enabled)
+					if (sta_ptr->is_11n_enabled ||
+					    sta_ptr->is_11ax_enabled)
 						sta_ptr->ampdu_sta[i] =
 							pmpriv->aggr_prio_tbl[i]
 								.ampdu_user;
@@ -2474,7 +2467,8 @@ mlan_status wlan_misc_ioctl_tdls_oper(pmlan_adapter pmadapter,
 				wlan_restore_tdls_packets(pmpriv,
 							  ptdls_oper->peer_mac,
 							  TDLS_TEAR_DOWN);
-				if (sta_ptr->is_11n_enabled) {
+				if (sta_ptr->is_11n_enabled ||
+				    sta_ptr->is_11ax_enabled) {
 					wlan_cleanup_reorder_tbl(
 						pmpriv, ptdls_oper->peer_mac);
 					wlan_11n_cleanup_txbastream_tbl(
@@ -3977,7 +3971,8 @@ mlan_status wlan_radio_ioctl_ant_cfg(pmlan_adapter pmadapter,
 	defined(PCIE9097) || defined(SD9097) || defined(USB9097) ||            \
 	defined(SDNW62X) || defined(PCIENW62X) || defined(USBNW62X)
 			if (IS_CARD9098(pmadapter->card_type) ||
-			    IS_CARD9097(pmadapter->card_type)) {
+			    IS_CARD9097(pmadapter->card_type) ||
+			    IS_CARDNW62X(pmadapter->card_type)) {
 				ant_cfg->tx_antenna &= 0x0303;
 				ant_cfg->rx_antenna &= 0x0303;
 				/** 2G antcfg TX */
@@ -5552,32 +5547,35 @@ mlan_status wlan_process_mef_cfg_cmd(mlan_private *pmpriv,
 	mlan_status ret = MLAN_STATUS_SUCCESS;
 	pmlan_callbacks pcb;
 	mef_cfg_data mef;
-	mef_entry_t *pentry;
+	mef_entry_t *pentry = MNULL;
 	mef_entry *pmef;
 	t_u16 entry_num = 0;
 
 	ENTER();
 
 	pcb = &pmadapter->callbacks;
+	memset(pmadapter, &mef, 0, sizeof(mef_cfg_data));
 
 	/** check how many entries in adapter*/
 	pmef = &pmadapter->entry_cfg;
 	entry_num += pmef->enable_autoarp_entry;
 	entry_num += pmef->num_wowlan_entry;
 	entry_num += pmef->num_ipv6_ns_offload;
-	if (!entry_num) {
+	if (!entry_num && !pmef->clear_mef_entry) {
 		PRINTM(MIOCTL, "No filter entries\n");
 		goto done;
 	}
-
-	ret = pcb->moal_malloc(pmadapter->pmoal_handle,
-			       sizeof(mef_entry_t) * entry_num, MLAN_MEM_DEF,
-			       (t_u8 **)&mef.pentry);
-	if (ret != MLAN_STATUS_SUCCESS || mef.pentry == MNULL) {
-		PRINTM(MERROR, "Failed to allocate cmd data buffer\n");
-		ret = MLAN_STATUS_FAILURE;
-		goto err_handle;
+	if (entry_num) {
+		ret = pcb->moal_malloc(pmadapter->pmoal_handle,
+				       sizeof(mef_entry_t) * entry_num,
+				       MLAN_MEM_DEF, (t_u8 **)&mef.pentry);
+		if (ret != MLAN_STATUS_SUCCESS || mef.pentry == MNULL) {
+			PRINTM(MERROR, "Failed to allocate cmd data buffer\n");
+			ret = MLAN_STATUS_FAILURE;
+			goto err_handle;
+		}
 	}
+
 	/** Fill mef_cfg structure*/
 	mef.criteria = pmef->criteria;
 	mef.entry_num = entry_num;
@@ -5666,11 +5664,25 @@ mlan_status wlan_misc_ioctl_mef_flt_cfg(pmlan_adapter pmadapter,
 					    pmadapter))
 					PRINTM(MERROR,
 					       "Set MEF Entries Error\n");
-			} else if (mef_cfg->op_code &
-				   MLAN_IPADDR_OP_IP_REMOVE) {
+			} else if (!(mef_cfg->op_code &
+				     MLAN_IPADDR_OP_IP_REMOVE)) {
 				pmef->enable_autoarp_entry = 0;
+				pmef->num_wowlan_entry = 0;
+				pmef->num_ipv6_ns_offload = 0;
+				pmef->clear_mef_entry = 1;
 				memset(pmadapter, &pmef->entry[5], 0,
 				       sizeof(mef_entry_t));
+				memset(pmadapter, &pmef->entry[6], 0,
+				       sizeof(mef_entry_t));
+				memset(pmadapter, &pmef->entry[7], 0,
+				       sizeof(mef_entry_t));
+				if (MLAN_STATUS_SUCCESS !=
+				    wlan_process_mef_cfg_cmd(
+					    pmadapter
+						    ->priv[pioctl_req->bss_index],
+					    pmadapter))
+					PRINTM(MERROR,
+					       "Clear MEF Entries Error\n");
 			}
 		}
 		break;
@@ -6070,6 +6082,40 @@ mlan_status wlan_misc_ioctl_mc_aggr_cfg(pmlan_adapter pmadapter,
 	LEAVE();
 	return ret;
 }
+/**
+ *  @brief  get channel load results
+ *
+ *  @param pmadapter	A pointer to mlan_adapter structure
+ *  @param pioctl_req	A pointer to ioctl request buffer
+ *
+ *  @return		MLAN_STATUS_PENDING --success, otherwise fail
+ */
+mlan_status wlan_misc_ioctl_ch_load_results(pmlan_adapter pmadapter,
+					    mlan_ioctl_req *pioctl_req)
+{
+	mlan_private *pmpriv = MNULL;
+	mlan_status ret = MLAN_STATUS_SUCCESS;
+	t_u16 cmd_action = 0;
+	mlan_ds_misc_cfg *misc = MNULL;
+
+	ENTER();
+	if (pioctl_req == MNULL)
+		return MLAN_STATUS_FAILURE;
+	pmpriv = pmadapter->priv[pioctl_req->bss_index];
+	misc = (mlan_ds_misc_cfg *)pioctl_req->pbuf;
+	cmd_action = pioctl_req->action;
+
+	/* Send request to firmware */
+	if (pmpriv->ch_load_param == 255) {
+		return MLAN_STATUS_FAILURE;
+	} else {
+		misc->param.ch_load.ch_load_param = pmpriv->ch_load_param;
+		misc->param.ch_load.noise = pmpriv->noise;
+	}
+
+	LEAVE();
+	return ret;
+}
 
 /**
  *  @brief  get channel load
@@ -6082,17 +6128,21 @@ mlan_status wlan_misc_ioctl_mc_aggr_cfg(pmlan_adapter pmadapter,
 mlan_status wlan_misc_ioctl_ch_load(pmlan_adapter pmadapter,
 				    mlan_ioctl_req *pioctl_req)
 {
-	mlan_private *pmpriv = pmadapter->priv[pioctl_req->bss_index];
+	mlan_private *pmpriv = MNULL;
 	mlan_status ret = MLAN_STATUS_SUCCESS;
 	t_u16 cmd_action = 0;
 	mlan_ds_misc_cfg *misc = MNULL;
 
 	ENTER();
-
+	if (pioctl_req == MNULL)
+		return MLAN_STATUS_FAILURE;
+	pmpriv = pmadapter->priv[pioctl_req->bss_index];
 	misc = (mlan_ds_misc_cfg *)pioctl_req->pbuf;
 	cmd_action = pioctl_req->action;
 
 	/* Send request to firmware */
+	pmpriv->ch_load_param = 255; /* Default value for identifying
+					update/non-updated value*/
 	ret = wlan_prepare_cmd(pmpriv, HostCmd_CMD_GET_CH_LOAD, cmd_action, 0,
 			       (t_void *)pioctl_req,
 			       (t_void *)&misc->param.ch_load);
