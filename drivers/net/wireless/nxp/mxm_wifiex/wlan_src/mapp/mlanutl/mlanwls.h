@@ -5,23 +5,18 @@
  *
  * Copyright 2022 NXP
  *
- * NXP CONFIDENTIAL
- * The source code contained or described herein and all documents related to
- * the source code (Materials) are owned by NXP, its
- * suppliers and/or its licensors. Title to the Materials remains with NXP,
- * its suppliers and/or its licensors. The Materials contain
- * trade secrets and proprietary and confidential information of NXP, its
- * suppliers and/or its licensors. The Materials are protected by worldwide
- * copyright and trade secret laws and treaty provisions. No part of the
- * Materials may be used, copied, reproduced, modified, published, uploaded,
- * posted, transmitted, distributed, or disclosed in any way without NXP's prior
- * express written permission.
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- * No license under any patent, copyright, trade secret or other intellectual
- * property right is granted to or conferred upon you by disclosure or delivery
- * of the Materials, either expressly, by implication, inducement, estoppel or
- * otherwise. Any license under such intellectual property rights must be
- * express and approved by NXP in writing.
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
  *
  */
 /************************************************************************
@@ -76,6 +71,7 @@ Change log:
 #define PROPRIETARY_TLV_BASE_ID 0x0100
 #define FTM_SESSION_CFG_INITATOR_TLV_ID (PROPRIETARY_TLV_BASE_ID + 273)
 #define FTM_NTB_RANGING_CFG_TLV_ID (PROPRIETARY_TLV_BASE_ID + 343)
+#define FTM_TB_RANGING_CFG_TLV_ID (PROPRIETARY_TLV_BASE_ID + 344)
 #define FTM_RANGE_REPORT_TLV_ID                                                \
 	(PROPRIETARY_TLV_BASE_ID + 0x10C) /* 0x0100 + 0x10C = 0x20C */
 #define FTM_SESSION_CFG_LCI_TLV_ID (PROPRIETARY_TLV_BASE_ID + 270)
@@ -93,8 +89,9 @@ typedef struct {
 	char **help;
 } wls_app_command_table;
 
-/** Structure of FTM_SESSION_CFG_NTB_RANGING TLV data*/
-typedef struct _ntb_ranging_cfg {
+/** Structure of FTM_SESSION_CFG_NTB_RANGING / FTM_SESSION_CFG_TB_RANGING TLV
+ * data*/
+typedef struct _ranging_cfg {
 	/** Indicates the channel BW for session*/
 	/*0: HE20, 1: HE40, 2: HE80, 3: HE80+80, 4: HE160, 5:HE160_SRF*/
 	t_u8 format_bw;
@@ -110,12 +107,14 @@ typedef struct _ntb_ranging_cfg {
 	t_u8 az_measurement_freq;
 	/**Indicates the number of measurements to be done for session*/
 	t_u8 az_number_of_measurements;
+	/** Initator lmr feedback */
+	t_u8 i2r_lmr_feedback;
 	/**Include location civic request (Expect location civic from
 	 * responder)*/
 	t_u8 civic_req;
 	/**Include LCI request (Expect LCI info from responder)*/
 	t_u8 lci_req;
-} __ATTRIB_PACK__ ntb_ranging_cfg_t;
+} __ATTRIB_PACK__ ranging_cfg_t;
 
 /** Structure of FTM_SESSION_CFG TLV data*/
 typedef struct _ftm_session_cfg {
@@ -147,7 +146,7 @@ typedef struct _civic_loc_cfg {
 	/**Civic address length*/
 	t_u8 civic_address_length;
 	/**Civic Address*/
-	t_u8 civic_address[];
+	t_u8 civic_address[256];
 } __ATTRIB_PACK__ civic_loc_cfg_t;
 
 /** Structure for FTM_SESSION_CFG_LCI TLV data*/
@@ -169,14 +168,14 @@ typedef struct _lci_cfg {
 } __ATTRIB_PACK__ lci_cfg_t;
 
 /** Structure for FTM_SESSION_CFG_NTB_RANGING TLV*/
-typedef struct _ntb_ranging_cfg_tlv {
+typedef struct _ranging_cfg_tlv {
 	/** Type*/
 	t_u16 type;
 	/** Length*/
 	t_u16 len;
 	/** Value*/
-	ntb_ranging_cfg_t val;
-} __ATTRIB_PACK__ ntb_ranging_cfg_tlv_t;
+	ranging_cfg_t val;
+} __ATTRIB_PACK__ ranging_cfg_tlv_t;
 
 /** Structure for FTM_SESSION_CFG  TLV*/
 typedef struct _ftm_session_cfg_tlv {
@@ -224,7 +223,7 @@ typedef struct _dot11mc_ftm_cfg {
 /** Structure for DOT11AZ FTM_SESSION_CFG */
 typedef struct _dot11az_ftmcfg_ntb_t {
 	/** NTB session cfg */
-	ntb_ranging_cfg_tlv_t ntb_tlv;
+	ranging_cfg_tlv_t range_tlv;
 } __ATTRIB_PACK__ dot11az_ftm_cfg_t;
 
 /** Type definition for hostcmd_ftm_session_cfg */
@@ -367,7 +366,7 @@ typedef struct _wls_app_data {
 	/** Is civic data available in cfg*/
 	t_u8 civic_request;
 	/**ntb cfg param*/
-	ntb_ranging_cfg_t ntb_cfg;
+	ranging_cfg_t range_cfg;
 	/** 11mc session cfg param*/
 	ftm_session_cfg_t session_cfg;
 	/** lci cfg data*/

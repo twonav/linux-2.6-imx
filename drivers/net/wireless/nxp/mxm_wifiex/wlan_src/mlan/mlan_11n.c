@@ -5,27 +5,18 @@
  *
  *  Copyright 2008-2021 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -1059,7 +1050,7 @@ static void wlan_update_all_stations_ampdu(mlan_private *priv)
 	}
 	while (sta_ptr != (sta_node *)&priv->sta_list) {
 		for (i = 0; i < MAX_NUM_TID; i++) {
-			if (sta_ptr->is_11n_enabled)
+			if (sta_ptr->is_11n_enabled || sta_ptr->is_11ax_enabled)
 				sta_ptr->ampdu_sta[i] =
 					priv->aggr_prio_tbl[i].ampdu_user;
 		}
@@ -1242,7 +1233,8 @@ static mlan_status wlan_11n_ioctl_supported_mcs_set(pmlan_adapter pmadapter,
 	if ((ISSUPP_CHANWIDTH40(pmpriv->usr_dot_11n_dev_cap_bg) ||
 	     ISSUPP_CHANWIDTH40(pmpriv->usr_dot_11n_dev_cap_a)) &&
 	    !(pmpriv->curr_chan_flags & CHAN_FLAGS_NO_HT40PLUS &&
-	      pmpriv->curr_chan_flags & CHAN_FLAGS_NO_HT40MINUS))
+	      pmpriv->curr_chan_flags & CHAN_FLAGS_NO_HT40MINUS) &&
+	    pmadapter->init_para.mcs32 == 1)
 		SETHT_MCS32(mcs_set);
 
 	cfg = (mlan_ds_11n_cfg *)pioctl_req->pbuf;
@@ -1550,7 +1542,8 @@ void wlan_fill_ht_cap_tlv(mlan_private *priv, MrvlIETypes_HTCap_t *pht_cap,
 	 * supprot*/
 	if (ISSUPP_CHANWIDTH40(usr_dot_11n_dev_cap) &&
 	    !(priv->curr_chan_flags & CHAN_FLAGS_NO_HT40PLUS &&
-	      priv->curr_chan_flags & CHAN_FLAGS_NO_HT40MINUS))
+	      priv->curr_chan_flags & CHAN_FLAGS_NO_HT40MINUS) &&
+	    pmadapter->init_para.mcs32 == 1)
 		SETHT_MCS32(pht_cap->ht_cap.supported_mcs_set);
 
 	/* Clear RD responder bit */
@@ -1626,7 +1619,8 @@ void wlan_fill_ht_cap_ie(mlan_private *priv, IEEEtypes_HTCap_t *pht_cap,
 	 * supprot*/
 	if (ISSUPP_CHANWIDTH40(usr_dot_11n_dev_cap) &&
 	    !(priv->curr_chan_flags & CHAN_FLAGS_NO_HT40PLUS &&
-	      priv->curr_chan_flags & CHAN_FLAGS_NO_HT40MINUS))
+	      priv->curr_chan_flags & CHAN_FLAGS_NO_HT40MINUS) &&
+	    pmadapter->init_para.mcs32 == 1)
 		SETHT_MCS32(pht_cap->ht_cap.supported_mcs_set);
 
 	/* Clear RD responder bit */

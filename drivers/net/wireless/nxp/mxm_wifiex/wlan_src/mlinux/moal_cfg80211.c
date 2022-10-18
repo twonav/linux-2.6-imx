@@ -5,26 +5,18 @@
  *
  * Copyright 2011-2022 NXP
  *
- * NXP CONFIDENTIAL
- * The source code contained or described herein and all documents related to
- * the source code (Materials) are owned by NXP, its
- * suppliers and/or its licensors. Title to the Materials remains with NXP,
- * its suppliers and/or its licensors. The Materials contain
- * trade secrets and proprietary and confidential information of NXP, its
- * suppliers and/or its licensors. The Materials are protected by worldwide
- * copyright and trade secret laws and treaty provisions. No part of the
- * Materials may be used, copied, reproduced, modified, published, uploaded,
- * posted, transmitted, distributed, or disclosed in any way without NXP's prior
- * express written permission.
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- * No license under any patent, copyright, trade secret or other intellectual
- * property right is granted to or conferred upon you by disclosure or delivery
- * of the Materials, either expressly, by implication, inducement, estoppel or
- * otherwise. Any license under such intellectual property rights must be
- * express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
  *
  */
 
@@ -175,6 +167,11 @@ extern const struct net_device_ops woal_netdev_ops;
 /********************************************************
  *				Global Functions
  ********************************************************/
+#ifdef UAP_SUPPORT
+#if CFG80211_VERSION_CODE < KERNEL_VERSION(4, 20, 0)
+int woal_11ax_cfg(moal_private *priv, t_u8 action, mlan_ds_11ax_he_cfg *he_cfg);
+#endif
+#endif
 
 /**
  * @brief Get the private structure from wiphy
@@ -291,6 +288,32 @@ t_u8 woal_band_cfg_to_ieee_band(t_u32 band)
 
 	LEAVE();
 	return ret_radio_type;
+}
+
+/**
+ *  @brief Convert IEEE band type to radio_type
+ *
+ *  @param ieeeband     IEEE band
+ *
+ *  @return           radio_type
+ */
+t_u8 woal_ieee_band_to_radio_type(t_u8 ieee_band)
+{
+	t_u8 radio_type = 0;
+
+	ENTER();
+
+	switch (ieee_band) {
+	case IEEE80211_BAND_5GHZ:
+		radio_type = BAND_5GHZ;
+		break;
+	case IEEE80211_BAND_2GHZ:
+	default:
+		radio_type = BAND_2GHZ;
+		break;
+	}
+	LEAVE();
+	return radio_type;
 }
 
 /**
@@ -2411,6 +2434,8 @@ void woal_cfg80211_mgmt_frame_register(struct wiphy *wiphy,
 	LEAVE();
 }
 
+#ifdef UAP_CFG80211
+#if KERNEL_VERSION(3, 12, 0) <= CFG80211_VERSION_CODE
 /*
  * @brief  prepare and send WOAL_EVENT_CANCEL_CHANRPT
  *
@@ -2431,17 +2456,15 @@ static void woal_cancel_chanrpt_event(moal_private *priv)
 		return;
 	}
 	evt->priv = priv;
-#ifdef UAP_CFG80211
-#if KERNEL_VERSION(3, 12, 0) <= CFG80211_VERSION_CODE
 	evt->type = WOAL_EVENT_CANCEL_CHANRPT;
-#endif
-#endif
 	INIT_LIST_HEAD(&evt->link);
 	spin_lock_irqsave(&handle->evt_lock, flags);
 	list_add_tail(&evt->link, &handle->evt_queue);
 	spin_unlock_irqrestore(&handle->evt_lock, flags);
 	queue_work(handle->evt_workqueue, &handle->evt_work);
 }
+#endif
+#endif
 
 #if KERNEL_VERSION(3, 2, 0) <= CFG80211_VERSION_CODE
 #if KERNEL_VERSION(3, 3, 0) <= CFG80211_VERSION_CODE
@@ -2646,11 +2669,13 @@ int woal_cfg80211_mgmt_tx(struct wiphy *wiphy,
 					woal_cancel_chanrpt_event(priv);
 #endif
 #endif
+#ifdef UAP_SUPPORT
 				if (!priv->bss_started) {
 					PRINTM(MCMND,
 					       "Drop deauth packet before AP started\n");
 					goto done;
 				}
+#endif
 				PRINTM(MMSG,
 				       "wlan: HostMlme %s send deauth/disassoc\n",
 				       priv->netdev->name);
@@ -3369,6 +3394,7 @@ static t_u16 woal_filter_beacon_ies(moal_private *priv, const t_u8 *ie, int len,
 		case HT_OPERATION:
 		case VHT_CAPABILITY:
 		case VHT_OPERATION:
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 			if (moal_extflg_isset(priv->phandle, EXT_HOST_MLME)) {
 				if ((out_len + length + 2) < (int)ie_out_len) {
 					moal_memcpy_ext(priv->phandle,
@@ -3381,6 +3407,7 @@ static t_u16 woal_filter_beacon_ies(moal_private *priv, const t_u8 *ie, int len,
 					       "IE too big, fail copy COUNTRY INFO IE\n");
 				}
 			}
+#endif
 			break;
 		case EXTENDED_SUPPORTED_RATES:
 		case WLAN_EID_ERP_INFO:
@@ -3393,11 +3420,14 @@ static t_u16 woal_filter_beacon_ies(moal_private *priv, const t_u8 *ie, int len,
 			break;
 		case EXTENSION:
 			ext_id = *(pos + 2);
-			if ((ext_id == HE_CAPABILITY ||
-			     ext_id == HE_OPERATION) &&
-			    !moal_extflg_isset(priv->phandle, EXT_HOST_MLME))
+			if ((ext_id == HE_CAPABILITY || ext_id == HE_OPERATION)
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
+			    && !moal_extflg_isset(priv->phandle, EXT_HOST_MLME)
+#endif
+			)
 				break;
 			else {
+#ifdef UAP_SUPPORT
 #if CFG80211_VERSION_CODE < KERNEL_VERSION(4, 20, 0)
 				if (ext_id == HE_CAPABILITY) {
 					mlan_ds_11ax_he_cfg he_cfg;
@@ -3440,6 +3470,7 @@ static t_u16 woal_filter_beacon_ies(moal_private *priv, const t_u8 *ie, int len,
 						       "Fail to get 11ax he_cap parameters\n");
 					}
 				} else
+#endif
 #endif
 				{
 					if ((out_len + length + 2) <
@@ -4172,14 +4203,14 @@ struct ieee80211_supported_band *woal_setup_wiphy_bands(t_u8 ieee_band)
 			       sizeof(struct ieee80211_supported_band),
 			       GFP_KERNEL);
 		if (!band) {
-			PRINTM(MERROR, "No memory for band\n");
+			PRINTM(MERROR, "No memory for 5g band\n");
 			break;
 		}
 		band->channels =
 			kmemdup(&cfg80211_channels_5ghz,
 				sizeof(cfg80211_channels_5ghz), GFP_KERNEL);
 		if (!band->channels) {
-			PRINTM(MERROR, "No memory for band->channel\n");
+			PRINTM(MERROR, "No memory for 5g band->channel\n");
 			kfree(band);
 			band = NULL;
 			break;
@@ -4192,14 +4223,14 @@ struct ieee80211_supported_band *woal_setup_wiphy_bands(t_u8 ieee_band)
 			       sizeof(struct ieee80211_supported_band),
 			       GFP_KERNEL);
 		if (!band) {
-			PRINTM(MERROR, "No memory for band\n");
+			PRINTM(MERROR, "No memory for 2g band\n");
 			break;
 		}
 		band->channels =
 			kmemdup(&cfg80211_channels_2ghz,
 				sizeof(cfg80211_channels_2ghz), GFP_KERNEL);
 		if (!band->channels) {
-			PRINTM(MERROR, "No memory for band->channel\n");
+			PRINTM(MERROR, "No memory for 2g band->channel\n");
 			kfree(band);
 			band = NULL;
 			break;
@@ -4596,6 +4627,7 @@ void woal_cfg80211_free_bands(struct wiphy *wiphy)
 	}
 }
 
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 /*
  * @brief  prepare and send fake deauth packet to cfg80211 to
  *         notify wpa_supplicant about disconnection
@@ -4627,6 +4659,7 @@ void woal_deauth_event(moal_private *priv, int reason_code)
 	spin_unlock_irqrestore(&handle->evt_lock, flags);
 	queue_work(handle->evt_workqueue, &handle->evt_work);
 }
+#endif
 
 #ifdef STA_CFG80211
 #if KERNEL_VERSION(3, 2, 0) <= CFG80211_VERSION_CODE
@@ -4676,27 +4709,6 @@ void woal_cfg80211_notify_sched_scan_stop(moal_private *priv)
 }
 
 /**
- * @brief sched_scan work handler
- *
- * @param work            a pointer to work_struct
- *
- * @return                0 -- success, otherwise fail
- */
-void woal_sched_scan_work_queue(struct work_struct *work)
-{
-	struct delayed_work *delayed_work =
-		container_of(work, struct delayed_work, work);
-	moal_private *priv =
-		container_of(delayed_work, moal_private, sched_scan_work);
-	ENTER();
-
-	if (priv->sched_scanning)
-		woal_cfg80211_notify_sched_scan_stop(priv);
-
-	LEAVE();
-}
-
-/**
  * @brief report sched_scan result to kernel
  *
  * @param priv          A pointer moal_private structure
@@ -4711,8 +4723,6 @@ void woal_report_sched_scan_result(moal_private *priv)
 				    priv->bg_scan_reqid
 #endif
 	);
-	queue_delayed_work(priv->sched_scan_workqueue, &priv->sched_scan_work,
-			   msecs_to_jiffies(2000));
 }
 #endif
 #endif
@@ -4902,6 +4912,7 @@ void woal_cfg80211_notify_antcfg(moal_private *priv, struct wiphy *wiphy,
 				     0x300 &&
 			     (radio->param.ant_cfg.rx_antenna & 0xFF00) != 0)) {
 				bands->ht_cap.mcs.rx_mask[1] = 0;
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
 				bands->vht_cap.vht_mcs.rx_mcs_map =
 					(__force __le16)0xfffe;
 				bands->vht_cap.vht_mcs.tx_mcs_map =
@@ -4910,6 +4921,7 @@ void woal_cfg80211_notify_antcfg(moal_private *priv, struct wiphy *wiphy,
 					(__force __le16)0x186;
 				bands->vht_cap.vht_mcs.tx_highest =
 					(__force __le16)0x186;
+#endif
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
 				if (bands->n_iftype_data &&
 				    bands->iftype_data &&
@@ -4936,6 +4948,7 @@ void woal_cfg80211_notify_antcfg(moal_private *priv, struct wiphy *wiphy,
 				   (radio->param.ant_cfg.rx_antenna & 0xFF00) ==
 					   0x300) {
 				bands->ht_cap.mcs.rx_mask[1] = 0xff;
+#if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
 				bands->vht_cap.vht_mcs.rx_mcs_map =
 					(__force __le16)0xfffa;
 				bands->vht_cap.vht_mcs.tx_mcs_map =
@@ -4944,6 +4957,7 @@ void woal_cfg80211_notify_antcfg(moal_private *priv, struct wiphy *wiphy,
 					(__force __le16)0x30c;
 				bands->vht_cap.vht_mcs.tx_highest =
 					(__force __le16)0x30c;
+#endif
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(4, 20, 0)
 				if (bands->n_iftype_data &&
 				    bands->iftype_data &&
@@ -5161,8 +5175,8 @@ static void woal_update_wiphy_chan_dfs_state(struct wiphy *wiphy, t_u8 channel,
 	}
 #if CFG80211_VERSION_CODE > KERNEL_VERSION(3, 8, 13)
 	if (i < sband->n_channels)
-		PRINTM(MCMND, "ZERODFS: Set channel %d dfs_state: %d\n",
-		       channel, sband->channels[i].dfs_state);
+		PRINTM(MCMND, "DFS: Set channel %d dfs_state: %d\n", channel,
+		       sband->channels[i].dfs_state);
 #endif
 	LEAVE();
 }

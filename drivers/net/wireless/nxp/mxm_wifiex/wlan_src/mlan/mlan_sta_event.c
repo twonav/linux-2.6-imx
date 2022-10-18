@@ -5,27 +5,18 @@
  *
  *  Copyright 2008-2022 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -148,7 +139,8 @@ static void wlan_parse_tdls_event(pmlan_private priv, pmlan_buffer pevent)
 				}
 			}
 			for (i = 0; i < MAX_NUM_TID; i++) {
-				if (sta_ptr->is_11n_enabled)
+				if (sta_ptr->is_11n_enabled ||
+				    sta_ptr->is_11ax_enabled)
 					sta_ptr->ampdu_sta[i] =
 						priv->aggr_prio_tbl[i]
 							.ampdu_user;
@@ -221,7 +213,8 @@ static void wlan_parse_tdls_event(pmlan_private priv, pmlan_buffer pevent)
 			wlan_restore_tdls_packets(priv,
 						  tdls_event->peer_mac_addr,
 						  TDLS_TEAR_DOWN);
-			if (sta_ptr->is_11n_enabled) {
+			if (sta_ptr->is_11n_enabled ||
+			    sta_ptr->is_11ax_enabled) {
 				wlan_cleanup_reorder_tbl(
 					priv, tdls_event->peer_mac_addr);
 				wlan_11n_cleanup_txbastream_tbl(
@@ -807,8 +800,8 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 						    MRVDRV_TxPD_POWER_MGMT_NULL_PACKET |
 							    MRVDRV_TxPD_POWER_MGMT_LAST_PACKET) ==
 					    MLAN_STATUS_SUCCESS) {
-						LEAVE();
-						return MLAN_STATUS_SUCCESS;
+						ret = MLAN_STATUS_SUCCESS;
+						goto done;
 					}
 				}
 			}
@@ -885,6 +878,8 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		}
 		pmadapter->scan_block = MFALSE;
 		wlan_recv_event(pmpriv, MLAN_EVENT_ID_FW_PORT_RELEASE, MNULL);
+		/* Send OBSS scan param to the application */
+		wlan_2040_coex_event(pmpriv);
 		break;
 
 	case EVENT_STOP_TX:

@@ -1,33 +1,22 @@
 /** @file mlan_11ax.c
  *
- *  @brief This file defines the private and adapter data
- *  structures and declares global function prototypes used
- *  in MLAN module.
+ *  @brief This file contains the functions for 11ax related features.
  *
  *
  *  Copyright 2018-2022 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -110,12 +99,14 @@ t_u8 wlan_check_11ax_twt_supported(mlan_private *pmpriv,
 		(MrvlIEtypes_He_cap_t *)&pmpriv->user_he_cap;
 	MrvlIEtypes_He_cap_t *hw_he_cap =
 		(MrvlIEtypes_He_cap_t *)&pmpriv->adapter->hw_he_cap;
+	t_u16 band_selected = BAND_A;
+
 	if (pbss_desc && !wlan_check_ap_11ax_twt_supported(pbss_desc)) {
 		PRINTM(MINFO, "AP don't support twt feature\n");
 		return MFALSE;
 	}
 	if (pbss_desc) {
-		if (pbss_desc->bss_band & BAND_A) {
+		if (pbss_desc->bss_band & band_selected) {
 			hw_he_cap = (MrvlIEtypes_He_cap_t *)&pmpriv->adapter
 					    ->hw_he_cap;
 			phecap = (MrvlIEtypes_He_cap_t *)&pmpriv->user_he_cap;
@@ -417,6 +408,7 @@ int wlan_cmd_append_11ax_tlv(mlan_private *pmpriv, BSSDescriptor_t *pbss_desc,
 	t_u16 cfg_value = 0;
 	t_u16 hw_value = 0;
 	MrvlIEtypes_He_cap_t *phw_hecap = MNULL;
+	t_u16 band_selected = BAND_A;
 
 	ENTER();
 
@@ -436,7 +428,7 @@ int wlan_cmd_append_11ax_tlv(mlan_private *pmpriv, BSSDescriptor_t *pbss_desc,
 	}
 	bw_80p80 = wlan_is_80_80_support(pmpriv, pbss_desc);
 	phecap = (MrvlIEtypes_He_cap_t *)*ppbuffer;
-	if (pbss_desc->bss_band & BAND_A) {
+	if (pbss_desc->bss_band & band_selected) {
 		memcpy_ext(pmadapter, *ppbuffer, pmpriv->user_he_cap,
 			   pmpriv->user_hecap_len, pmpriv->user_hecap_len);
 		*ppbuffer += pmpriv->user_hecap_len;
@@ -458,7 +450,7 @@ int wlan_cmd_append_11ax_tlv(mlan_private *pmpriv, BSSDescriptor_t *pbss_desc,
 	if (IS_CARD9098(pmpriv->adapter->card_type) ||
 	    IS_CARDNW62X(pmpriv->adapter->card_type) ||
 	    IS_CARD9097(pmpriv->adapter->card_type)) {
-		if (pbss_desc->bss_band & BAND_A) {
+		if (pbss_desc->bss_band & band_selected) {
 			rx_nss = GET_RXMCSSUPP(pmpriv->adapter->user_htstream >>
 					       8);
 			tx_nss = GET_TXMCSSUPP(pmpriv->adapter->user_htstream >>
@@ -642,15 +634,6 @@ static mlan_status wlan_11ax_ioctl_hecfg(pmlan_adapter pmadapter,
 	t_u16 cmd_action = 0;
 
 	ENTER();
-
-	if (pioctl_req->buf_len < sizeof(mlan_ds_11ax_cfg)) {
-		PRINTM(MINFO, "MLAN bss IOCTL length is too short.\n");
-		pioctl_req->data_read_written = 0;
-		pioctl_req->buf_len_needed = sizeof(mlan_ds_11ax_cfg);
-		pioctl_req->status_code = MLAN_ERROR_INVALID_PARAMETER;
-		LEAVE();
-		return MLAN_STATUS_RESOURCE;
-	}
 
 	cfg = (mlan_ds_11ax_cfg *)pioctl_req->pbuf;
 

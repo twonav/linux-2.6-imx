@@ -7,27 +7,18 @@
  *
  *  Copyright 2008-2022 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -554,6 +545,9 @@ typedef enum _WLAN_802_11_WEP_STATUS {
 
 /** TLV type: fw cap info */
 #define TLV_TYPE_FW_CAP_INFO (PROPRIETARY_TLV_BASE_ID + 318)
+
+/** TLV type: secure boot uuid */
+#define TLV_TYPE_SECURE_BOOT_UUID (PROPRIETARY_TLV_BASE_ID + 348)
 
 /** ADDBA TID mask */
 #define ADDBA_TID_MASK (MBIT(2) | MBIT(3) | MBIT(4) | MBIT(5))
@@ -1360,6 +1354,7 @@ typedef enum _WLAN_802_11_WEP_STATUS {
 #define HostCmd_CMD_802_11_BAND_STEERING 0x026f
 /*** Host Command ID " MC_AGGR_CFG */
 #define HostCmd_CMD_MC_AGGR_CFG 0x027a
+#define HostCmd_CMD_802_11_STATS 0x0014
 #define HostCmd_CMD_GET_CH_LOAD 0x027b
 
 /** Host Command ID : TDLS configuration */
@@ -3506,10 +3501,33 @@ typedef MLAN_PACK_START struct _HostCmd_DS_MC_AGGR_CFG {
 	/** CTS2Self duration offset */
 	t_u16 cts2self_offset;
 } MLAN_PACK_END HostCmd_DS_MC_AGGR_CFG;
+
+/** Stats_Cfg_Params_TLV */
+typedef struct MLAN_PACK_START _Stats_Cfg_Params_TLV {
+	/** tlvHeader */
+	MrvlIEtypesHeader_t tlvHeader;
+	/** op */
+	t_u8 op;
+	/** reserved */
+	t_u8 reserved;
+	/** mac */
+	mlan_802_11_mac_addr mac;
+} MLAN_PACK_END Stats_Cfg_Params_TLV_t;
+
+/** HostCmd_DS_STATS */
+typedef MLAN_PACK_START struct _HostCmd_DS_STATS {
+	/** Action */
+	t_u16 action;
+	/** TLV buffer */
+	t_u8 tlv_buffer[1];
+} MLAN_PACK_END HostCmd_DS_STATS;
+
 typedef MLAN_PACK_START struct _HostCmd_DS_GET_CH_LOAD {
 	/** Action */
 	t_u16 action;
 	t_u16 ch_load;
+	t_s16 noise;
+	t_u16 duration;
 } MLAN_PACK_END HostCmd_DS_GET_CH_LOAD;
 
 /**  HostCmd_DS_CMD_802_11_RSSI_INFO */
@@ -6273,9 +6291,12 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_MacAddr_t {
 /** TLV type :  AP WMM params */
 #define TLV_TYPE_AP_WMM_PARAM (PROPRIETARY_TLV_BASE_ID + 0xd0) /* 0x01d0 */
 /** TLV type : AP Tx beacon rate */
-#define TLV_TYPE_UAP_TX_BEACON_RATE                                            \
-	(PROPRIETARY_TLV_BASE_ID + 288) /* 0x0220                              \
-					 */
+#define TLV_TYPE_UAP_TX_BEACON_RATE (PROPRIETARY_TLV_BASE_ID + 288) /* 0x0220  \
+								     */
+#define NXP_802_11_PER_PEER_STATS_CFG_TLV_ID                                   \
+	(PROPRIETARY_TLV_BASE_ID + 346) /* 0x025A */
+#define NXP_802_11_PER_PEER_STATS_ENTRY_TLV_ID                                 \
+	(PROPRIETARY_TLV_BASE_ID + 347) /* 0x025B */
 
 /** MrvlIEtypes_beacon_period_t */
 typedef MLAN_PACK_START struct _MrvlIEtypes_beacon_period_t {
@@ -8008,6 +8029,7 @@ typedef struct MLAN_PACK_START _HostCmd_DS_COMMAND {
 		HostCmd_DS_HAL_PHY_CFG hal_phy_cfg_params;
 		HostCmd_DS_IPS_CONFIG ips_cfg;
 		HostCmd_DS_MC_AGGR_CFG mc_aggr_cfg;
+		HostCmd_DS_STATS stats;
 		HostCmd_DS_GET_CH_LOAD ch_load;
 	} params;
 } MLAN_PACK_END HostCmd_DS_COMMAND, *pHostCmd_DS_COMMAND;
@@ -8035,6 +8057,15 @@ typedef struct MLAN_PACK_START _opt_sleep_confirm_buffer {
 	 *  sleep confirmation to the firmware */
 	OPT_Confirm_Sleep ps_cfm_sleep;
 } MLAN_PACK_END opt_sleep_confirm_buffer;
+
+typedef MLAN_PACK_START struct _MrvlIEtypes_Secure_Boot_Uuid_t {
+	/** Header */
+	MrvlIEtypesHeader_t header;
+
+	/** Secure boot uuid lower and higher 8 bytes */
+	t_u64 uuid_lo;
+	t_u64 uuid_hi;
+} MLAN_PACK_END MrvlIEtypes_Secure_Boot_Uuid_t;
 
 /** req host side download vdll block */
 #define VDLL_IND_TYPE_REQ 0

@@ -5,27 +5,18 @@
  *
  *  Copyright 2008-2022 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -33,7 +24,7 @@
 #define _MLAN_DECL_H_
 
 /** MLAN release version */
-#define MLAN_RELEASE_VERSION "322.p3"
+#define MLAN_RELEASE_VERSION "344.p3"
 
 /** Re-define generic data types for MLAN/MOAL */
 /** Signed char (1-byte) */
@@ -441,7 +432,7 @@ typedef t_u8 mlan_802_11_mac_addr[MLAN_MAC_ADDR_LENGTH];
 /** SD8977 Card */
 #define CARD_SD8977 "SD8977"
 /** SD8978 Card */
-#define CARD_SD8978 "SD8978"
+#define CARD_SD8978 "SDIW416"
 /** SD8997 Card */
 #define CARD_SD8997 "SD8997"
 /** SD8987 Card */
@@ -451,7 +442,7 @@ typedef t_u8 mlan_802_11_mac_addr[MLAN_MAC_ADDR_LENGTH];
 /** SD9098 Card */
 #define CARD_SD9098 "SD9098"
 /** SD9177 Card */
-#define CARD_SD9177 "SD9177"
+#define CARD_SD9177 "SDIW612"
 /** SD8801 Card */
 #define CARD_SD8801 "SD8801"
 /** SDNW62X Card */
@@ -490,6 +481,8 @@ typedef t_u8 mlan_802_11_mac_addr[MLAN_MAC_ADDR_LENGTH];
 #define CARD_PCIEAW690 "PCIEAW690"
 /** PCIENW62X Card */
 #define CARD_PCIENW62X "PCIENW62X"
+/** PCIEIW629 Card */
+#define CARD_PCIEIW629 "PCIEIW629"
 #endif
 
 #ifdef USB
@@ -523,7 +516,7 @@ typedef t_u8 mlan_802_11_mac_addr[MLAN_MAC_ADDR_LENGTH];
 /** USB8997 Card */
 #define CARD_USB8997 "USB8997"
 /** USB8978 Card */
-#define CARD_USB8978 "USB8978"
+#define CARD_USB8978 "USBIW416"
 /** USB9098 Card */
 #define CARD_USB9098 "USB9098"
 /** USB9097 Card */
@@ -698,6 +691,18 @@ typedef enum _mlan_buf_type {
 	MLAN_BUF_TYPE_SPA_DATA,
 #endif
 } mlan_buf_type;
+
+#define SCAN_STATE_SCAN_START MBIT(0)
+#define SCAN_STATE_EXT_SCAN MBIT(1)
+#define SCAN_STATE_EXT_SCAN_ENH MBIT(2)
+#define SCAN_STATE_EXT_SCAN_CANCEL MBIT(3)
+#define SCAN_STATE_EXT_SCAN_CMDRESP MBIT(4)
+#define SCAN_STATE_EXT_SCAN_ENH_CMDRESP MBIT(5)
+#define SCAN_STATE_EXT_SCAN_CANCEL_CMDRESP MBIT(6)
+#define SCAN_STATE_EXT_SCAN_RESULT MBIT(7)
+#define SCAN_STATE_LAST_EXT_SCAN_RESULT MBIT(8)
+#define SCAN_STATE_EXT_SCAN_STATUS MBIT(9)
+#define SCAN_STATE_SCAN_COMPLETE MBIT(10)
 
 #ifdef USB
 /** mlan_usb_ep */
@@ -905,8 +910,8 @@ enum mlan_channel_type {
 /** channel band */
 enum { BAND_2GHZ = 0,
        BAND_5GHZ = 1,
-       BAND_4GHZ = 2,
-       BAND_6GHZ = 3,
+       BAND_6GHZ = 2,
+       BAND_4GHZ = 3,
 };
 
 /** channel offset */
@@ -2300,8 +2305,12 @@ typedef struct _mlan_device {
 	t_u32 drv_mode;
 	/** dfs w53 cfg */
 	t_u8 dfs53cfg;
+	/** dfs_offload */
+	t_u8 dfs_offload;
 	/** extend enhance scan */
 	t_u8 ext_scan;
+	/* mcs32 setting */
+	t_u8 mcs32;
 } mlan_device, *pmlan_device;
 
 /** MLAN API function prototype */

@@ -5,27 +5,18 @@
  *
  *  Copyright 2009-2022 NXP
  *
- *  NXP CONFIDENTIAL
- *  The source code contained or described herein and all documents related to
- *  the source code (Materials) are owned by NXP, its
- *  suppliers and/or its licensors. Title to the Materials remains with NXP,
- *  its suppliers and/or its licensors. The Materials contain
- *  trade secrets and proprietary and confidential information of NXP, its
- *  suppliers and/or its licensors. The Materials are protected by worldwide
- *  copyright and trade secret laws and treaty provisions. No part of the
- *  Materials may be used, copied, reproduced, modified, published, uploaded,
- *  posted, transmitted, distributed, or disclosed in any way without NXP's
- *  prior express written permission.
+ *  This software file (the File) is distributed by NXP
+ *  under the terms of the GNU General Public License Version 2, June 1991
+ *  (the License).  You may use, redistribute and/or modify the File in
+ *  accordance with the terms and conditions of the License, a copy of which
+ *  is available by writing to the Free Software Foundation, Inc.,
+ *  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ *  worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- *  No license under any patent, copyright, trade secret or other intellectual
- *  property right is granted to or conferred upon you by disclosure or delivery
- *  of the Materials, either expressly, by implication, inducement, estoppel or
- *  otherwise. Any license under such intellectual property rights must be
- *  express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
- *
+ *  THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ *  IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ *  ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ *  this warranty disclaimer.
  *
  */
 
@@ -1462,7 +1453,7 @@ static mlan_status wlan_uap_callback_11h_channel_check_req(t_void *priv)
 		if (dfs_state == DFS_AVAILABLE) {
 			wlan_11h_set_dfs_check_chan(
 				pmpriv, puap_state_chan_cb->channel);
-			PRINTM(MCMND, "ZERODFS: Channel %d is Avaliable\n",
+			PRINTM(MCMND, "DFS: Channel %d is Avaliable\n",
 			       puap_state_chan_cb->channel);
 			pcb->moal_ioctl_complete(pmpriv->adapter->pmoal_handle,
 						 pioctl, MLAN_STATUS_COMPLETE);
@@ -1833,6 +1824,39 @@ mlan_status wlan_uap_get_beacon_dtim(pmlan_private pmpriv)
 }
 
 /**
+ *  @brief              Get/Start/Stop/Reset stats
+ *
+ *  @param pmadapter	A pointer to mlan_adapter structure
+ *  @param pioctl_req	A pointer to ioctl request buffer
+ *
+ *  @return		        MLAN_STATUS_PENDING --success, otherwise fail
+ */
+static mlan_status wlan_misc_ioctl_stats(pmlan_adapter pmadapter,
+					 mlan_ioctl_req *pioctl_req)
+{
+	mlan_private *pmpriv = pmadapter->priv[pioctl_req->bss_index];
+	mlan_status ret = MLAN_STATUS_SUCCESS;
+	t_u16 cmd_action = 0;
+	mlan_ds_misc_cfg *misc = MNULL;
+
+	ENTER();
+
+	misc = (mlan_ds_misc_cfg *)pioctl_req->pbuf;
+	cmd_action = pioctl_req->action;
+
+	/* Send request to firmware */
+	ret = wlan_prepare_cmd(pmpriv, HostCmd_CMD_802_11_STATS, cmd_action, 0,
+			       (t_void *)pioctl_req,
+			       (t_void *)&misc->param.stats);
+
+	if (ret == MLAN_STATUS_SUCCESS)
+		ret = MLAN_STATUS_PENDING;
+
+	LEAVE();
+	return ret;
+}
+
+/**
  *  @brief Set/Get deauth control.
  *
  *  @param pmadapter	A pointer to mlan_adapter structure
@@ -1861,6 +1885,43 @@ static mlan_status wlan_uap_snmp_mib_ctrl_deauth(pmlan_adapter pmadapter,
 	ret = wlan_prepare_cmd(pmpriv, HostCmd_CMD_802_11_SNMP_MIB, cmd_action,
 			       StopDeauth_i, (t_void *)pioctl_req,
 			       &mib->param.deauthctrl);
+
+	if (ret == MLAN_STATUS_SUCCESS)
+		ret = MLAN_STATUS_PENDING;
+
+	LEAVE();
+	return ret;
+}
+
+/**
+ *  @brief Set/Get channel tracking control.
+ *
+ *  @param pmadapter	A pointer to mlan_adapter structure
+ *  @param pioctl_req	A pointer to ioctl request buffer
+ *
+ *  @return		MLAN_STATUS_PENDING --success, otherwise fail
+ */
+static mlan_status wlan_uap_snmp_mib_chan_track(pmlan_adapter pmadapter,
+						pmlan_ioctl_req pioctl_req)
+{
+	mlan_private *pmpriv = pmadapter->priv[pioctl_req->bss_index];
+	mlan_status ret = MLAN_STATUS_SUCCESS;
+	mlan_ds_snmp_mib *mib = (mlan_ds_snmp_mib *)pioctl_req->pbuf;
+	t_u16 cmd_action = 0;
+
+	ENTER();
+
+	mib = (mlan_ds_snmp_mib *)pioctl_req->pbuf;
+	if (pioctl_req->action == MLAN_ACT_SET) {
+		cmd_action = HostCmd_ACT_GEN_SET;
+	} else {
+		cmd_action = HostCmd_ACT_GEN_GET;
+	}
+
+	/* Send command to firmware */
+	ret = wlan_prepare_cmd(pmpriv, HostCmd_CMD_802_11_SNMP_MIB, cmd_action,
+			       ChanTrackParam_i, (t_void *)pioctl_req,
+			       &mib->param.chan_track);
 
 	if (ret == MLAN_STATUS_SUCCESS)
 		ret = MLAN_STATUS_PENDING;
@@ -2065,6 +2126,8 @@ mlan_status wlan_ops_uap_ioctl(t_void *adapter, pmlan_ioctl_req pioctl_req)
 			pget_info->param.fw_info.antinfo = pmadapter->antinfo;
 			pget_info->param.fw_info.max_ap_assoc_sta =
 				pmadapter->max_sta_conn;
+			pget_info->param.fw_info.uuid_lo = pmadapter->uuid_lo;
+			pget_info->param.fw_info.uuid_hi = pmadapter->uuid_hi;
 		} else if (pget_info->sub_command == MLAN_OID_LINK_STATS)
 			status = wlan_ioctl_link_statistic(pmpriv, pioctl_req);
 		break;
@@ -2139,8 +2202,13 @@ mlan_status wlan_ops_uap_ioctl(t_void *adapter, pmlan_ioctl_req pioctl_req)
 		if (misc->sub_command == MLAN_OID_MISC_MC_AGGR_CFG)
 			status = wlan_misc_ioctl_mc_aggr_cfg(pmadapter,
 							     pioctl_req);
+		if (misc->sub_command == MLAN_OID_MISC_STATS)
+			status = wlan_misc_ioctl_stats(pmadapter, pioctl_req);
 		if (misc->sub_command == MLAN_OID_MISC_CH_LOAD)
 			status = wlan_misc_ioctl_ch_load(pmadapter, pioctl_req);
+		if (misc->sub_command == MLAN_OID_MISC_CH_LOAD_RESULTS)
+			status = wlan_misc_ioctl_ch_load_results(pmadapter,
+								 pioctl_req);
 		if (misc->sub_command == MLAN_OID_MISC_GET_TSF)
 			status = wlan_misc_ioctl_get_tsf(pmadapter, pioctl_req);
 		if (misc->sub_command == MLAN_OID_MISC_GET_CHAN_REGION_CFG)
@@ -2249,6 +2317,9 @@ mlan_status wlan_ops_uap_ioctl(t_void *adapter, pmlan_ioctl_req pioctl_req)
 		if (snmp->sub_command == MLAN_OID_SNMP_MIB_DOT11H_FAKERADAR)
 			status = wlan_uap_snmp_mib_11h_fakeradar(pmadapter,
 								 pioctl_req);
+		if (snmp->sub_command == MLAN_OID_SNMP_MIB_CHAN_TRACK)
+			status = wlan_uap_snmp_mib_chan_track(pmadapter,
+							      pioctl_req);
 		break;
 	case MLAN_IOCTL_SEC_CFG:
 		sec = (mlan_ds_sec_cfg *)pioctl_req->pbuf;

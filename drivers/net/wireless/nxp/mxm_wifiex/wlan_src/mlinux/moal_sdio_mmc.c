@@ -1,4 +1,4 @@
-/** @file moal_sdio.c
+/** @file moal_sdio_mmc.c
  *
  *  @brief This file contains SDIO MMC IF (interface) module
  *  related functions.
@@ -6,26 +6,18 @@
  *
  * Copyright 2008-2022 NXP
  *
- * NXP CONFIDENTIAL
- * The source code contained or described herein and all documents related to
- * the source code (Materials) are owned by NXP, its
- * suppliers and/or its licensors. Title to the Materials remains with NXP,
- * its suppliers and/or its licensors. The Materials contain
- * trade secrets and proprietary and confidential information of NXP, its
- * suppliers and/or its licensors. The Materials are protected by worldwide
- * copyright and trade secret laws and treaty provisions. No part of the
- * Materials may be used, copied, reproduced, modified, published, uploaded,
- * posted, transmitted, distributed, or disclosed in any way without NXP's prior
- * express written permission.
+ * This software file (the File) is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
+ * (the License).  You may use, redistribute and/or modify the File in
+ * accordance with the terms and conditions of the License, a copy of which
+ * is available by writing to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA or on the
+ * worldwide web at http://www.gnu.org/licenses/old-licenses/gpl-2.0.txt.
  *
- * No license under any patent, copyright, trade secret or other intellectual
- * property right is granted to or conferred upon you by disclosure or delivery
- * of the Materials, either expressly, by implication, inducement, estoppel or
- * otherwise. Any license under such intellectual property rights must be
- * express and approved by NXP in writing.
- *
- *  Alternatively, this software may be distributed under the terms of GPL v2.
- *  SPDX-License-Identifier:    GPL-2.0
+ * THE FILE IS DISTRIBUTED AS-IS, WITHOUT WARRANTY OF ANY KIND, AND THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE
+ * ARE EXPRESSLY DISCLAIMED.  The License provides additional details about
+ * this warranty disclaimer.
  *
  */
 /****************************************************
@@ -95,7 +87,7 @@ static moal_if_ops sdiommc_ops;
 #endif
 #ifdef SDNW62X
 /** Device ID for SDNW62X */
-#define SD_DEVICE_ID_NW62X (0x020C)
+#define SD_DEVICE_ID_NW62X (0x020D)
 #endif
 
 /** WLAN IDs */
@@ -1184,14 +1176,21 @@ static void woal_sdiommc_unregister_dev(moal_handle *handle)
 	ENTER();
 	if (handle->card) {
 		struct sdio_mmc_card *card = handle->card;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)
 		struct sdio_func *func = card->func;
-
+#endif
 		/* Release the SDIO IRQ */
 		sdio_claim_host(card->func);
 		sdio_release_irq(card->func);
 		sdio_disable_func(card->func);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)
 		if (handle->driver_status)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)
+			mmc_hw_reset(func->card);
+#else
 			mmc_hw_reset(func->card->host);
+#endif
+#endif
 		sdio_release_host(card->func);
 
 		sdio_set_drvdata(card->func, NULL);
@@ -1553,7 +1552,7 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 		switch (revision_id) {
 		case SD9177_A0:
 			if (magic == CHIP_MAGIC_VALUE) {
-				if (strap == CARD_TYPE_SD_UART)
+				if (strap == CARD_TYPE_SD9177_UART)
 					strcpy(handle->card_info->fw_name,
 					       SDUART9177_DEFAULT_COMBO_FW_NAME);
 				else
@@ -1565,7 +1564,7 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 			break;
 		case SD9177_A1:
 			if (magic == CHIP_MAGIC_VALUE) {
-				if (strap == CARD_TYPE_SD_UART)
+				if (strap == CARD_TYPE_SD9177_UART)
 					strcpy(handle->card_info->fw_name,
 					       SDUART9177_DEFAULT_COMBO_V1_FW_NAME);
 				else
@@ -2472,7 +2471,11 @@ void woal_sdio_reset_hw(moal_handle *handle)
 	sdio_claim_host(func);
 	sdio_release_irq(card->func);
 	sdio_disable_func(card->func);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 18, 0)
+	mmc_hw_reset(func->card);
+#else
 	mmc_hw_reset(func->card->host);
+#endif
 #ifdef MMC_QUIRK_BLKSZ_FOR_BYTE_MODE
 	/* The byte mode patch is available in kernel MMC driver
 	 * which fixes one issue in MP-A transfer.
