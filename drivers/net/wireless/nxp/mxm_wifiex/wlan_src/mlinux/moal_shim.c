@@ -2997,8 +2997,8 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 			    !priv->phandle->cfg80211_suspend) {
 				woal_inform_bss_from_scan_result(priv, NULL,
 								 MOAL_NO_WAIT);
-				PRINTM(MMSG,
-				       "wlan: Report sched_scan result\n");
+//				PRINTM(MMSG,
+//				       "wlan: Report sched_scan result\n");
 				woal_report_sched_scan_result(priv);
 				priv->last_event = 0;
 				PRINTM(MEVENT,
