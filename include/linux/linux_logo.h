@@ -40,6 +40,7 @@ extern const struct linux_logo logo_flasher_big_clut224;
 extern const struct linux_logo logo_flasher_small_clut224;
 extern const struct linux_logo logo_twonav_trail_aventura_clut224;
 extern const struct linux_logo logo_twonav_crosstop_clut224;
+extern const struct linux_logo logo_twonav_roc_clut224;
 extern const struct linux_logo logo_os_trail_aventura_clut224;
 extern const struct linux_logo logo_blackfin_vga16;
 extern const struct linux_logo logo_blackfin_clut224;

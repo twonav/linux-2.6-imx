@@ -10,6 +10,7 @@ obj-$(CONFIG_LOGO_FLASHER_SMALL_CLUT224)		+= logo_flasher_small_clut224.o
 obj-$(CONFIG_LOGO_TWONAV_TRAIL_AVENTURA_CLUT224)+= logo_twonav_trail_aventura_clut224.o 
 obj-$(CONFIG_LOGO_OS_TRAIL_AVENTURA_CLUT224)	+= logo_os_trail_aventura_clut224.o 
 obj-$(CONFIG_LOGO_TWONAV_CROSSTOP_CLUT224)		+= logo_twonav_crosstop_clut224.o 
+obj-$(CONFIG_LOGO_TWONAV_ROC_CLUT224)			+= logo_twonav_roc_clut224.o
 obj-$(CONFIG_LOGO_BLACKFIN_CLUT224)				+= logo_blackfin_clut224.o
 obj-$(CONFIG_LOGO_BLACKFIN_VGA16)				+= logo_blackfin_vga16.o
 obj-$(CONFIG_LOGO_DEC_CLUT224)					+= logo_dec_clut224.o

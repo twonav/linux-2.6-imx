@@ -128,6 +128,9 @@ const struct linux_logo * __init_refok fb_find_logo(int depth)
 		if(strstr(hwtype, "cross") != NULL) {
 			logo = &logo_twonav_crosstop_clut224;
 		}
+		else if(strstr(hwtype, "roc") != NULL) {
+			logo = &logo_twonav_roc_clut224;
+		}
 		else if(strstr(hwtype, "os-") != NULL) {
 			logo = &logo_os_trail_aventura_clut224;
 		}		
