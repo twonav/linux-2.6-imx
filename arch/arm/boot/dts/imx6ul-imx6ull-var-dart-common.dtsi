@@ -234,6 +234,7 @@
 			cy,flags = <4>;
 			/* CY_CORE_EWG_NONE */
 			cy,easy_wakeup_gesture = <0>;
+			cy,btn_keys = <KEY_F5 KEY_F6>;
 
 			cy,mt {
 				cy,name = "cyttsp5_mt";
@@ -269,7 +270,6 @@
 
 			};
 
-			cy,btn_keys = <KEY_F5 KEY_F6>;
 			cy,btn {
 				cy,name = "cyttsp5_btn";
 				cy,inp_dev_name = "cyttsp5_btn";
