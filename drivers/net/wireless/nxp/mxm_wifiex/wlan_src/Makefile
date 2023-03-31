@@ -364,9 +364,9 @@ ifeq ($(GCC_VERSION),1)
 	ccflags-y += -Wno-packed-bitfield-compat
 endif
 WimpGCC_VERSION := $(shell echo `gcc -dumpversion | cut -f1 -d.`| bc )
-ifeq ($(shell test $(WimpGCC_VERSION) -ge 7; echo $$?),0)
-ccflags-y += -Wimplicit-fallthrough=3
-endif
+#ifeq ($(shell test $(WimpGCC_VERSION) -ge 7; echo $$?),0)
+#ccflags-y += -Wimplicit-fallthrough=3
+#endif
 #ccflags-y += -Wunused-but-set-variable
 #ccflags-y += -Wmissing-prototypes
 #ccflags-y += -Wold-style-definition

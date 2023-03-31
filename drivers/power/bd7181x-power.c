@@ -34,22 +34,14 @@
 
 #define USE_INTERRUPTIONS	0			// Interrupts are not being handled. Unused code
 
-
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
-
-#define VBAT_CHG1					0x18 // 4.2V
-#define VBAT_CHG2					0x13 // 4.1V
-#define VBAT_CHG3					0x10 // 4.04V
-#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
 
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	// uA
 #define TRICKLE_CURRENT		25000	// uA
 #define PRECHARGE_CURRENT	300000	// uA
-
-#define DCIN_DETECTION_THRESHOLD 0x35 // 0x35-> 53 * (80mV) -> 4.24V
 
 #define SIGNAL_CONSECUTIVE_HITS					3 	// hits are produced every JITTER_DEFAULT period
 #define EMERGENCY_SIGNAL_CONSECUTIVE_HITS		30		
@@ -108,6 +100,16 @@ module_param(mmc_name, charp, 0644);
 
 struct tn_power_values_st {
 	// Termination current: Charging Termination Current for Fast Charge 10 mA to 200 mA range. Depends on Rsense value
+	//IFST_TERM Rsence 10mOhm		30mOhm
+	// 0x00 	-> 		0mA			0mA
+	// 0x01 	-> 		10mA		3.33mA
+	// 0x02 	-> 		20mA		6.66mA
+	// 0x03 	-> 		30mA		10mA
+	// 0x04 	-> 		40mA		13.3mA
+	// 0x05 	-> 		50mA		16.7mA
+	// 0x06 	-> 		100mA		33.3mA
+	// 0x07 	-> 		150mA		50mA
+	// 0x08 	-> 		200mA		66.7mA
 	int term_current;
 	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range. Depends on Rsense value
 	int fast_charge_current;
@@ -130,18 +132,34 @@ struct tn_power_values_st {
 	// voltage. In this case recharge threshold must be lower than the "dropped" value, otherwise recharge will start immediatelly and the green led will
 	// not be lit
 	int recharge_threshold;
+	int vbat_chg1; // ROOM
+	int vbat_chg2; // HOT1
+	int vbat_chg3; // HOT2 & COLD1
+	// DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
+    // When DCINOK = L, Anti-collapse detection is invalid.
+    // When DCIN < DCIN_CLPS is detected, the charger decreases the input current restriction value.
+    // DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
+    // If DCIN_CLPS set lower than these value, can't detect removing DCIN.
+	int dcin_anticolapse_voltage;
+	// DCIN Voltage Alarm Threshold. Setting Range is from 0.0V to 20.4V, 80mV steps
+	int dcin_detection_threshold;
 	int ocv_table[OCV_TABLE_SIZE];
 };
 
 static const struct tn_power_values_st TN_POWER_CROSS = {
 	// Ext MOSFET and Rsns=10mOh
-	.term_current = 0x06,
+	.term_current = 0x06, // 0.02C = 0.02 * 3300 = 66mA -> 0x05(50mA) 0x06(100mA)
 	.fast_charge_current = 0x0A, // 1A -> 0x0A (100mA steps)
 	.capacity = 3300,
 	.low_voltage_th = 0x00D6, // 0x00D6 (214) * 16mV = 3.4297V,
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V : Voltage has to be higher than 4.184V when charging with constant voltage
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V : Recharg will start when voltage drops under 4.15V
 	.over_current_threshold = 0xAB, // 0XAB -> 171 * 64mA(step) = 1094.4mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x35, // 0x35 -> 53 * (80mV steps) = 4.24V > VBAT_CHG1
+	.dcin_detection_threshold = 0x35, // 0x35-> 53 * (80mV) -> 4.24V
 	.ocv_table = {
 			4200000,
 			4194870,
@@ -171,13 +189,18 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 
 static const struct tn_power_values_st TN_POWER_TRAIL = {
 	// Ext MOSFET and Rsns=10mOh
-	.term_current = 0x05,
+	.term_current = 0x06, // 0.02C = 0.02 * 4000 = 80mA -> 0x05(50mA) 0x06(100mA)
 	.fast_charge_current = 0x0A,
 	.capacity = 4000,
 	.low_voltage_th = 0x00D0, // 3340 / 16mV = 208 -> 0x00D0
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
 	.over_current_threshold = 0xAB, // 1100mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x35, // 0x35 -> 53 * (80mV steps) = 4.24V > VBAT_CHG1
+	.dcin_detection_threshold = 0x35, // 0x35-> 53 * (80mV) -> 4.24V
 	.ocv_table = {
 			4200000,
 			4165665,
@@ -207,13 +230,18 @@ static const struct tn_power_values_st TN_POWER_TRAIL = {
 
 static const struct tn_power_values_st TN_POWER_AVENTURA = {
 	// Ext MOSFET and Rsns=10mOh
-	.term_current = 0x06,
+	.term_current = 0x08, // 0.05C = 0.05 * 6000 = 300mA -> 0x08(200mA)
 	.fast_charge_current = 0x0A,
 	.capacity = 6000,
 	.low_voltage_th = 0x00D0, // 3331 / 16mV = 208 -> 0x00D0
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
 	.over_current_threshold = 0xAB, // 1100mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x35, // 4.24V - register 0x43 (80mV steps)
+	.dcin_detection_threshold = 0x35, // 0x35-> 53 * (80mV) -> 4.24V
 	.ocv_table = {	
 			4200000,
 			4191700,
@@ -243,7 +271,7 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 
 static const struct tn_power_values_st TN_POWER_TERRA = {
 	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
-	.term_current = 0x05, // Theoretical term current 0.02C=2650*0.02=53mA. With 14.5mA steps register should be 53/14.5=4. We will use 5 (72.5mA) for safety
+	.term_current = 0x05, // 0.02C = 0.02 * 2650 =  -> 53mA 0x05(50mA) 0x06(100mA)
 	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7
 	.capacity = 2650,
 	.low_voltage_th = 0x0C8, // 3200 * 16mV (step) = 200 -> 0x00C8
@@ -254,6 +282,11 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	// can reduce battery life. Until we do something about the recharge threshold should be set to 4.1V.
 	.recharge_threshold = 0x15, // 0.1V -> 4.2-0.1=4.1V
 	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x35, // 4.160 XXX 4.24V - register 0x43 (80mV steps)
+	.dcin_detection_threshold = 0x35, // 0x35-> 53 * (80mV) -> 4.24V
 	.ocv_table = {	
 			4200000,
 			4186800,
@@ -280,6 +313,51 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 			3000000,
 	}		
 };				
+
+static const struct tn_power_values_st TN_POWER_ROC = {
+	// Ext MOSFET and Rsns=5mOh (R)+~5mOhms (Rpistas) -> 10mOhms
+	.term_current = 0x07, // Theoretical term current 0.05C = 0.05 * 2500 = 125mA -> 0x06(100mA) 0x07(150mA) -> 150mA
+	// Rsense 10mOhms -> step is 100mA
+	.fast_charge_current = 0x0A,
+	.capacity = 2500, // real value might be a little more (2540mAh)
+	.low_voltage_th = 0x0D5, // 3408 * 16mV (step) = 213 -> 0x00D5
+	.fast_charge_termination_voltage = 0x62,// 4.34-0.016V = 4.324V
+	// Because Murata chip cannot enter low power modes and is connected dirrectly to the battery, when 100% is reached
+	// and charger gets disconnected, a significant voltage drop (from 4.34 -> ~4.28) is caused. Our intention is 30m-1h
+	// recharge cycle.
+	.recharge_threshold = 0x45, // 0.1V -> 4.34-0.1V=4.24V -> measure 30 min 80mA -> 4259
+	.over_current_threshold = 0x12, // 9 * 64 (steps) = 1152mA for Rsense 10mOhms (not used)
+	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
+	.vbat_chg2 = 0x18, // 4.2V
+	.vbat_chg3 = 0x13, // 4.1V
+	.dcin_anticolapse_voltage = 0x37, // 4.4V - register 0x43 (80mV steps) TWON-18567
+	.dcin_detection_threshold = 0x36, // 0x35-> 53 * (80mV) -> 4.32V
+	.ocv_table = {
+			4340000,
+			4299900,
+			4209200,
+			4154300,
+			4101600,
+			4051100,
+			4007000,
+			3947200,
+			3911900,
+			3870300,
+			3831600,
+			3802700,
+			3779500,
+			3760600,
+			3744400,
+			3731400,
+			3719600,
+			3702900,
+			3677500,
+			3645600,
+			3623900,
+			3370300,
+			3010000,
+	}
+};
 
 /*
 Rsense configuration:
@@ -333,6 +411,11 @@ static void twonav_init_type(void) {
 		tn_power_values = TN_POWER_AVENTURA;
 		rsense_capacity_factor = 248; // verify
 		rsense_current_factor = 1449; // verify
+	}
+	else if(strstr(hwtype, "roc") != NULL) {
+		tn_power_values = TN_POWER_ROC;
+		rsense_capacity_factor = 360;
+		rsense_current_factor = 1000;
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
 		tn_power_values = TN_POWER_AVENTURA;
@@ -390,6 +473,26 @@ static int get_lowbatt_voltage_th(void) {
 static int get_lowbatt_voltage(void) {	
 	int low_voltage = get_lowbatt_voltage_th() * VBAT_LOW_STEP;
 	return low_voltage; // mV	
+}
+
+static int get_vbat_chg1(void) {
+	return tn_power_values.vbat_chg1;
+}
+
+static int get_vbat_chg2(void) {
+	return tn_power_values.vbat_chg2;
+}
+
+static int get_vbat_chg3(void) {
+	return tn_power_values.vbat_chg3;
+}
+
+static int get_dcin_anticolapse_voltage(void) {
+	return tn_power_values.dcin_anticolapse_voltage;
+}
+
+static int get_dcin_detection_threshold(void) {
+	return tn_power_values.dcin_detection_threshold;
 }
 
 unsigned int battery_cycle;
@@ -954,6 +1057,7 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, int ocv_type) {
  * @return 0
  */
 static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
+	return 0;
 	u32 relaxed_coulomb_cnt;
 
 	relaxed_coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_REX_CCNTD_3) & 0x1FFFFFFFUL;
@@ -1086,6 +1190,7 @@ static int bd7181x_get_battery_parameters(struct bd7181x_power* pwr)
  */
 static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 {
+	return 0;
 	int tmp_curr_mA;
 
 	tmp_curr_mA = pwr->curr / 1000;
@@ -1445,9 +1550,9 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 static void bd7181x_init_registers(struct bd7181x *mfd)
 {
 	// Fast Charging Voltage for the temperature ranges
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, get_vbat_chg1()); // ROOM
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, get_vbat_chg2()); // HOT1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, get_vbat_chg3()); // HOT2 & COLD1
 
 	// We manually set watch-dog timers for pre-fast charge because with colapsed
 	// charging we can reach 10hrs default limmit
@@ -1456,7 +1561,7 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_WDT_FST, WDT_FST_VALUE);
 
 	// DCIN detection threshold
-	bd7181x_reg_write(mfd, BD7181X_REG_ALM_DCIN_TH, DCIN_DETECTION_THRESHOLD);
+	bd7181x_reg_write(mfd, BD7181X_REG_ALM_DCIN_TH, get_dcin_detection_threshold());
 
 	/* DCIN Anti-collapse entry voltage threshold 0.08V to 20.48V range, 80 mV steps.
 	 * When DCINOK = L, Anti-collapse detection is invalid.
@@ -1464,7 +1569,7 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
 	 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
 	 */
-	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, DCIN_ANTICOLAPSE_VOLTAGE); // 4.24V
+	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, get_dcin_anticolapse_voltage());
 
 	// Configure Trickle and Pre-charging current
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
@@ -1484,6 +1589,10 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_BAT_SET_3, get_fast_charge_termination_voltage());
 
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
+
+	/* Mask Relax decision by PMU STATE */
+	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
+	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_2, 0x00);
 }
 
 
@@ -1607,10 +1716,6 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		// bit 1-0 Transition Timer Setting from the Suspend State to the Trickle state.
 		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET2, 0xD8);
 
-		/* Mask Relax decision by PMU STATE */ // 0xE6
-		// ?????????????????????????? value 0x04 Mask a condition according to Power State for Relax State detection.
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
-
 		/* Set Battery Capacity Monitor threshold1 as 90% */
 		cc_batcap1_th = get_battery_capacity() * 9 / 10;
 		bd7181x_reg_write16(mfd, BD7181X_REG_CC_BATCAP1_TH_U, cc_batcap1_th);  // Interrupt CC_MON1_DET (INTB)
@@ -1619,7 +1724,7 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* Enable LED ON when charging */ // 0x0E
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_LED_CTRL, CHGDONE_LED_EN);
 
-		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, get_over_current_threshold()); // 1100mA
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_OCUR_THR_1, get_over_current_threshold());
 
 		// Battery over-temperature threshold. The value is set in 1-degree units, -55 to 200 degree range.
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_VM_BTMP_OV_THR, 0x8C); // 95ºC ???
