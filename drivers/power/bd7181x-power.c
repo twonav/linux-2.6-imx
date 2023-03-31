@@ -38,9 +38,6 @@
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
-#define VBAT_CHG1					0x18 // 4.2V
-#define VBAT_CHG2					0x13 // 4.1V
-#define VBAT_CHG3					0x10 // 4.04V
 #define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
 
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
@@ -130,6 +127,9 @@ struct tn_power_values_st {
 	// voltage. In this case recharge threshold must be lower than the "dropped" value, otherwise recharge will start immediatelly and the green led will
 	// not be lit
 	int recharge_threshold;
+	int vbat_chg1; // ROOM
+	int vbat_chg2; // HOT1
+	int vbat_chg3; // HOT2 & COLD1
 	int ocv_table[OCV_TABLE_SIZE];
 };
 
@@ -142,6 +142,9 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V : Voltage has to be higher than 4.184V when charging with constant voltage
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V : Recharg will start when voltage drops under 4.15V
 	.over_current_threshold = 0xAB, // 0XAB -> 171 * 64mA(step) = 1094.4mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
 	.ocv_table = {
 			4200000,
 			4194870,
@@ -178,6 +181,9 @@ static const struct tn_power_values_st TN_POWER_TRAIL = {
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
 	.over_current_threshold = 0xAB, // 1100mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
 	.ocv_table = {
 			4200000,
 			4165665,
@@ -214,6 +220,9 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
 	.over_current_threshold = 0xAB, // 1100mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
 	.ocv_table = {	
 			4200000,
 			4191700,
@@ -254,6 +263,9 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	// can reduce battery life. Until we do something about the recharge threshold should be set to 4.1V.
 	.recharge_threshold = 0x15, // 0.1V -> 4.2-0.1=4.1V
 	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
+	.vbat_chg1 = 0x18, // 4.2V
+	.vbat_chg2 = 0x13, // 4.1V
+	.vbat_chg3 = 0x10, // 4.04V
 	.ocv_table = {	
 			4200000,
 			4186800,
@@ -280,6 +292,51 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 			3000000,
 	}		
 };				
+
+static const struct tn_power_values_st TN_POWER_ROC = { /* PROVISIONAL */
+	// TODO: all these values have to berevised this change is only to support charging at 4.34V
+	// Ext MOSFET and Rsns=6.9mOh - (steps are changed) TODO: REVISION
+	// TODO REVISION: how is termination current affected by charging until 4.34 instead of 4.35 ???
+	.term_current = 0x04, // Theoretical term current 0.02C=2000*0.02=40mA. With 14.5mA steps register should be 40/14.5=2.75. We will use 4 (58mA) for safety
+	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7
+	.capacity = 2000,
+	.low_voltage_th = 0x0C8, // 3200 * 16mV (step) = 200 -> 0x00C8
+	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.34-0.016=4.324V
+	// Because Murata chip cannot enter low power modes and is connected dirrectly to the battery, when 100% is reached
+	// and charger gets disconnected, a significant voltage drop (from 4.2 -> 4.16) is caused. With a recharge threshold of
+	// 4.1V the recharge cycle happens every hour, 100%->97%->100%. If we increase the threshold to 4.15V the cycle will be much shorter and this
+	// can reduce battery life. Until we do something about the recharge threshold should be set to 4.1V.
+	.recharge_threshold = 0x35, // 0.1V -> 4.34-0.1=4.24V
+	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
+	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
+	.vbat_chg2 = 0x1A, // 4.24V
+	.vbat_chg3 = 0x15, // 4.14V
+	.ocv_table = { // TODO: this table has to be revised
+			4340000,
+			4186800,
+			4116705,
+			4062483,
+			4013969,
+			3970806,
+			3932621,
+			3899026,
+			3869617,
+			3843976,
+			3821668,
+			3802243,
+			3785236,
+			3770166,
+			3756538,
+			3743839,
+			3731542,
+			3719106,
+			3690635,
+			3610121,
+			3550071,
+			3231182,
+			3000000,
+	}
+};
 
 /*
 Rsense configuration:
@@ -333,6 +390,11 @@ static void twonav_init_type(void) {
 		tn_power_values = TN_POWER_AVENTURA;
 		rsense_capacity_factor = 248; // verify
 		rsense_current_factor = 1449; // verify
+	}
+	else if(strstr(hwtype, "roc") != NULL) {
+		tn_power_values = TN_POWER_ROC;
+		rsense_capacity_factor = 248; // TODO : Verify
+		rsense_current_factor = 1449; // TODO : Verify
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
 		tn_power_values = TN_POWER_AVENTURA;
@@ -390,6 +452,18 @@ static int get_lowbatt_voltage_th(void) {
 static int get_lowbatt_voltage(void) {	
 	int low_voltage = get_lowbatt_voltage_th() * VBAT_LOW_STEP;
 	return low_voltage; // mV	
+}
+
+static int get_vbat_chg1(void) {
+	return tn_power_values.vbat_chg1;
+}
+
+static int get_vbat_chg2(void) {
+	return tn_power_values.vbat_chg2;
+}
+
+static int get_vbat_chg3(void) {
+	return tn_power_values.vbat_chg3;
 }
 
 unsigned int battery_cycle;
@@ -1445,9 +1519,9 @@ static int bd7181x_get_online(struct bd7181x_power* pwr) {
 static void bd7181x_init_registers(struct bd7181x *mfd)
 {
 	// Fast Charging Voltage for the temperature ranges
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, VBAT_CHG1); // ROOM
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, VBAT_CHG2); // HOT1
-	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, VBAT_CHG3); // HOT2 & COLD1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_1, get_vbat_chg1()); // ROOM
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_2, get_vbat_chg2()); // HOT1
+	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VBAT_3, get_vbat_chg3()); // HOT2 & COLD1
 
 	// We manually set watch-dog timers for pre-fast charge because with colapsed
 	// charging we can reach 10hrs default limmit
