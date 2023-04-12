@@ -38,8 +38,6 @@
 #define JITTER_DEFAULT		3000		/* seconds */
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
-#define DCIN_ANTICOLAPSE_VOLTAGE 	0x34 // 4.24V - register 0x43 (80mV steps)
-
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
 #define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	// uA
@@ -130,6 +128,7 @@ struct tn_power_values_st {
 	int vbat_chg1; // ROOM
 	int vbat_chg2; // HOT1
 	int vbat_chg3; // HOT2 & COLD1
+	int dcin_anticolapse_voltage; // DCIN_ANTICOLAPSE_VOLTAGE
 	int ocv_table[OCV_TABLE_SIZE];
 };
 
@@ -145,6 +144,7 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x34, // 4.24V - register 0x43 (80mV steps)
 	.ocv_table = {
 			4200000,
 			4194870,
@@ -184,6 +184,7 @@ static const struct tn_power_values_st TN_POWER_TRAIL = {
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x34, // 4.24V - register 0x43 (80mV steps)
 	.ocv_table = {
 			4200000,
 			4165665,
@@ -223,6 +224,7 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x34, // 4.24V - register 0x43 (80mV steps)
 	.ocv_table = {	
 			4200000,
 			4191700,
@@ -266,6 +268,7 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
+	.dcin_anticolapse_voltage = 0x34, // 4.24V - register 0x43 (80mV steps)
 	.ocv_table = {	
 			4200000,
 			4186800,
@@ -311,6 +314,7 @@ static const struct tn_power_values_st TN_POWER_ROC = { /* PROVISIONAL */
 	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
 	.vbat_chg2 = 0x1A, // 4.24V
 	.vbat_chg3 = 0x15, // 4.14V
+	.dcin_anticolapse_voltage = 0x36, // 4.4V - register 0x43 (80mV steps) TWON-18567
 	.ocv_table = { // TODO: this table has to be revised
 			4340000,
 			4186800,
@@ -464,6 +468,10 @@ static int get_vbat_chg2(void) {
 
 static int get_vbat_chg3(void) {
 	return tn_power_values.vbat_chg3;
+}
+
+static int get_dcin_anticolapse_voltage(void) {
+	return tn_power_values.dcin_anticolapse_voltage;
 }
 
 unsigned int battery_cycle;
@@ -1538,7 +1546,7 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	 * DCIN_CLPS voltage must be set higher than VBAT_CHG1, VBAT_CHG2, and VBAT_CHG3.
 	 * If DCIN_CLPS set lower than these value, can't detect removing DCIN.
 	 */
-	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, DCIN_ANTICOLAPSE_VOLTAGE); // 4.24V
+	bd7181x_reg_write(mfd, BD7181X_REG_DCIN_CLPS, get_dcin_anticolapse_voltage());
 
 	// Configure Trickle and Pre-charging current
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
