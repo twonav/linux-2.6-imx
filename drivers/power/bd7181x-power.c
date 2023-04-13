@@ -312,8 +312,8 @@ static const struct tn_power_values_st TN_POWER_ROC = { /* PROVISIONAL */
 	.recharge_threshold = 0x35, // 0.1V -> 4.34-0.1=4.24V
 	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
 	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
-	.vbat_chg2 = 0x1A, // 4.24V
-	.vbat_chg3 = 0x15, // 4.14V
+	.vbat_chg2 = 0x18, // 4.2V
+	.vbat_chg3 = 0x13, // 4.1V
 	.dcin_anticolapse_voltage = 0x36, // 4.4V - register 0x43 (80mV steps) TWON-18567
 	.ocv_table = { // TODO: this table has to be revised
 			4340000,
