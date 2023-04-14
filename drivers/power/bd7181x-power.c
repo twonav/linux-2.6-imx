@@ -397,8 +397,11 @@ static void twonav_init_type(void) {
 	}
 	else if(strstr(hwtype, "roc") != NULL) {
 		tn_power_values = TN_POWER_ROC;
-		rsense_capacity_factor = 248; // TODO : Verify
-		rsense_current_factor = 1449; // TODO : Verify
+		//rsense_capacity_factor = 248;
+		//rsense_current_factor = 1449;
+		// TODO : Verify
+		rsense_capacity_factor = 360;
+		rsense_current_factor = 1000;
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
 		tn_power_values = TN_POWER_AVENTURA;
