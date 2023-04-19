@@ -94,6 +94,9 @@ typedef MLAN_PACK_START struct {
 /** Setup the number of rates passed in the driver/firmware API */
 #define A_SUPPORTED_RATES 9
 
+/** IEEEtypes Data Frame Subtype of QoS pkt */
+#define QOS_DATA 8
+
 /** CapInfo Short Slot Time Disabled */
 /* #define SHORT_SLOT_TIME_DISABLED(CapInfo)
  * ((IEEEtypes_CapInfo_t)(CapInfo).short_slot_time = 0) */
@@ -245,7 +248,7 @@ typedef enum _KEY_INFO_WAPI {
 #define MRVDRV_SNAP_HEADER_LEN 8
 
 /** The number of times to try when polling for status bits */
-#define MAX_POLL_TRIES 100
+#define MAX_POLL_TRIES 300
 
 /** The number of times to try when waiting for downloaded firmware to
      become active when multiple interface is present */
@@ -1298,10 +1301,18 @@ typedef enum _WLAN_802_11_WEP_STATUS {
 /** Host Command ID : ROAMING OFFLOAD TO FW*/
 #define HostCmd_CMD_ROAM_OFFLOAD 0x0245
 
-#ifdef RX_PACKET_COALESCE
-/** TLV ID for RX pkt coalesce config */
-#define TLV_TYPE_RX_PKT_COAL_CONFIG (PROPRIETARY_TLV_BASE_ID + 0xC9)
-#endif
+/** Host Command ID: Multi chan config */
+#define HostCmd_CMD_MULTI_CHAN_CONFIG 0x011e
+/** Host Command ID: Multi chan policy */
+#define HostCmd_CMD_MULTI_CHAN_POLICY 0x0121
+/** TLV ID for multi chan info */
+#define TLV_TYPE_MULTI_CHAN_INFO (PROPRIETARY_TLV_BASE_ID + 0xb7)
+/** TLV ID for multi chan group info */
+#define TLV_TYPE_MULTI_CHAN_GROUP_INFO_TLV_ID (PROPRIETARY_TLV_BASE_ID + 0xb8)
+/** TLV ID for DRCS TimeSlice */
+#define MRVL_DRCS_TIME_SLICE_TLV_ID (PROPRIETARY_TLV_BASE_ID + 263)
+/** Host Command ID: DRCS config */
+#define HostCmd_CMD_DRCS_CONFIG 0x024a
 
 #define TLV_TYPE_PREV_BSSID (PROPRIETARY_TLV_BASE_ID + 330)
 
@@ -1553,10 +1564,11 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_He_Op_t {
 	t_u8 option[9];
 } MLAN_PACK_END MrvlIEtypes_He_Op_t;
 
-#ifdef RX_PACKET_COALESCE
-/** Host Command ID : Rx packet coalescing configuration */
-#define HostCmd_CMD_RX_PKT_COALESCE_CFG 0x012c
-#endif
+/** fw_cap_info bit30 for Embedded OWE Support*/
+#define FW_CAPINFO_EMBEDDED_OWE_SUPPORT MBIT(30)
+/** Check if Embedded OWE is supported by firmware */
+#define IS_FW_SUPPORT_EMBEDDED_OWE(_adapter)                                   \
+	(_adapter->fw_cap_info & FW_CAPINFO_EMBEDDED_OWE_SUPPORT)
 
 /** Host Command ID : Extended scan support */
 #define HostCmd_CMD_802_11_SCAN_EXT 0x0107
@@ -1622,6 +1634,9 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_He_Op_t {
 
 /** Host Command ID : OTP user data */
 #define HostCmd_CMD_OTP_READ_USER_DATA 0x0114
+
+/** Host Command ID: fw auto reconnect */
+#define HostCmd_CMD_FW_AUTO_RECONNECT 0x0115
 
 /** Host Command ID: HS wakeup reason */
 #define HostCmd_CMD_HS_WAKEUP_REASON 0x0116
@@ -2060,6 +2075,9 @@ typedef enum _ENH_PS_MODES {
 /** Event ID: SAD Report */
 #define EVENT_SAD_REPORT 0x00000066
 
+/** Event ID: Multi Chan Info*/
+#define EVENT_MULTI_CHAN_INFO 0x0000006a
+
 #define EVENT_FW_DUMP_INFO 0x00000073
 /** Event ID: Tx status */
 #define EVENT_TX_STATUS_REPORT 0x00000074
@@ -2081,6 +2099,8 @@ typedef enum _ENH_PS_MODES {
 /** Card Event definition : RESET PN */
 
 #define EVENT_ASSOC_REQ_IE 0x00000095
+
+#define CHAN_LOAD_EVENT 0x00000099
 
 /** Event ID mask */
 #define EVENT_ID_MASK 0xffff
@@ -2166,6 +2186,8 @@ typedef enum _tdls_error_code_e {
 
 #define RXPD_FLAG_EXTRA_HEADER (1 << 1)
 
+#define RXPD_FLAG_UCAST_PKT (1 << 3)
+
 /** Event_WEP_ICV_ERR structure */
 typedef MLAN_PACK_START struct _Event_WEP_ICV_ERR {
 	/** Reason code */
@@ -2215,6 +2237,10 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_TDLS_Idle_Timeout_t {
 #define PAIRWISE_CIPHER_SUITE_LEN 4
 /** AKM Suite length */
 #define AKM_SUITE_LEN 4
+/** PMKID length */
+#define PMKID_LEN 16
+/** Group mgmt Cipher Suite length */
+#define GROUP_MGMT_CIPHER_SUITE_LEN 4
 /** MFPC bit in RSN capability */
 #define MFPC_BIT 7
 /** MFPR bit in RSN capability */
@@ -2261,6 +2287,43 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_TDLS_Idle_Timeout_t {
 #define TXPD_RETRY_ENABLE MBIT(12)
 
 /** tx_control*/
+#ifdef BIG_ENDIAN_SUPPORT
+typedef MLAN_PACK_START struct _tx_ctrl {
+	/** reserved */
+	t_u32 reserved : 3;
+	/** mc retry packet */
+	t_u32 mc_pkt_retry : 1;
+	/** end of mc AMPDU */
+	t_u32 mc_ampdu_end : 1;
+	/** start of mc AMPDU */
+	t_u32 mc_ampdu_start : 1;
+	/** End of mc cycle */
+	t_u32 mc_cycle_end : 1;
+	/** start of mc cycle */
+	t_u32 mc_cycle_start : 1;
+	/** bw 0-20MHz, 1-40MHz */
+	t_u32 bw : 3;
+	/** Rate used for transmission MCS0-7*/
+	t_u32 tx_rate : 5;
+	/** Control the use of txRate. 0 - use FW setting, 1 - use the specified
+	 * txRate;*/
+	t_u32 host_txrate_ctrl : 1;
+	/**  0/1 - use FW setting, 2 - ACK_IMMD, 3 - NO_ACK.*/
+	t_u32 ack_policy : 2;
+	/** Control the use of retryLimit. 0 - use FW setting, 1 - use the
+	 * specified retryLimit.*/
+	t_u32 host_retry_ctrl : 1;
+	/** retry limit */
+	t_u32 retry_limit : 4;
+	/** Control the use of txPower. 0 - use FW power setting, 1 - use the
+	 * specified txPower.*/
+	t_u32 host_tx_powerctrl : 1;
+	/** Sign of the txPower, 0 - positive_sign(+), 1 - negative_sign(-). */
+	t_u32 tx_power_sign : 1;
+	/** Power used for transmission(in dBm); */
+	t_u32 tx_power : 6;
+} MLAN_PACK_END tx_ctrl;
+#else
 typedef MLAN_PACK_START struct _tx_ctrl {
 	/** Power used for transmission(in dBm); */
 	t_u32 tx_power : 6;
@@ -2296,6 +2359,7 @@ typedef MLAN_PACK_START struct _tx_ctrl {
 	/** reserved */
 	t_u32 reserved : 3;
 } MLAN_PACK_END tx_ctrl;
+#endif
 
 /** mc tx ctrl */
 typedef MLAN_PACK_START struct _mc_tx_ctrl {
@@ -2378,6 +2442,32 @@ typedef MLAN_PACK_START struct _RxPD {
 } MLAN_PACK_END RxPD, *PRxPD;
 
 /** IEEEtypes_FrameCtl_t*/
+#ifdef BIG_ENDIAN_SUPPORT
+typedef MLAN_PACK_START struct _IEEEtypes_FrameCtl_t {
+	/** Order */
+	t_u8 order : 1;
+	/** Wep */
+	t_u8 wep : 1;
+	/** More Data */
+	t_u8 more_data : 1;
+	/** Power Mgmt */
+	t_u8 pwr_mgmt : 1;
+	/** Retry */
+	t_u8 retry : 1;
+	/** More Frag */
+	t_u8 more_frag : 1;
+	/** From DS */
+	t_u8 from_ds : 1;
+	/** To DS */
+	t_u8 to_ds : 1;
+	/** Sub Type */
+	t_u8 sub_type : 4;
+	/** Type */
+	t_u8 type : 2;
+	/** Protocol Version */
+	t_u8 protocol_version : 2;
+} MLAN_PACK_END IEEEtypes_FrameCtl_t;
+#else
 typedef MLAN_PACK_START struct _IEEEtypes_FrameCtl_t {
 	/** Protocol Version */
 	t_u8 protocol_version : 2;
@@ -2402,6 +2492,7 @@ typedef MLAN_PACK_START struct _IEEEtypes_FrameCtl_t {
 	/** Order */
 	t_u8 order : 1;
 } MLAN_PACK_END IEEEtypes_FrameCtl_t;
+#endif
 
 /** MrvlIETypes_MgmtFrameSet_t */
 typedef MLAN_PACK_START struct _MrvlIETypes_MgmtFrameSet_t {
@@ -2512,6 +2603,24 @@ typedef MLAN_PACK_START struct _parsed_region_chan_11d {
 
 /** ChanScanMode_t */
 typedef MLAN_PACK_START struct _ChanScanMode_t {
+#ifdef BIG_ENDIAN_SUPPORT
+	/** Reserved */
+	t_u8 reserved_7 : 1;
+	/** First passive scan then active scan */
+	t_u8 passive_to_active_scan : 1;
+	/** First channel in scan */
+	t_u8 first_chan : 1;
+	/** Enable hidden ssid report */
+	t_u8 hidden_ssid_report : 1;
+	/** Enable probe response timeout */
+	t_u8 rsp_timeout_en : 1;
+	/** Multidomain scan mode */
+	t_u8 multidomain_scan : 1;
+	/** Disble channel filtering flag */
+	t_u8 disable_chan_filt : 1;
+	/** Channel scan mode passive flag */
+	t_u8 passive_scan : 1;
+#else
 	/** Channel scan mode passive flag */
 	t_u8 passive_scan : 1;
 	/** Disble channel filtering flag */
@@ -2528,6 +2637,7 @@ typedef MLAN_PACK_START struct _ChanScanMode_t {
 	t_u8 passive_to_active_scan : 1;
 	/** Reserved */
 	t_u8 reserved_7 : 1;
+#endif
 } MLAN_PACK_END ChanScanMode_t;
 
 /** ChanScanParamSet_t */
@@ -2984,24 +3094,50 @@ typedef MLAN_PACK_START struct _HostCmd_DS_GTK_REKEY_PARAMS {
 
 /** Data structure of WMM QoS information */
 typedef MLAN_PACK_START struct _WmmQosInfo_t {
+#ifdef BIG_ENDIAN_SUPPORT
+	/** QoS UAPSD */
+	t_u8 qos_uapsd : 1;
+	/** Reserved */
+	t_u8 reserved : 3;
+	/** Parameter set count */
+	t_u8 para_set_count : 4;
+#else
 	/** Parameter set count */
 	t_u8 para_set_count : 4;
 	/** Reserved */
 	t_u8 reserved : 3;
 	/** QoS UAPSD */
 	t_u8 qos_uapsd : 1;
+#endif /* BIG_ENDIAN_SUPPORT */
 } MLAN_PACK_END WmmQosInfo_t, *pWmmQosInfo_t;
 
 /** Data structure of WMM ECW */
 typedef MLAN_PACK_START struct _WmmEcw_t {
+#ifdef BIG_ENDIAN_SUPPORT
+	/** Maximum Ecw */
+	t_u8 ecw_max : 4;
+	/** Minimum Ecw */
+	t_u8 ecw_min : 4;
+#else
 	/** Minimum Ecw */
 	t_u8 ecw_min : 4;
 	/** Maximum Ecw */
 	t_u8 ecw_max : 4;
+#endif /* BIG_ENDIAN_SUPPORT */
 } MLAN_PACK_END WmmEcw_t, *pWmmEcw_t;
 
 /** Data structure of WMM Aci/Aifsn */
 typedef MLAN_PACK_START struct _WmmAciAifsn_t {
+#ifdef BIG_ENDIAN_SUPPORT
+	/** Reserved */
+	t_u8 reserved : 1;
+	/** Aci */
+	t_u8 aci : 2;
+	/** Acm */
+	t_u8 acm : 1;
+	/** Aifsn */
+	t_u8 aifsn : 4;
+#else
 	/** Aifsn */
 	t_u8 aifsn : 4;
 	/** Acm */
@@ -3010,6 +3146,7 @@ typedef MLAN_PACK_START struct _WmmAciAifsn_t {
 	t_u8 aci : 2;
 	/** Reserved */
 	t_u8 reserved : 1;
+#endif /* BIG_ENDIAN_SUPPORT */
 } MLAN_PACK_END WmmAciAifsn_t, *pWmmAciAifsn_t;
 
 /** Data structure of WMM AC parameters  */
@@ -3162,6 +3299,14 @@ typedef MLAN_PACK_START struct _mef_op {
 	t_u8 val[MAX_NUM_BYTE_SEQ + 1];
 } MLAN_PACK_END mef_op;
 
+/** Structure definition for low power mode cfg command */
+typedef MLAN_PACK_START struct _HostCmd_DS_LOW_POWER_MODE_CFG {
+	/** Action */
+	t_u16 action;
+	/** Low power mode */
+	t_u16 lpm;
+} MLAN_PACK_END HostCmd_DS_LOW_POWER_MODE_CFG;
+
 /* HostCmd_DS_802_11_SLEEP_PERIOD */
 typedef MLAN_PACK_START struct _HostCmd_DS_802_11_SLEEP_PERIOD {
 	/** ACT_GET/ACT_SET */
@@ -3287,14 +3432,6 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_bcn_timeout_t {
 	/** Beacon reacquire timeout period */
 	t_u16 bcn_rq_tmo_period;
 } MLAN_PACK_END MrvlIEtypes_bcn_timeout_t;
-
-/** Structure definition for low power mode cfg command */
-typedef MLAN_PACK_START struct _HostCmd_DS_LOW_POWER_MODE_CFG {
-	/** Action */
-	t_u16 action;
-	/** Low power mode */
-	t_u16 lpm;
-} MLAN_PACK_END HostCmd_DS_LOW_POWER_MODE_CFG;
 
 /** Structure definition for new power save command */
 typedef MLAN_PACK_START struct _HostCmd_DS_PS_MODE_ENH {
@@ -3527,7 +3664,9 @@ typedef MLAN_PACK_START struct _HostCmd_DS_GET_CH_LOAD {
 	t_u16 action;
 	t_u16 ch_load;
 	t_s16 noise;
+	t_u16 rx_quality;
 	t_u16 duration;
+	t_u16 cca_th;
 } MLAN_PACK_END HostCmd_DS_GET_CH_LOAD;
 
 /**  HostCmd_DS_CMD_802_11_RSSI_INFO */
@@ -5286,9 +5425,15 @@ typedef MLAN_PACK_START struct {
  */
 typedef MLAN_PACK_START struct {
 	mlan_wmm_queue_stats_action_e action; /**< Start, Stop, or Get */
+#ifdef BIG_ENDIAN_SUPPORT
+	t_u8 select_bin : 7; /**< WMM_AC_BK(0) to WMM_AC_VO(3), or TID */
+	t_u8 select_is_userpri : 1; /**< Set if select_bin is UP, Clear for AC
+				     */
+#else
 	t_u8 select_is_userpri : 1; /**< Set if select_bin is UP, Clear for AC
 				     */
 	t_u8 select_bin : 7; /**< WMM_AC_BK(0) to WMM_AC_VO(3), or TID */
+#endif
 	t_u16 pkt_count; /**< Number of successful packets transmitted */
 	t_u16 pkt_loss; /**< Packets lost; not included in pktCount */
 	t_u32 avg_queue_delay; /**< Average Queue delay in microsec */
@@ -5960,6 +6105,25 @@ typedef MLAN_PACK_START struct _HostCmd_DS_OTP_USER_DATA {
 	/** User data */
 	t_u8 user_data[1];
 } MLAN_PACK_END HostCmd_DS_OTP_USER_DATA;
+
+/** HostCmd_DS_FW_AUTO_RECONNECT */
+typedef MLAN_PACK_START struct _HostCmd_DS_FW_AUTO_RECONNECT {
+	/** ACT_GET/ACT_SET */
+	t_u16 action;
+	/** reconnect counter:
+	 * [0x0]: Do not attempt auto reconnect i.e. disable auto-reconnect
+	 * [0x1-0xFE]: Number of times reconnection needs to be attempted
+	 * [0xFF]: Attempt auto-reconnection forever */
+	t_u8 reconnect_counter;
+	/** reconnect interval */
+	t_u8 reconnect_interval;
+	/** flags:
+	 * [Bit 0]: Set to 1: Firmware should report link-loss to host if AP
+	 * rejects authentication/association while reconnecting Set to 0:
+	 * Default behavior: Firmware does not report link-loss to host on AP
+	 * rejection and continues internally [Bit 1-15]: Reserved */
+	t_u16 flags;
+} MLAN_PACK_END HostCmd_DS_FW_AUTO_RECONNECT;
 
 /** HostCmd_CMD_HS_WAKEUP_REASON */
 typedef MLAN_PACK_START struct _HostCmd_DS_HS_WAKEUP_REASON {
@@ -6822,16 +6986,91 @@ typedef MLAN_PACK_START struct _HostCmd_DS_MIMO_SWITCH {
 	t_u8 rxpath_antmode;
 } MLAN_PACK_END HostCmd_DS_MIMO_SWITCH;
 
-#ifdef RX_PACKET_COALESCE
-typedef MLAN_PACK_START struct _HostCmd_DS_RX_PKT_COAL_CFG {
+typedef MLAN_PACK_START struct _MrvlTypes_DrcsTimeSlice_t {
+	/** Header */
+	MrvlIEtypesHeader_t header;
+	/** Channel Index*/
+	t_u16 chan_idx;
+	/** Channel time (in TU) for chan_idx*/
+	t_u8 chantime;
+	/** Channel swith time (in TU) for chan_idx*/
+	t_u8 switchtime;
+	/** Undoze time (in TU) for chan_idx*/
+	t_u8 undozetime;
+	/** Rx traffic control scheme when channel switch*/
+	/** only valid for GC/STA interface*/
+	t_u8 mode;
+} MLAN_PACK_END MrvlTypes_DrcsTimeSlice_t;
+typedef MLAN_PACK_START struct _HostCmd_DS_MULTI_CHAN_CFG {
 	/** Action */
 	t_u16 action;
-	/** Packet threshold */
-	t_u32 packet_threshold;
-	/** Timeout */
-	t_u16 delay;
-} MLAN_PACK_END HostCmd_DS_RX_PKT_COAL_CFG;
-#endif
+	/** Channel time */
+	t_u32 channel_time;
+	/** Buffer weight */
+	t_u8 buffer_weight;
+	/** TLV buffer */
+	t_u8 tlv_buf[];
+	/* t_u8 *tlv_buf; */
+} MLAN_PACK_END HostCmd_DS_MULTI_CHAN_CFG;
+
+typedef MLAN_PACK_START struct _HostCmd_DS_DRCS_CFG {
+	/** Action */
+	t_u16 action;
+	/** TLV buffer */
+	MrvlTypes_DrcsTimeSlice_t time_slicing;
+	/** TLV buffer */
+	MrvlTypes_DrcsTimeSlice_t drcs_buf[];
+	/* t_u8 *tlv_buf; */
+} MLAN_PACK_END HostCmd_DS_DRCS_CFG;
+
+typedef MLAN_PACK_START struct _HostCmd_DS_MULTI_CHAN_POLICY {
+	/** Action */
+	t_u16 action;
+	/** Multi-channel Policy */
+	t_u16 policy;
+} MLAN_PACK_END HostCmd_DS_MULTI_CHAN_POLICY;
+
+/** Channel band info */
+typedef MLAN_PACK_START struct _ChannelBandInfo {
+	/* band config */
+	Band_Config_t bandcfg;
+	/** channel num for specificed band */
+	t_u8 chan_num;
+} MLAN_PACK_END ChannelBandInfo;
+
+/** MrvlIETypes_mutli_chan_group_info_t */
+typedef MLAN_PACK_START struct _MrvlIETypes_mutli_chan_group_info_t {
+	/** Header */
+	MrvlIEtypesHeader_t header;
+	/** channel group id */
+	t_u8 chan_group_id;
+	/** buffer weight for this channel group */
+	t_u8 chan_buff_weight;
+	/** channel number and band information */
+	ChannelBandInfo chan_band_info;
+	/** Max channel time (us) */
+	t_u32 channel_time;
+	/** Reserved */
+	t_u32 reserved;
+	MLAN_PACK_START union {
+		t_u8 sdio_func_num;
+		t_u8 usb_epnum;
+	} MLAN_PACK_END hid_num;
+	/** interface number in this group */
+	t_u8 num_intf;
+	/** bss_type list */
+	t_u8 bss_type_numlist[];
+} MLAN_PACK_END MrvlIEtypes_multi_chan_group_info_t;
+
+/** MrvlIEtypes_multi_chan_info_t */
+typedef MLAN_PACK_START struct _MrvlIETypes_mutli_chan_info_t {
+	/** Header */
+	MrvlIEtypesHeader_t header;
+	/** multi channel operation status */
+	t_u16 status;
+	/** Tlv buffer */
+	t_u8 tlv_buffer[];
+} MLAN_PACK_END MrvlIEtypes_multi_chan_info_t;
 
 /** TLV buffer : firmware roam keys */
 typedef MLAN_PACK_START struct _MrvlIEtypes_keyParams_t {
@@ -7120,6 +7359,20 @@ typedef MLAN_PACK_START enum _MeasType_t {
  * @brief Mode octet of the measurement request element (7.3.2.21)
  */
 typedef MLAN_PACK_START struct {
+#ifdef BIG_ENDIAN_SUPPORT
+	/**< Reserved */
+	t_u8 rsvd5_7 : 3;
+	/**< 11k: duration spec. for meas. is mandatory */
+	t_u8 duration_mandatory : 1;
+	/**< 11h: en/disable report rcpt. of spec. type */
+	t_u8 report : 1;
+	/**< 11h: en/disable requests of specified type */
+	t_u8 request : 1;
+	/**< 11h: enable report/request bits */
+	t_u8 enable : 1;
+	/**< 11k: series or parallel with previous meas */
+	t_u8 parallel : 1;
+#else
 	/**< 11k: series or parallel with previous meas */
 	t_u8 parallel : 1;
 	/**< 11h: enable report/request bits */
@@ -7132,6 +7385,7 @@ typedef MLAN_PACK_START struct {
 	t_u8 duration_mandatory : 1;
 	/**< Reserved */
 	t_u8 rsvd5_7 : 3;
+#endif /* BIG_ENDIAN_SUPPORT */
 
 } MLAN_PACK_END MeasReqMode_t;
 
@@ -7176,10 +7430,17 @@ typedef union {
  * @brief Mode octet of the measurement report element (7.3.2.22)
  */
 typedef MLAN_PACK_START struct {
+#ifdef BIG_ENDIAN_SUPPORT
+	t_u8 rsvd3_7 : 5; /**< Reserved */
+	t_u8 refused : 1; /**< Measurement refused */
+	t_u8 incapable : 1; /**< Incapable of performing measurement */
+	t_u8 late : 1; /**< Start TSF time missed for measurement */
+#else
 	t_u8 late : 1; /**< Start TSF time missed for measurement */
 	t_u8 incapable : 1; /**< Incapable of performing measurement */
 	t_u8 refused : 1; /**< Measurement refused */
 	t_u8 rsvd3_7 : 5; /**< Reserved */
+#endif /* BIG_ENDIAN_SUPPORT */
 
 } MLAN_PACK_END MeasRptMode_t;
 
@@ -7960,17 +8221,18 @@ typedef struct MLAN_PACK_START _HostCmd_DS_COMMAND {
 #endif
 		HostCmd_DS_GPIO_TSF_LATCH_PARAM_CONFIG gpio_tsf_latch;
 		HostCmd_DS_COALESCE_CONFIG coalesce_config;
+		HostCmd_DS_FW_AUTO_RECONNECT fw_auto_reconnect_cmd;
 		HostCmd_DS_HS_WAKEUP_REASON hs_wakeup_reason;
 		HostCmd_DS_PACKET_AGGR_CTRL aggr_ctrl;
 #ifdef USB
 		HostCmd_DS_PACKET_AGGR_OVER_HOST_INTERFACE packet_aggr;
 #endif
+		HostCmd_DS_MULTI_CHAN_CFG multi_chan_cfg;
+		HostCmd_DS_MULTI_CHAN_POLICY multi_chan_policy;
+		HostCmd_DS_DRCS_CFG drcs_cfg;
 		HostCmd_CONFIG_LOW_PWR_MODE low_pwr_mode_cfg;
 		HostCmd_DS_TSF tsf;
 		HostCmd_DS_DFS_REPEATER_MODE dfs_repeater;
-#ifdef RX_PACKET_COALESCE
-		HostCmd_DS_RX_PKT_COAL_CFG rx_pkt_coal_cfg;
-#endif
 		HostCmd_DS_EAPOL_PKT eapol_pkt;
 		HostCmd_DS_SENSOR_TEMP temp_sensor;
 		HostCMD_DS_APCMD_ACS_SCAN acs_scan;
@@ -8024,6 +8286,7 @@ typedef struct MLAN_PACK_START _HostCmd_DS_COMMAND {
 		struct mfg_cmd_tx_cont mfg_tx_cont;
 		struct mfg_cmd_tx_frame2 mfg_tx_frame2;
 		struct mfg_Cmd_HE_TBTx_t mfg_he_power;
+		mfg_Cmd_IEEEtypes_CtlBasicTrigHdr_t mfg_tx_trigger_config;
 		HostCmd_DS_CMD_ARB_CONFIG arb_cfg;
 		HostCmd_DS_CMD_DOT11MC_UNASSOC_FTM_CFG dot11mc_unassoc_ftm_cfg;
 		HostCmd_DS_HAL_PHY_CFG hal_phy_cfg_params;

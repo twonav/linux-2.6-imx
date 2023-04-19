@@ -532,7 +532,7 @@ static t_u8 wlan_scan_create_channel_list(
 				/* Passive scan on DFS channels */
 				if (wlan_11h_radar_detect_required(
 					    pmpriv, (t_u8)cfp->channel) &&
-				    scan_type != MLAN_SCAN_TYPE_PASSIVE)
+				    scan_type == MLAN_SCAN_TYPE_PASSIVE)
 					scan_type =
 						MLAN_SCAN_TYPE_PASSIVE_TO_ACTIVE;
 				break;
@@ -808,7 +808,8 @@ wlan_scan_channel_list(mlan_private *pmpriv, t_void *pioctl_buf,
 				ret = pcb->moal_malloc(
 					pmadapter->pmoal_handle,
 					MAX_SCAN_CFG_ALLOC - CHAN_TLV_MAX_SIZE,
-					MLAN_MEM_DEF, (t_u8 **)&ptlv_temp);
+					MLAN_MEM_DEF | MOAL_MEM_FLAG_ATOMIC,
+					(t_u8 **)&ptlv_temp);
 				if (ret != MLAN_STATUS_SUCCESS || !ptlv_temp) {
 					PRINTM(MERROR,
 					       "Memory allocation for pscan_cfg_out failed!\n");
@@ -1498,17 +1499,20 @@ static mlan_status wlan_scan_setup_scan_config(
 					return ret;
 				}
 			}
-
-			if (wlan_is_chan_passive(pmpriv,
-						 radio_type_to_band(radio_type),
-						 channel)) {
-				/* do not send probe requests on this channel */
-				scan_type = MLAN_SCAN_TYPE_PASSIVE;
+			if (!puser_scan_in->scan_cfg_only) {
+				if (wlan_is_chan_passive(
+					    pmpriv,
+					    radio_type_to_band(radio_type),
+					    channel)) {
+					/* do not send probe requests on this
+					 * channel */
+					scan_type = MLAN_SCAN_TYPE_PASSIVE;
+				}
 			}
 			/* Prevent active scanning on a radar controlled channel
 			 */
 			if (radio_type == BAND_5GHZ &&
-			    scan_type != MLAN_SCAN_TYPE_PASSIVE) {
+			    scan_type == MLAN_SCAN_TYPE_PASSIVE) {
 				if (pmadapter->active_scan_triggered == MFALSE)
 					if (wlan_11h_radar_detect_required(
 						    pmpriv, channel)) {
@@ -1517,6 +1521,7 @@ static mlan_status wlan_scan_setup_scan_config(
 					}
 			}
 			if (radio_type == BAND_2GHZ &&
+			    !puser_scan_in->scan_cfg_only &&
 			    scan_type != MLAN_SCAN_TYPE_PASSIVE) {
 				if (pmadapter->active_scan_triggered == MFALSE)
 					if (wlan_bg_scan_type_is_passive(
@@ -1735,6 +1740,7 @@ static mlan_status wlan_interpret_bss_desc_with_ie(pmlan_adapter pmadapter,
 	IEEEtypes_VendorSpecific_t *pvendor_ie;
 	const t_u8 wpa_oui[4] = {0x00, 0x50, 0xf2, 0x01};
 	const t_u8 wmm_oui[4] = {0x00, 0x50, 0xf2, 0x02};
+	const t_u8 owe_oui[4] = {0x50, 0x6f, 0x9a, 0x1c};
 	const t_u8 osen_oui[] = {0x50, 0x6f, 0x9a, 0x12};
 
 	IEEEtypes_CountryInfoSet_t *pcountry_info;
@@ -2074,6 +2080,54 @@ static mlan_status wlan_interpret_bss_desc_with_ie(pmlan_adapter pmadapter,
 						(t_u8 *)&pbss_entry->wmm_ie,
 						total_ie_len);
 				}
+			} else if (IS_FW_SUPPORT_EMBEDDED_OWE(pmadapter) &&
+				   !memcmp(pmadapter, pvendor_ie->vend_hdr.oui,
+					   owe_oui, sizeof(owe_oui))) {
+				/* Current Format of OWE IE is
+				 * element_id:element_len:oui:MAC Address:SSID
+				 * length:SSID */
+				t_u8 trans_ssid_len = *(
+					pcurrent_ptr +
+					sizeof(IEEEtypes_Header_t) +
+					sizeof(owe_oui) + MLAN_MAC_ADDR_LENGTH);
+
+				if (!trans_ssid_len ||
+				    trans_ssid_len > MRVDRV_MAX_SSID_LENGTH) {
+					bytes_left_for_current_beacon = 0;
+					continue;
+				}
+				if (!pcap_info->privacy)
+					pbss_entry->owe_transition_mode =
+						OWE_TRANS_MODE_OPEN;
+				else
+					pbss_entry->owe_transition_mode =
+						OWE_TRANS_MODE_OWE;
+
+				memcpy_ext(
+					pmadapter,
+					pbss_entry->trans_mac_address,
+					(pcurrent_ptr +
+					 sizeof(IEEEtypes_Header_t) +
+					 sizeof(owe_oui)),
+					MLAN_MAC_ADDR_LENGTH,
+					sizeof(pbss_entry->trans_mac_address));
+				pbss_entry->trans_ssid.ssid_len =
+					trans_ssid_len;
+				memcpy_ext(
+					pmadapter, pbss_entry->trans_ssid.ssid,
+					(pcurrent_ptr +
+					 sizeof(IEEEtypes_Header_t) +
+					 sizeof(owe_oui) +
+					 MLAN_MAC_ADDR_LENGTH + sizeof(t_u8)),
+					trans_ssid_len,
+					sizeof(pbss_entry->trans_ssid.ssid));
+
+				PRINTM(MCMND,
+				       "InterpretIE: OWE Transition AP privacy=%d MAC Addr-" MACSTR
+				       " ssid %s\n",
+				       pbss_entry->owe_transition_mode,
+				       MAC2STR(pbss_entry->trans_mac_address),
+				       pbss_entry->trans_ssid.ssid);
 			} else if (!memcmp(pmadapter, pvendor_ie->vend_hdr.oui,
 					   osen_oui, sizeof(osen_oui))) {
 				pbss_entry->posen_ie =
@@ -3776,6 +3830,13 @@ t_s32 wlan_is_network_compatible(mlan_private *pmpriv, t_u32 index, t_u32 mode)
 		LEAVE();
 		return index;
 	}
+	if ((pbss_desc->owe_transition_mode == OWE_TRANS_MODE_OPEN) &&
+	    (pmpriv->sec_info.authentication_mode != MLAN_AUTH_MODE_OWE)) {
+		PRINTM(MINFO,
+		       "Return success directly in OWE Transition mode\n");
+		LEAVE();
+		return index;
+	}
 
 	if (pmpriv->sec_info.osen_enabled && pbss_desc->posen_ie &&
 	    ((*(pbss_desc->posen_ie)).ieee_hdr.element_id ==
@@ -3794,7 +3855,8 @@ t_s32 wlan_is_network_compatible(mlan_private *pmpriv, t_u32 index, t_u32 mode)
 #ifdef DRV_EMBEDDED_SUPPLICANT
 	     || supplicantIsEnabled(pmpriv->psapriv)
 #endif
-		     )) {
+	     || pmpriv->sec_info.authentication_mode == MLAN_AUTH_MODE_OWE ||
+	     pbss_desc->owe_transition_mode == OWE_TRANS_MODE_OWE)) {
 		if (((pbss_desc->pwpa_ie) &&
 		     ((*(pbss_desc->pwpa_ie)).vend_hdr.element_id == WPA_IE)) ||
 		    ((pbss_desc->prsn_ie) &&
@@ -4137,12 +4199,12 @@ mlan_status wlan_scan_networks(mlan_private *pmpriv, t_void *pioctl_buf,
 	t_u8 filtered_scan;
 	t_u8 scan_current_chan_only;
 	t_u8 max_chan_per_scan;
-	t_u8 i;
 
 	ENTER();
 
 	ret = pcb->moal_malloc(pmadapter->pmoal_handle,
-			       sizeof(wlan_scan_cmd_config_tlv), MLAN_MEM_DEF,
+			       sizeof(wlan_scan_cmd_config_tlv),
+			       MLAN_MEM_DEF | MLAN_MEM_FLAG_ATOMIC,
 			       (t_u8 **)&pscan_cfg_out);
 	if (ret != MLAN_STATUS_SUCCESS || !pscan_cfg_out) {
 		PRINTM(MERROR, "Memory allocation for pscan_cfg_out failed!\n");
@@ -4153,7 +4215,8 @@ mlan_status wlan_scan_networks(mlan_private *pmpriv, t_void *pioctl_buf,
 	}
 
 	buf_size = sizeof(ChanScanParamSet_t) * WLAN_USER_SCAN_CHAN_MAX;
-	ret = pcb->moal_malloc(pmadapter->pmoal_handle, buf_size, MLAN_MEM_DEF,
+	ret = pcb->moal_malloc(pmadapter->pmoal_handle, buf_size,
+			       MLAN_MEM_DEF | MLAN_MEM_FLAG_ATOMIC,
 			       (t_u8 **)&pscan_chan_list);
 	if (ret != MLAN_STATUS_SUCCESS || !pscan_chan_list) {
 		PRINTM(MERROR, "Failed to allocate scan_chan_list\n");
@@ -4202,8 +4265,6 @@ mlan_status wlan_scan_networks(mlan_private *pmpriv, t_void *pioctl_buf,
 	} else {
 		wlan_scan_delete_ageout_entry(pmpriv);
 	}
-	for (i = 0; i < pmadapter->num_in_chan_stats; i++)
-		pmadapter->pchan_stats[i].cca_scan_duration = 0;
 	pmadapter->idx_chan_stats = 0;
 
 	ret = wlan_scan_channel_list(pmpriv, pioctl_buf, max_chan_per_scan,
@@ -6984,7 +7045,8 @@ mlan_status wlan_scan_specific_ssid(mlan_private *pmpriv, t_void *pioctl_buf,
 	wlan_scan_delete_ssid_table_entry(pmpriv, preq_ssid);
 
 	ret = pcb->moal_malloc(pmpriv->adapter->pmoal_handle,
-			       sizeof(wlan_user_scan_cfg), MLAN_MEM_DEF,
+			       sizeof(wlan_user_scan_cfg),
+			       MLAN_MEM_DEF | MLAN_MEM_FLAG_ATOMIC,
 			       (t_u8 **)&pscan_cfg);
 
 	if (ret != MLAN_STATUS_SUCCESS || !pscan_cfg) {
@@ -7047,7 +7109,8 @@ t_void wlan_save_curr_bcn(mlan_private *pmpriv)
 		if (pmpriv->curr_bcn_size) {
 			ret = pcb->moal_malloc(pmadapter->pmoal_handle,
 					       pcurr_bss->beacon_buf_size,
-					       MLAN_MEM_DEF,
+					       MLAN_MEM_DEF |
+						       MLAN_MEM_FLAG_ATOMIC,
 					       &pmpriv->pcurr_bcn_buf);
 
 			if ((ret == MLAN_STATUS_SUCCESS) &&

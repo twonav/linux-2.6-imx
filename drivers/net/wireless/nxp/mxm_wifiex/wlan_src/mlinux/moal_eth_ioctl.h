@@ -110,6 +110,7 @@ typedef struct _chan_stats {
 #define PRIV_CMD_ASSOCESSID "assocessid"
 #define PRIV_CMD_ASSOCBSSID "assocessid_bssid"
 #endif
+#define PRIV_CMD_AUTOASSOC "assocctrl"
 #define PRIV_CMD_WAKEUPREASON "wakeupreason"
 #ifdef STA_SUPPORT
 #define PRIV_CMD_LISTENINTERVAL "listeninterval"
@@ -214,13 +215,12 @@ typedef struct _chan_stats {
 #endif
 #define PRIV_CMD_SLEEP_PARAMS "sleepparams"
 #define PRIV_CMD_NET_MON "netmon"
-#if defined(STA_CFG80211) && defined(UAP_CFG80211)
-#define PRIV_CMD_MONITOR_MODE "monitormode"
-#endif
 #define PRIV_CMD_DFS_TESTING "dfstesting"
 #define PRIV_CMD_CLEAR_NOP "clear_nop"
+#define PRIV_CMD_NOP_LIST "nop_list"
 #define PRIV_CMD_FAKE_RADAR "fake_radar"
 #define PRIV_CMD_DFS53_CFG "dfs53cfg"
+#define PRIV_CMD_DFS_MODE "dfs_mode"
 #define PRIV_CMD_DFS_CAC "dfs_cac"
 #define PRIV_CMD_AUTODFS "autodfs"
 #define PRIV_CMD_CFP_CODE "cfpcode"
@@ -235,9 +235,9 @@ typedef struct _chan_stats {
 #ifdef SDIO
 #define PRIV_CMD_SD_CMD53_RW "sdcmd53rw"
 #endif
-#ifdef RX_PACKET_COALESCE
-#define PRIV_CMD_RX_COAL_CFG "rxpktcoal_cfg"
-#endif
+#define PRIV_CMD_MULTI_CHAN_CFG "mc_cfg"
+#define PRIV_CMD_MULTI_CHAN_POLICY "mc_policy"
+#define PRIV_CMD_DRCS_CFG "mc_cfg_ext"
 #ifdef WIFI_DIRECT_SUPPORT
 #if defined(UAP_CFG80211)
 #define PRIV_CMD_CFG_NOA "cfg_noa"

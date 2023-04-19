@@ -128,6 +128,9 @@ int woal_cfg80211_change_virtual_intf(struct wiphy *wiphy,
 int woal_cfg80211_set_wiphy_params(struct wiphy *wiphy, u32 changed);
 
 int woal_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
+#if ((KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE) || IMX_ANDROID_13)
+			  int link_id,
+#endif
 			  t_u8 key_index,
 #if KERNEL_VERSION(2, 6, 36) < CFG80211_VERSION_CODE
 			  bool pairwise,
@@ -135,6 +138,9 @@ int woal_cfg80211_add_key(struct wiphy *wiphy, struct net_device *dev,
 			  const t_u8 *mac_addr, struct key_params *params);
 
 int woal_cfg80211_del_key(struct wiphy *wiphy, struct net_device *dev,
+#if ((KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE) || IMX_ANDROID_13)
+			  int link_id,
+#endif
 			  t_u8 key_index,
 #if KERNEL_VERSION(2, 6, 36) < CFG80211_VERSION_CODE
 			  bool pairwise,
@@ -156,6 +162,9 @@ int woal_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *dev);
 #endif
 
 int woal_cfg80211_set_bitrate_mask(struct wiphy *wiphy, struct net_device *dev,
+#if ((CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 19, 2)) || IMX_ANDROID_13)
+				   unsigned int link_id,
+#endif
 				   const u8 *peer,
 				   const struct cfg80211_bitrate_mask *mask);
 #if KERNEL_VERSION(2, 6, 38) <= CFG80211_VERSION_CODE
@@ -204,6 +213,9 @@ int woal_cfg80211_set_channel(struct wiphy *wiphy,
 
 #if KERNEL_VERSION(2, 6, 37) < CFG80211_VERSION_CODE
 int woal_cfg80211_set_default_key(struct wiphy *wiphy, struct net_device *dev,
+#if ((KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE) || IMX_ANDROID_13)
+				  int link_id,
+#endif
 				  t_u8 key_index, bool ucast, bool mcast);
 #else
 int woal_cfg80211_set_default_key(struct wiphy *wiphy, struct net_device *dev,
@@ -213,12 +225,18 @@ int woal_cfg80211_set_default_key(struct wiphy *wiphy, struct net_device *dev,
 #if KERNEL_VERSION(2, 6, 30) <= CFG80211_VERSION_CODE
 int woal_cfg80211_set_default_mgmt_key(struct wiphy *wiphy,
 				       struct net_device *netdev,
+#if ((KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE) || IMX_ANDROID_13)
+				       int link_id,
+#endif
 				       t_u8 key_index);
 #endif
 
 #if KERNEL_VERSION(5, 10, 0) <= CFG80211_VERSION_CODE
 int woal_cfg80211_set_default_beacon_key(struct wiphy *wiphy,
 					 struct net_device *netdev,
+#if ((KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE) || IMX_ANDROID_13)
+					 int link_id,
+#endif
 					 t_u8 key_index);
 #endif
 
@@ -275,6 +293,11 @@ extern struct ieee80211_supported_band mac1_cfg80211_band_5ghz;
 int woal_cfg80211_bss_role_cfg(moal_private *priv, t_u16 action,
 			       t_u8 *bss_role);
 #endif
+
+#ifdef UAP_SUPPORT
+void woal_cancel_cac(moal_private *priv);
+#endif
+
 #if KERNEL_VERSION(4, 1, 0) <= CFG80211_VERSION_CODE
 struct wireless_dev *
 woal_cfg80211_add_virtual_intf(struct wiphy *wiphy, const char *name,
@@ -418,7 +441,12 @@ int woal_cfg80211_set_beacon(struct wiphy *wiphy, struct net_device *dev,
 			     struct beacon_parameters *params);
 #endif
 
+#if ((CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 19, 2)) || IMX_ANDROID_13)
+int woal_cfg80211_del_beacon(struct wiphy *wiphy, struct net_device *dev,
+			     unsigned int link_id);
+#else
 int woal_cfg80211_del_beacon(struct wiphy *wiphy, struct net_device *dev);
+#endif
 int woal_cfg80211_del_station(struct wiphy *wiphy, struct net_device *dev,
 #if KERNEL_VERSION(3, 19, 0) <= CFG80211_VERSION_CODE
 			      struct station_del_parameters *param);
@@ -486,6 +514,8 @@ mlan_status woal_chandef_create(moal_private *priv,
 #if KERNEL_VERSION(4, 20, 0) <= CFG80211_VERSION_CODE
 void woal_cfg80211_setup_he_cap(moal_private *priv,
 				struct ieee80211_supported_band *band);
+#else
+void woal_cfg80211_setup_uap_he_cap(moal_private *priv, t_u8 wait_option);
 #endif
 
 void woal_cfg80211_free_bands(struct wiphy *wiphy);
@@ -514,4 +544,7 @@ void woal_clear_wiphy_dfs_state(struct wiphy *wiphy);
 void woal_update_channel_dfs_state(t_u8 channel, t_u8 dfs_state);
 int woal_get_wiphy_chan_dfs_state(struct wiphy *wiphy,
 				  mlan_ds_11h_chan_dfs_state *ch_dfs_state);
+
+mlan_status woal_reset_wifi(moal_handle *handle, t_u8 cnt, char *reason);
+
 #endif /* _MOAL_CFG80211_H_ */

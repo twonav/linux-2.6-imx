@@ -3,7 +3,7 @@
  *  @brief This file contains SDIO specific code
  *
  *
- *  Copyright 2008-2021 NXP
+ *  Copyright 2008-2021, 2023 NXP
  *
  *  This software file (the File) is distributed by NXP
  *  under the terms of the GNU General Public License Version 2, June 1991
@@ -976,7 +976,7 @@ static mlan_status wlan_sdio_prog_fw_w_helper(pmlan_adapter pmadapter, t_u8 *fw,
 	t_u8 *firmware = fw;
 	t_u32 firmwarelen = fw_len;
 	t_u32 offset = 0;
-	t_u32 base0, base1;
+	t_u32 base0 = 0, base1;
 	t_void *tmpfwbuf = MNULL;
 	t_u32 tmpfwbufsz;
 	t_u8 *fwbuf;
@@ -1334,6 +1334,8 @@ static mlan_status wlan_decode_rx_packet(mlan_adapter *pmadapter,
 
 	case MLAN_TYPE_CMD:
 		PRINTM(MINFO, "--- Rx: Cmd Response ---\n");
+		if (pmadapter->cmd_sent)
+			pmadapter->cmd_sent = MFALSE;
 		/* take care of curr_cmd = NULL case */
 		if (!pmadapter->curr_cmd) {
 			cmd_buf = pmadapter->upld_buf;
@@ -2499,6 +2501,9 @@ void wlan_dump_mp_registers(pmlan_adapter pmadapter)
 	if (new_mode && rx_len)
 		sdio_ireg |= UP_LD_CMD_PORT_HOST_INT_STATUS;
 
+	if (new_mode && pmadapter->cmd_sent)
+		sdio_ireg |= DN_LD_CMD_PORT_HOST_INT_STATUS;
+
 	if (!(pmadapter->pcard_sd->mp_wr_bitmap &
 	      pmadapter->pcard_sd->mp_data_port_mask)) {
 		if (mp_wr_bitmap & pmadapter->pcard_sd->mp_data_port_mask)
@@ -3400,7 +3405,7 @@ static mlan_status wlan_pm_sdio_wakeup_card(pmlan_adapter pmadapter,
 	if (timeout) {
 		pmadapter->callbacks.moal_start_timer(
 			pmadapter->pmoal_handle, pmadapter->pwakeup_fw_timer,
-			MFALSE, MRVDRV_TIMER_3S);
+			MFALSE, MRVDRV_TIMER_5S);
 		pmadapter->wakeup_fw_timer_is_set = MTRUE;
 	}
 

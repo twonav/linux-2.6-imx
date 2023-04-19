@@ -661,6 +661,18 @@ static raListTbl *wlan_wmm_get_highest_priolist_ptr(pmlan_adapter pmadapter,
 				/* Ignore data pkts from a BSS if tx pause */
 				goto next_intf;
 			}
+#if defined(USB)
+			if (!wlan_is_port_ready(pmadapter,
+						priv_tmp->port_index)) {
+				PRINTM(MINFO,
+				       "get_highest_prio_ptr(): "
+				       "usb port is busy,Ignore pkts from BSS%d\n",
+				       priv_tmp->bss_index);
+				/* Ignore data pkts from a BSS if usb port is
+				 * busy */
+				goto next_intf;
+			}
+#endif
 
 			pmadapter->callbacks.moal_spin_lock(
 				pmadapter->pmoal_handle,
@@ -1945,6 +1957,10 @@ int wlan_wmm_lists_empty(pmlan_adapter pmadapter)
 			}
 			if (priv->tx_pause)
 				continue;
+#if defined(USB)
+			if (!wlan_is_port_ready(pmadapter, priv->port_index))
+				continue;
+#endif
 
 			if (util_scalar_read(
 				    pmadapter->pmoal_handle,
@@ -2149,6 +2165,8 @@ t_void wlan_wmm_add_buf_txqueue(pmlan_adapter pmadapter, pmlan_buffer pmbuf)
 		else if (priv->bss_type == MLAN_BSS_TYPE_UAP) {
 			sta_ptr = wlan_get_station_entry(priv, ra);
 			if (sta_ptr) {
+				sta_ptr->stats.tx_bytes += pmbuf->data_len;
+				sta_ptr->stats.tx_packets++;
 				if (!sta_ptr->is_wmm_enabled &&
 				    !priv->is_11ac_enabled) {
 					tid_down = wlan_wmm_downgrade_tid(priv,
@@ -2271,6 +2289,11 @@ mlan_status wlan_ret_wmm_get_status(pmlan_private priv, t_u8 *ptlv,
 			       ptlv_wmm_q_status->queue_index,
 			       ptlv_wmm_q_status->flow_required,
 			       ptlv_wmm_q_status->disabled);
+
+			/* Pick the minimum among these to avoid array out of
+			 * bounds */
+			ptlv_wmm_q_status->queue_index = MIN(
+				ptlv_wmm_q_status->queue_index, MAX_AC_QUEUES);
 
 			pac_status =
 				&priv->wmm.ac_status[ptlv_wmm_q_status

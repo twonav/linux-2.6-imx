@@ -322,7 +322,8 @@ static mlan_status wlan_process_cmdresp_error(mlan_private *pmpriv,
 		}
 	} break;
 	case HostCmd_CMD_ROAM_OFFLOAD:
-		wlan_clear_fw_roaming_pmk(pmpriv);
+		if (MLAN_STATUS_SUCCESS != wlan_clear_fw_roaming_pmk(pmpriv))
+			PRINTM(MERROR, "wlan_clear_fw_roaming_pmk fail\n");
 		pmpriv->adapter->fw_roaming = MFALSE;
 		PRINTM(MERROR, "FW do not support roaming!\n");
 		break;
@@ -628,6 +629,7 @@ static mlan_status wlan_ret_802_11_snmp_mib(pmlan_private pmpriv,
 		/* Update state for 11h */
 		if (oid == Dot11H_i) {
 			ul_temp = wlan_le16_to_cpu(*((t_u16 *)(psmib->value)));
+			PRINTM(MCMND, "wlan: Dot11H_i=%d\n", ul_temp);
 			/* Set 11h state to priv */
 			pmpriv->intf_state_11h.is_11h_active =
 				(ul_temp & ENABLE_11H_MASK);
@@ -1316,11 +1318,16 @@ static mlan_status wlan_ret_802_11_key_material(pmlan_private pmpriv,
 			}
 			if (memcmp(pmpriv->adapter, pmpriv->gtk_rekey.kek,
 				   zero_kek, sizeof(zero_kek)) != 0) {
-				wlan_prepare_cmd(
+				mlan_status ret = MLAN_STATUS_SUCCESS;
+				ret = wlan_prepare_cmd(
 					pmpriv,
 					HostCmd_CMD_GTK_REKEY_OFFLOAD_CFG,
 					HostCmd_ACT_GEN_SET, 0, MNULL,
 					&pmpriv->gtk_rekey);
+				if (ret) {
+					PRINTM(MINFO,
+					       "Error sending message to FW\n");
+				}
 				memset(pmpriv->adapter, &pmpriv->gtk_rekey, 0,
 				       sizeof(mlan_ds_misc_gtk_rekey_data));
 			}
@@ -1389,13 +1396,16 @@ static mlan_status wlan_ret_802_11_key_material(pmlan_private pmpriv,
 					wlan_le16_to_cpu(
 						pkey->key_param_set.key_params
 							.aes.key_len);
-				memcpy_ext(
-					pmpriv->adapter,
-					sec->param.encrypt_key.key_material,
-					pkey->key_param_set.key_params.aes.key,
+				sec->param.encrypt_key
+					.key_len = MIN(
 					sec->param.encrypt_key.key_len,
-					sizeof(sec->param.encrypt_key
-						       .key_material));
+					sizeof(pkey->key_param_set.key_params
+						       .aes.key)),
+		  memcpy_ext(pmpriv->adapter,
+			     sec->param.encrypt_key.key_material,
+			     pkey->key_param_set.key_params.aes.key,
+			     sec->param.encrypt_key.key_len,
+			     sizeof(sec->param.encrypt_key.key_material));
 				memcpy_ext(
 					pmpriv->adapter,
 					sec->param.encrypt_key.pn,
@@ -1408,13 +1418,16 @@ static mlan_status wlan_ret_802_11_key_material(pmlan_private pmpriv,
 					wlan_le16_to_cpu(
 						pkey->key_param_set.key_params
 							.cmac_aes.key_len);
-				memcpy_ext(pmpriv->adapter,
-					   sec->param.encrypt_key.key_material,
-					   pkey->key_param_set.key_params
-						   .cmac_aes.key,
-					   sec->param.encrypt_key.key_len,
-					   sizeof(sec->param.encrypt_key
-							  .key_material));
+				sec->param.encrypt_key
+					.key_len = MIN(
+					sec->param.encrypt_key.key_len,
+					sizeof(pkey->key_param_set.key_params
+						       .cmac_aes.key)),
+		  memcpy_ext(pmpriv->adapter,
+			     sec->param.encrypt_key.key_material,
+			     pkey->key_param_set.key_params.cmac_aes.key,
+			     sec->param.encrypt_key.key_len,
+			     sizeof(sec->param.encrypt_key.key_material));
 				memcpy_ext(pmpriv->adapter,
 					   sec->param.encrypt_key.pn,
 					   pkey->key_param_set.key_params
@@ -1427,13 +1440,16 @@ static mlan_status wlan_ret_802_11_key_material(pmlan_private pmpriv,
 					wlan_le16_to_cpu(
 						pkey->key_param_set.key_params
 							.wep.key_len);
-				memcpy_ext(
-					pmpriv->adapter,
-					sec->param.encrypt_key.key_material,
-					pkey->key_param_set.key_params.wep.key,
+				sec->param.encrypt_key
+					.key_len = MIN(
 					sec->param.encrypt_key.key_len,
-					sizeof(sec->param.encrypt_key
-						       .key_material));
+					sizeof(pkey->key_param_set.key_params
+						       .wep.key)),
+		  memcpy_ext(pmpriv->adapter,
+			     sec->param.encrypt_key.key_material,
+			     pkey->key_param_set.key_params.wep.key,
+			     sec->param.encrypt_key.key_len,
+			     sizeof(sec->param.encrypt_key.key_material));
 				break;
 			}
 		}
@@ -2239,6 +2255,42 @@ static mlan_status wlan_ret_otp_user_data(pmlan_private pmpriv,
 	return MLAN_STATUS_SUCCESS;
 }
 
+/**
+ *  @brief This function handles the command response of
+ *  fw auto re-connect
+ *
+ *  @param pmpriv       A pointer to mlan_private structure
+ *  @param resp         A pointer to HostCmd_DS_COMMAND
+ *  @param pioctl_buf   A pointer to command buffer
+ *
+ *  @return             MLAN_STATUS_SUCCESS
+ */
+static mlan_status wlan_ret_fw_auto_reconnect(pmlan_private pmpriv,
+					      HostCmd_DS_COMMAND *resp,
+					      mlan_ioctl_req *pioctl_buf)
+{
+	HostCmd_DS_FW_AUTO_RECONNECT *fw_auto_reconnect =
+		(HostCmd_DS_FW_AUTO_RECONNECT *)&resp->params
+			.fw_auto_reconnect_cmd;
+	mlan_ds_misc_cfg *misc = MNULL;
+
+	ENTER();
+
+	if (pioctl_buf && (pioctl_buf->action == MLAN_ACT_GET)) {
+		misc = (mlan_ds_misc_cfg *)pioctl_buf->pbuf;
+		misc->param.fw_auto_reconnect.fw_reconn_counter =
+			fw_auto_reconnect->reconnect_counter;
+		misc->param.fw_auto_reconnect.fw_reconn_interval =
+			fw_auto_reconnect->reconnect_interval;
+		misc->param.fw_auto_reconnect.fw_reconn_flags =
+			wlan_le16_to_cpu(fw_auto_reconnect->flags);
+		pioctl_buf->data_read_written = sizeof(mlan_ds_misc_cfg);
+	}
+
+	LEAVE();
+	return MLAN_STATUS_SUCCESS;
+}
+
 #ifdef USB
 /**
  *  @brief This function handles the command response of
@@ -2629,10 +2681,6 @@ mlan_status wlan_clear_fw_roaming_pmk(pmlan_private pmpriv)
 	ret = wlan_prepare_cmd(pmpriv, HostCmd_CMD_SUPPLICANT_PMK,
 			       HostCmd_ACT_GEN_REMOVE, 0, MNULL, MNULL);
 
-	if (ret == MLAN_STATUS_SUCCESS) {
-		ret = MLAN_STATUS_FAILURE;
-	}
-
 	LEAVE();
 	return ret;
 }
@@ -2669,7 +2717,10 @@ static mlan_status wlan_ret_roam_offload(pmlan_private pmpriv,
 				pmpriv->adapter->fw_roaming = MTRUE;
 			else {
 				pmpriv->adapter->fw_roaming = MFALSE;
-				wlan_clear_fw_roaming_pmk(pmpriv);
+				if (MLAN_STATUS_SUCCESS !=
+				    wlan_clear_fw_roaming_pmk(pmpriv))
+					PRINTM(MERROR,
+					       "wlan_clear_fw_roaming_pmk failed\n");
 			}
 		}
 	}
@@ -2877,6 +2928,53 @@ static mlan_status wlan_ret_mfg_tx_frame(pmlan_private pmpriv,
 	LEAVE();
 	return MLAN_STATUS_SUCCESS;
 }
+/**
+ *  @brief This function prepares command resp of MFG config Trigger frame
+ *
+ *  @param pmpriv       A pointer to mlan_private structure
+ *  @param resp         A pointer to HostCmd_DS_COMMAND
+ *  @param pioctl_buf   A pointer to mlan_ioctl_req structure
+ *
+ *  @return             MLAN_STATUS_SUCCESS
+ */
+static mlan_status wlan_ret_mfg_config_trigger_frame(pmlan_private pmpriv,
+						     HostCmd_DS_COMMAND *resp,
+						     mlan_ioctl_req *pioctl_buf)
+{
+	mlan_ds_misc_cfg *misc = MNULL;
+	mfg_Cmd_IEEEtypes_CtlBasicTrigHdr_t *mcmd =
+		(mfg_Cmd_IEEEtypes_CtlBasicTrigHdr_t *)&resp->params
+			.mfg_tx_trigger_config;
+	mfg_Cmd_IEEEtypes_CtlBasicTrigHdr_t *cfg = MNULL;
+
+	ENTER();
+	if (!pioctl_buf) {
+		LEAVE();
+		return MLAN_STATUS_FAILURE;
+	}
+	misc = (mlan_ds_misc_cfg *)pioctl_buf->pbuf;
+	cfg = (mfg_Cmd_IEEEtypes_CtlBasicTrigHdr_t *)&misc->param
+		      .mfg_tx_trigger_config;
+
+	cfg->enable_tx = wlan_le32_to_cpu(mcmd->enable_tx);
+	cfg->standalone_hetb = wlan_le32_to_cpu(mcmd->standalone_hetb);
+	cfg->frmCtl.type = wlan_le16_to_cpu(mcmd->frmCtl.type);
+	cfg->frmCtl.sub_type = wlan_le16_to_cpu(mcmd->frmCtl.sub_type);
+	cfg->duration = wlan_le16_to_cpu(mcmd->duration);
+
+	cfg->trig_common_field = wlan_le64_to_cpu(mcmd->trig_common_field);
+
+	memcpy_ext(pmpriv->adapter, &cfg->trig_user_info_field,
+		   &mcmd->trig_user_info_field,
+		   sizeof(mcmd->trig_user_info_field),
+		   sizeof(cfg->trig_user_info_field));
+
+	cfg->basic_trig_user_info =
+		wlan_le16_to_cpu(mcmd->basic_trig_user_info);
+
+	LEAVE();
+	return MLAN_STATUS_SUCCESS;
+}
 
 /**
  *  @brief This function prepares command resp of MFG HE TB Tx
@@ -2932,6 +3030,9 @@ mlan_status wlan_ret_mfg(pmlan_private pmpriv, HostCmd_DS_COMMAND *resp,
 		(struct mfg_cmd_generic_cfg *)&resp->params.mfg_generic_cfg;
 	struct mfg_cmd_generic_cfg *cfg = MNULL;
 	mlan_status ret = MLAN_STATUS_SUCCESS;
+#ifdef SD9177
+	mlan_adapter *pmadapter = pmpriv->adapter;
+#endif
 
 	ENTER();
 	if (!pioctl_buf) {
@@ -2947,6 +3048,10 @@ mlan_status wlan_ret_mfg(pmlan_private pmpriv, HostCmd_DS_COMMAND *resp,
 		goto cmd_mfg_done;
 	case MFG_CMD_CONFIG_MAC_HE_TB_TX:
 		ret = wlan_ret_mfg_he_tb_tx(pmpriv, resp, pioctl_buf);
+		goto cmd_mfg_done;
+	case MFG_CMD_CONFIG_TRIGGER_FRAME:
+		ret = wlan_ret_mfg_config_trigger_frame(pmpriv, resp,
+							pioctl_buf);
 		goto cmd_mfg_done;
 	case MFG_CMD_SET_TEST_MODE:
 	case MFG_CMD_UNSET_TEST_MODE:
@@ -2967,7 +3072,20 @@ mlan_status wlan_ret_mfg(pmlan_private pmpriv, HostCmd_DS_COMMAND *resp,
 	cfg = (struct mfg_cmd_generic_cfg *)&misc->param.mfg_generic_cfg;
 
 	cfg->error = wlan_le32_to_cpu(mcmd->error);
-	cfg->data1 = wlan_le32_to_cpu(mcmd->data1);
+
+#ifdef SD9177
+	if (IS_SD9177(pmadapter->card_type) &&
+	    (wlan_le32_to_cpu(mcmd->mfg_cmd) == MFG_CMD_RFPWR)) {
+		//! TX_POWER was multipied by 16 while passing to fw
+		//! So It is needed to divide by 16 for user vals understanding.
+		cfg->data1 = (wlan_le32_to_cpu(mcmd->data1) >> 4);
+	} else {
+#endif
+		cfg->data1 = wlan_le32_to_cpu(mcmd->data1);
+#ifdef SD9177
+	}
+#endif
+
 	cfg->data2 = wlan_le32_to_cpu(mcmd->data2);
 	cfg->data3 = wlan_le32_to_cpu(mcmd->data3);
 cmd_mfg_done:
@@ -3179,6 +3297,10 @@ mlan_status wlan_ops_sta_process_cmdresp(t_void *priv, t_u16 cmdresp_no,
 		break;
 	case HostCmd_CMD_RECONFIGURE_TX_BUFF:
 		wlan_set_tx_pause_flag(pmpriv, MFALSE);
+#if defined(USB)
+		if (IS_USB(pmadapter->card_type))
+			wlan_resync_usb_port(pmadapter);
+#endif
 
 		pmadapter->tx_buf_size =
 			(t_u16)wlan_le16_to_cpu(resp->params.tx_buf.buff_size);
@@ -3323,6 +3445,9 @@ mlan_status wlan_ops_sta_process_cmdresp(t_void *priv, t_u16 cmdresp_no,
 	case HostCmd_CMD_OTP_READ_USER_DATA:
 		ret = wlan_ret_otp_user_data(pmpriv, resp, pioctl_buf);
 		break;
+	case HostCmd_CMD_FW_AUTO_RECONNECT:
+		ret = wlan_ret_fw_auto_reconnect(pmpriv, resp, pioctl_buf);
+		break;
 	case HostCmd_CMD_HS_WAKEUP_REASON:
 		ret = wlan_ret_hs_wakeup_reason(pmpriv, resp, pioctl_buf);
 		break;
@@ -3338,11 +3463,15 @@ mlan_status wlan_ops_sta_process_cmdresp(t_void *priv, t_u16 cmdresp_no,
 							       pioctl_buf);
 		break;
 #endif
-#ifdef RX_PACKET_COALESCE
-	case HostCmd_CMD_RX_PKT_COALESCE_CFG:
-		ret = wlan_ret_rx_pkt_coalesce_cfg(pmpriv, resp, pioctl_buf);
+	case HostCmd_CMD_MULTI_CHAN_CONFIG:
+		ret = wlan_ret_multi_chan_cfg(pmpriv, resp, pioctl_buf);
 		break;
-#endif
+	case HostCmd_CMD_MULTI_CHAN_POLICY:
+		ret = wlan_ret_multi_chan_policy(pmpriv, resp, pioctl_buf);
+		break;
+	case HostCmd_CMD_DRCS_CONFIG:
+		ret = wlan_ret_drcs_cfg(pmpriv, resp, pioctl_buf);
+		break;
 	case HostCMD_CONFIG_LOW_POWER_MODE:
 		break;
 	case HostCmd_DFS_REPEATER_MODE:

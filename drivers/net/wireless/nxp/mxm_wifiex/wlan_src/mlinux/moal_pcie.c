@@ -28,6 +28,10 @@ Change log:
 
 #include <linux/firmware.h>
 
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+#include "moal_cfg80211.h"
+#endif
+
 #include "moal_pcie.h"
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 70)
@@ -284,6 +288,7 @@ static mlan_status woal_do_flr(moal_handle *handle, bool prepare, bool flr_flag)
 	/* Reset all interfaces */
 	priv = woal_get_priv(handle, MLAN_BSS_ROLE_ANY);
 	woal_reset_intf(priv, MOAL_IOCTL_WAIT, MTRUE);
+	woal_clean_up(handle);
 
 	/* Shutdown firmware */
 	handle->init_wait_q_woken = MFALSE;
@@ -310,6 +315,14 @@ static mlan_status woal_do_flr(moal_handle *handle, bool prepare, bool flr_flag)
 #endif
 #endif
 
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_CFG80211) && defined(UAP_CFG80211)
+#if CFG80211_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
+	/* Remove virtual interface */
+	woal_remove_virtual_interface(handle);
+#endif
+#endif
+#endif
 	/* Remove interface */
 	for (i = 0; i < handle->priv_num; i++)
 		woal_remove_interface(handle, i);
@@ -468,7 +481,11 @@ static int woal_pcie_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		ret = MLAN_STATUS_FAILURE;
 		goto err;
 	}
-	woal_pcie_init(card);
+	if (MLAN_STATUS_SUCCESS != woal_pcie_init(card)) {
+		PRINTM(MERROR, "woal_pcie_init failed\n");
+		ret = -EFAULT;
+		goto err;
+	}
 
 	if (woal_add_card(card, &card->dev->dev, &pcie_ops, card_type) ==
 	    NULL) {
@@ -1268,7 +1285,7 @@ static mlan_status woal_pcie_init(pcie_service_card *card)
 		goto err_iomap2;
 	}
 
-	PRINTM(MINFO,
+	PRINTM(MMSG,
 	       "PCI memory map Virt0: %p PCI memory map Virt2: "
 	       "%p\n",
 	       card->pci_mmap, card->pci_mmap1);
@@ -2377,9 +2394,11 @@ static void woal_pcie_dump_fw_info(moal_handle *phandle)
 		}
 	}
 #endif
+	phandle->fw_dump = MFALSE;
+	if (!phandle->priv_num)
+		return;
 	woal_send_fw_dump_complete_event(
 		woal_get_priv(phandle, MLAN_BSS_ROLE_ANY));
-	phandle->fw_dump = MFALSE;
 	mlan_pm_wakeup_card(phandle->pmlan_adapter, MFALSE);
 	queue_work(phandle->workqueue, &phandle->main_work);
 	woal_process_hang(phandle);
