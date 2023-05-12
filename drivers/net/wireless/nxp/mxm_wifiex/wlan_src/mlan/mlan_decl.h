@@ -24,7 +24,7 @@
 #define _MLAN_DECL_H_
 
 /** MLAN release version */
-#define MLAN_RELEASE_VERSION "344.p3"
+#define MLAN_RELEASE_VERSION "368.p2"
 
 /** Re-define generic data types for MLAN/MOAL */
 /** Signed char (1-byte) */
@@ -129,13 +129,8 @@ typedef t_s32 t_sval;
 /** Return aligned offset */
 #define OFFSET_ALIGN_ADDR(p, a) (t_u32)(ALIGN_ADDR(p, a) - (t_ptr)p)
 
-#if defined(WIFI_DIRECT_SUPPORT)
 /** Maximum BSS numbers */
 #define MLAN_MAX_BSS_NUM (16)
-#else
-/** Maximum BSS numbers */
-#define MLAN_MAX_BSS_NUM (2)
-#endif
 
 /** NET IP alignment */
 #define MLAN_NET_IP_ALIGN 2
@@ -634,6 +629,8 @@ typedef enum {
 
 /** Memory allocation type: DMA */
 #define MLAN_MEM_DMA MBIT(0)
+/** Memory allocation flag: ATOMIC */
+#define MLAN_MEM_FLAG_ATOMIC MBIT(1)
 
 /** Default memory allocation flag */
 #define MLAN_MEM_DEF 0
@@ -960,8 +957,26 @@ typedef enum _dfs_w53_cfg_t {
 	DFS_W53_OLD = 2
 } dfs_w53_cfg_t;
 
+typedef enum _dfs_moe_t {
+	/** driver default DFS behavior */
+	DFS_MODE_DEFAULT = 0,
+	/* disable DFS master when uap and station operate in same DFS channel
+	 */
+	DFS_MODE_ENH = 1,
+} dfs_mode_t;
+
 /** Band_Config_t */
 typedef MLAN_PACK_START struct _Band_Config_t {
+#ifdef BIG_ENDIAN_SUPPORT
+	/** Channel Selection Mode - (00)=manual, (01)=ACS,  (02)=user*/
+	t_u8 scanMode : 2;
+	/** Secondary Channel Offset - (00)=None, (01)=Above, (11)=Below */
+	t_u8 chan2Offset : 2;
+	/** Channel Width - (00)=20MHz, (10)=40MHz, (11)=80MHz */
+	t_u8 chanWidth : 2;
+	/** Band Info - (00)=2.4GHz, (01)=5GHz */
+	t_u8 chanBand : 2;
+#else
 	/** Band Info - (00)=2.4GHz, (01)=5GHz */
 	t_u8 chanBand : 2;
 	/** Channel Width - (00)=20MHz, (10)=40MHz, (11)=80MHz */
@@ -970,6 +985,7 @@ typedef MLAN_PACK_START struct _Band_Config_t {
 	t_u8 chan2Offset : 2;
 	/** Channel Selection Mode - (00)=manual, (01)=ACS, (02)=Adoption mode*/
 	t_u8 scanMode : 2;
+#endif
 } MLAN_PACK_END Band_Config_t;
 
 /** channel_band_t */
@@ -1171,6 +1187,16 @@ typedef MLAN_PACK_START struct _radiotap_info {
 
 /** txpower structure */
 typedef MLAN_PACK_START struct {
+#ifdef BIG_ENDIAN_SUPPORT
+	/** Host tx power ctrl:
+	     0x0: use fw setting for TX power
+	     0x1: value specified in bit[6] and bit[5:0] are valid */
+	t_u8 hostctl : 1;
+	/** Sign of the power specified in bit[5:0] */
+	t_u8 sign : 1;
+	/** Power to be used for transmission(in dBm) */
+	t_u8 abs_val : 6;
+#else
 	/** Power to be used for transmission(in dBm) */
 	t_u8 abs_val : 6;
 	/** Sign of the power specified in bit[5:0] */
@@ -1179,6 +1205,7 @@ typedef MLAN_PACK_START struct {
 	     0x0: use fw setting for TX power
 	     0x1: value specified in bit[6] and bit[5:0] are valid */
 	t_u8 hostctl : 1;
+#endif
 } MLAN_PACK_END tx_power_t;
 /* pkt_txctrl */
 typedef MLAN_PACK_START struct _pkt_txctrl {
@@ -1720,6 +1747,15 @@ typedef struct {
 	t_u32 time_usec;
 } wifi_timeval;
 
+#define timeval_to_msec(timeval)                                               \
+	(t_u64)((t_u64)(timeval.time_sec) * 1000 +                             \
+		(t_u64)(timeval.time_usec) / 1000)
+#define timeval_to_usec(timeval)                                               \
+	(t_u64)((t_u64)(timeval.time_sec) * 1000 * 1000 +                      \
+		(t_u64)(timeval.time_usec))
+#define is_zero_timeval(timeval)                                               \
+	((timeval.time_sec == 0) && (timeval.time_usec == 0))
+
 #define MAX_NUM_RATE 32
 #define MAX_RADIO 2
 #define MAX_NUM_CHAN 1
@@ -1800,15 +1836,6 @@ typedef struct {
 	 */
 	t_u32 cca_busy_time;
 } wifi_channel_stat;
-
-#define timeval_to_msec(timeval)                                               \
-	(t_u64)((t_u64)(timeval.time_sec) * 1000 +                             \
-		(t_u64)(timeval.time_usec) / 1000)
-#define timeval_to_usec(timeval)                                               \
-	(t_u64)((t_u64)(timeval.time_sec) * 1000 * 1000 +                      \
-		(t_u64)(timeval.time_usec))
-#define is_zero_timeval(timeval)                                               \
-	((timeval.time_sec == 0) && (timeval.time_usec == 0))
 
 /** radio statistics */
 typedef struct {
@@ -2005,7 +2032,16 @@ typedef struct {
 
 /** station stats */
 typedef struct _sta_stats {
+	/** last_rx_in_msec */
 	t_u64 last_rx_in_msec;
+	/** rx_packets */
+	t_u32 rx_packets;
+	/** tx packets */
+	t_u32 tx_packets;
+	/** rx bytes */
+	t_u32 rx_bytes;
+	/** tx bytes */
+	t_u32 tx_bytes;
 } sta_stats;
 
 #ifdef PRAGMA_PACK
@@ -2286,6 +2322,8 @@ typedef struct _mlan_device {
 	t_u8 indication_gpio;
 	/** Dynamic MIMO-SISO switch for hscfg*/
 	t_u8 hs_mimo_switch;
+	/** channel time and mode for DRCS*/
+	t_u32 drcs_chantime_mode;
 #ifdef USB
 	/** Tx CMD endpoint address */
 	t_u8 tx_cmd_ep;
@@ -2296,6 +2334,8 @@ typedef struct _mlan_device {
 	t_u8 rx_data_ep;
 	/** Tx data endpoint address */
 	t_u8 tx_data_ep;
+	/** Tx data second endpoint address */
+	t_u8 tx_data2_ep;
 #endif
 	/** passive to active scan */
 	t_u8 passive_to_active_scan;

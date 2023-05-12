@@ -614,6 +614,7 @@ mlan_status wlan_init_priv(pmlan_private priv)
 			priv->intf_hr_len = MLAN_USB_TX_AGGR_HEADER;
 		}
 		priv->port = pmadapter->tx_data_ep;
+		priv->port_index = 0;
 	}
 #endif
 	ret = wlan_add_bsspriotbl(priv);
@@ -808,9 +809,9 @@ t_void wlan_init_adapter(pmlan_adapter pmadapter)
 					     */
 
 	pmadapter->pm_wakeup_card_req = MFALSE;
-	pmadapter->pm_wakeup_timeout = 0;
 
 	pmadapter->pm_wakeup_fw_try = MFALSE;
+	pmadapter->pm_wakeup_timeout = 0;
 
 	if (!pmadapter->init_para.max_tx_buf)
 		pmadapter->max_tx_buf_size =
@@ -823,6 +824,9 @@ t_void wlan_init_adapter(pmlan_adapter pmadapter)
 
 #ifdef USB
 	if (IS_USB(pmadapter->card_type)) {
+		for (i = 0; i < MAX_USB_TX_PORT_NUM; i++) {
+			pmadapter->pcard_usb->usb_port_status[i] = MFALSE;
+		}
 		for (i = 0; i < MAX_USB_TX_PORT_NUM; i++) {
 			pmadapter->pcard_usb->usb_tx_aggr[i].aggr_ctrl.enable =
 				MFALSE;
@@ -842,7 +846,7 @@ t_void wlan_init_adapter(pmlan_adapter pmadapter)
 			pmadapter->pcard_usb->usb_tx_aggr[i].hold_timeout_msec =
 				MLAN_USB_TX_AGGR_TIMEOUT_MSEC;
 			pmadapter->pcard_usb->usb_tx_aggr[i].port =
-				pmadapter->tx_data_ep;
+				pmadapter->usb_tx_ports[i];
 			pmadapter->pcard_usb->usb_tx_aggr[i].phandle =
 				(t_void *)pmadapter;
 		}
@@ -945,6 +949,8 @@ t_void wlan_init_adapter(pmlan_adapter pmadapter)
 	       sizeof(pmadapter->arp_filter));
 	pmadapter->arp_filter_size = 0;
 #endif /* STA_SUPPORT */
+
+	pmadapter->mc_status = MFALSE;
 
 #ifdef PCIE
 	if (IS_PCIE(pmadapter->card_type)) {
@@ -1470,6 +1476,7 @@ done:
 static void wlan_update_hw_spec(pmlan_adapter pmadapter)
 {
 	t_u32 i;
+	MrvlIEtypes_He_cap_t *user_he_cap_tlv = MNULL;
 
 	ENTER();
 
@@ -1582,6 +1589,28 @@ static void wlan_update_hw_spec(pmlan_adapter pmadapter)
 					pmadapter->hw_he_cap,
 					pmadapter->hw_hecap_len,
 					sizeof(pmadapter->priv[i]->user_he_cap));
+				user_he_cap_tlv =
+					(MrvlIEtypes_He_cap_t *)&pmadapter
+						->priv[i]
+						->user_2g_he_cap;
+				if (pmadapter->priv[i]->bss_role ==
+				    MLAN_BSS_ROLE_STA)
+					user_he_cap_tlv->he_mac_cap[0] &=
+						~HE_MAC_CAP_TWT_RESP_SUPPORT;
+				else
+					user_he_cap_tlv->he_mac_cap[0] &=
+						~HE_MAC_CAP_TWT_REQ_SUPPORT;
+				user_he_cap_tlv =
+					(MrvlIEtypes_He_cap_t *)&pmadapter
+						->priv[i]
+						->user_he_cap;
+				if (pmadapter->priv[i]->bss_role ==
+				    MLAN_BSS_ROLE_STA)
+					user_he_cap_tlv->he_mac_cap[0] &=
+						~HE_MAC_CAP_TWT_RESP_SUPPORT;
+				else
+					user_he_cap_tlv->he_mac_cap[0] &=
+						~HE_MAC_CAP_TWT_REQ_SUPPORT;
 			}
 		}
 	}

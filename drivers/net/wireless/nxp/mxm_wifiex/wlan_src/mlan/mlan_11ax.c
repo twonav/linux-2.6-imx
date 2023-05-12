@@ -76,7 +76,7 @@ static t_u8 wlan_check_ap_11ax_twt_supported(BSSDescriptor_t *pbss_desc)
 {
 	if (!pbss_desc->phe_cap)
 		return MFALSE;
-	if (!(pbss_desc->phe_cap->he_mac_cap[0] & HE_MAC_CAP_TWT_REQ_SUPPORT))
+	if (!(pbss_desc->phe_cap->he_mac_cap[0] & HE_MAC_CAP_TWT_RESP_SUPPORT))
 		return MFALSE;
 	if (!pbss_desc->pext_cap)
 		return MFALSE;
@@ -188,9 +188,9 @@ t_u8 wlan_fill_he_cap_ie(mlan_private *pmpriv, IEEEtypes_HECap_t *hecap_ie,
 
 	he_mcsnss = (IEEEtypes_HeMcsNss_t *)hecap_ie->he_txrx_mcs_support;
 
-	cfg_value = GET_HE_NSSMCS(user_hecap_tlv->rx_mcs_80, nss);
-	hw_value = GET_HE_NSSMCS(hw_hecap_tlv->rx_mcs_80, nss);
 	for (nss = 1; nss <= 8; nss++) {
+		cfg_value = GET_HE_NSSMCS(user_hecap_tlv->rx_mcs_80, nss);
+		hw_value = GET_HE_NSSMCS(hw_hecap_tlv->rx_mcs_80, nss);
 		if ((hw_value == NO_NSS_SUPPORT) ||
 		    (cfg_value == NO_NSS_SUPPORT)) {
 			SET_HE_NSSMCS(he_mcsnss->rx_mcs, nss, NO_NSS_SUPPORT);
@@ -200,9 +200,10 @@ t_u8 wlan_fill_he_cap_ie(mlan_private *pmpriv, IEEEtypes_HECap_t *hecap_ie,
 		}
 	}
 
-	cfg_value = GET_HE_NSSMCS(user_hecap_tlv->tx_mcs_80, nss);
-	hw_value = GET_HE_NSSMCS(hw_hecap_tlv->tx_mcs_80, nss);
 	for (nss = 1; nss <= 8; nss++) {
+		cfg_value = GET_HE_NSSMCS(user_hecap_tlv->tx_mcs_80, nss);
+		hw_value = GET_HE_NSSMCS(hw_hecap_tlv->tx_mcs_80, nss);
+
 		if ((hw_value == NO_NSS_SUPPORT) ||
 		    (cfg_value == NO_NSS_SUPPORT)) {
 			SET_HE_NSSMCS(he_mcsnss->tx_mcs, nss, NO_NSS_SUPPORT);
@@ -525,6 +526,7 @@ void wlan_update_11ax_cap(mlan_adapter *pmadapter,
 	MrvlIEtypes_He_cap_t *phe_cap = MNULL;
 	t_u8 i = 0;
 	t_u8 he_cap_2g = 0;
+	MrvlIEtypes_He_cap_t *user_he_cap_tlv = MNULL;
 
 	ENTER();
 	if ((hw_he_cap->len + sizeof(MrvlIEtypesHeader_t)) >
@@ -583,6 +585,28 @@ void wlan_update_11ax_cap(mlan_adapter *pmadapter,
 					pmadapter->hw_hecap_len,
 					sizeof(pmadapter->priv[i]->user_he_cap));
 			}
+			/**
+			 *  Clear TWT bits in he_mac_cap by bss role
+			 *  STA mode should clear TWT responder bit
+			 *  UAP mode should clear TWT request bit
+			 */
+			if (he_cap_2g)
+				user_he_cap_tlv =
+					(MrvlIEtypes_He_cap_t *)&pmadapter
+						->priv[i]
+						->user_2g_he_cap;
+			else
+				user_he_cap_tlv =
+					(MrvlIEtypes_He_cap_t *)&pmadapter
+						->priv[i]
+						->user_he_cap;
+
+			if (pmadapter->priv[i]->bss_role == MLAN_BSS_ROLE_STA)
+				user_he_cap_tlv->he_mac_cap[0] &=
+					~HE_MAC_CAP_TWT_RESP_SUPPORT;
+			else
+				user_he_cap_tlv->he_mac_cap[0] &=
+					~HE_MAC_CAP_TWT_REQ_SUPPORT;
 		}
 	}
 	LEAVE();
@@ -933,8 +957,9 @@ mlan_status wlan_cmd_11ax_cmd(pmlan_private pmpriv, HostCmd_DS_COMMAND *cmd,
 		break;
 	case MLAN_11AXCMD_TXOMI_SUBID:
 		memcpy_ext(pmadapter, axcmd->val, &txomi_cmd->omi,
-			   sizeof(t_u16), sizeof(t_u16));
-		cmd->size += sizeof(t_u16);
+			   sizeof(mlan_ds_11ax_txomi_cmd),
+			   sizeof(mlan_ds_11ax_txomi_cmd));
+		cmd->size += sizeof(mlan_ds_11ax_txomi_cmd);
 		break;
 	case MLAN_11AXCMD_OBSS_TOLTIME_SUBID:
 		memcpy_ext(pmadapter, axcmd->val, &toltime_cmd->tol_time,
@@ -1010,7 +1035,8 @@ mlan_status wlan_ret_11ax_cmd(pmlan_private pmpriv, HostCmd_DS_COMMAND *resp,
 		break;
 	case MLAN_11AXCMD_TXOMI_SUBID:
 		memcpy_ext(pmadapter, &cfg->param.txomi_cfg.omi, axcmd->val,
-			   sizeof(t_u16), sizeof(t_u16));
+			   sizeof(mlan_ds_11ax_txomi_cmd),
+			   sizeof(mlan_ds_11ax_txomi_cmd));
 		break;
 	case MLAN_11AXCMD_OBSS_TOLTIME_SUBID:
 		memcpy_ext(pmadapter, &cfg->param.toltime_cfg.tol_time,
