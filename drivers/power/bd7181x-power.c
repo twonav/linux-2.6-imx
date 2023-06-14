@@ -391,6 +391,7 @@ static void twonav_init_type(void) {
 		tn_power_values = TN_POWER_TRAIL;
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;
+		tn_power_values.fast_charge_current = 0x08;
 	}
 	else if(strstr(hwtype, "crossplus") != NULL) {
 		tn_power_values = TN_POWER_CROSS;
@@ -401,6 +402,7 @@ static void twonav_init_type(void) {
 		tn_power_values = TN_POWER_CROSS;
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;
+		tn_power_values.fast_charge_current = 0x08;
 	}
 	else if(strstr(hwtype, "terra") != NULL) {
 		tn_power_values = TN_POWER_TERRA;
@@ -421,6 +423,7 @@ static void twonav_init_type(void) {
 		tn_power_values = TN_POWER_AVENTURA;
 		rsense_capacity_factor = 360;
 		rsense_current_factor = 1000;
+		tn_power_values.fast_charge_current = 0x08;
 	}
 }
 
