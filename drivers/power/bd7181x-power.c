@@ -315,10 +315,10 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 };				
 
 static const struct tn_power_values_st TN_POWER_ROC = {
-	// Ext MOSFET and Rsns=5mOh (R)+~5mOhms (Rpistas) -> 10mOhms
-	.term_current = 0x07, // Theoretical term current 0.05C = 0.05 * 2500 = 125mA -> 0x06(100mA) 0x07(150mA) -> 150mA
-	// Rsense 10mOhms -> step is 100mA
-	.fast_charge_current = 0x0A,
+	// Ext MOSFET and Rsns=5mOh (R)+~5mOhms (Rpistas) -> 10mOhms CHANGE -> 7mOhms
+	.term_current = 0x06, // Theoretical term current 0.05C = 0.05 * 2500 = 125mA -> 0x05(67mA) 0x06(133mA) -> 133mA
+	// Rsense 7.5mOhms -> step is 133mA
+	.fast_charge_current = 0x08,
 	.capacity = 2500, // real value might be a little more (2540mAh)
 	.low_voltage_th = 0x0D5, // 3408 * 16mV (step) = 213 -> 0x00D5
 	.fast_charge_termination_voltage = 0x62,// 4.34-0.016V = 4.324V
@@ -414,8 +414,8 @@ static void twonav_init_type(void) {
 	}
 	else if(strstr(hwtype, "roc") != NULL) {
 		tn_power_values = TN_POWER_ROC;
-		rsense_capacity_factor = 360;
-		rsense_current_factor = 1000;
+		rsense_capacity_factor = 270; // 360 * 0.75
+		rsense_current_factor = 1333; // 1000 / 0.75
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
 		tn_power_values = TN_POWER_AVENTURA;
