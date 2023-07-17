@@ -1057,7 +1057,6 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, int ocv_type) {
  * @return 0
  */
 static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
-	return 0;
 	u32 relaxed_coulomb_cnt;
 
 	relaxed_coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_REX_CCNTD_3) & 0x1FFFFFFFUL;
@@ -1190,7 +1189,6 @@ static int bd7181x_get_battery_parameters(struct bd7181x_power* pwr)
  */
 static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 {
-	return 0;
 	int tmp_curr_mA;
 
 	tmp_curr_mA = pwr->curr / 1000;
@@ -2229,7 +2227,12 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 		val->intval = pwr->vcell;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		val->intval = pwr->clamp_soc;
+		if (strstr(hwtype, "roc")) {
+			val->intval = pwr->soc_norm; // ROC: jumps in capacity %
+		}
+		else {
+			val->intval = pwr->clamp_soc;
+		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_NOW:
 		{

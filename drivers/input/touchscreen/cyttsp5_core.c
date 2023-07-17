@@ -5852,7 +5852,7 @@ static int fb_notifier_callback(struct notifier_block *self,
 
 	blank = evdata->data;
 	if (*blank == FB_BLANK_UNBLANK) {
-		dev_info(cd->dev, "%s: UNBLANK!\n", __func__);
+		//dev_info(cd->dev, "%s: UNBLANK!\n", __func__);
 		if (cd->fb_state != FB_ON) {
 			call_atten_cb(cd, CY_ATTEN_RESUME, 0);
 			cd->fb_state = FB_ON;
