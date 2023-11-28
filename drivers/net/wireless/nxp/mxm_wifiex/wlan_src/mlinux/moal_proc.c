@@ -565,7 +565,8 @@ mlan_status woal_priv_set_tx_rx_ant(moal_handle *handle, char *line)
 			radio->param.ant_cfg.rx_antenna = data[1];
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 		if (IS_CARD9098(priv->phandle->card_type) ||
-		    IS_CARD9097(priv->phandle->card_type)) {
+		    IS_CARD9097(priv->phandle->card_type) ||
+		    IS_CARDIW624(priv->phandle->card_type)) {
 			woal_cfg80211_notify_antcfg(priv, priv->phandle->wiphy,
 						    radio);
 		}
@@ -597,6 +598,7 @@ static ssize_t woal_config_write(struct file *f, const char __user *buf,
 {
 	char databuf[200];
 	char *line = NULL;
+	int ret = 0;
 	t_u32 config_data = 0;
 	struct seq_file *sfp = f->private_data;
 	moal_handle *handle = (moal_handle *)sfp->private;
@@ -706,7 +708,7 @@ static ssize_t woal_config_write(struct file *f, const char __user *buf,
 			config_data = FW_RELOAD_SDIO_INBAND_RESET;
 #endif
 		PRINTM(MMSG, "Request fw_reload=%d\n", config_data);
-		woal_request_fw_reload(handle, config_data);
+		ret = woal_request_fw_reload(handle, config_data);
 	}
 	if (!strncmp(databuf, "drop_point=", strlen("drop_point="))) {
 		line += strlen("drop_point") + 1;
@@ -814,6 +816,8 @@ static ssize_t woal_config_write(struct file *f, const char __user *buf,
 
 	MODULE_PUT;
 	LEAVE();
+	if (ret < 0)
+		return ret;
 	return (int)count;
 }
 
@@ -844,8 +848,8 @@ static int woal_config_read(struct seq_file *sfp, void *data)
 	seq_printf(sfp, "drv_mode=%d\n", (int)handle->params.drv_mode);
 	if (priv) {
 		memset(&hscfg, 0, sizeof(mlan_ds_hs_cfg));
-		woal_set_get_hs_params(priv, MLAN_ACT_GET, MOAL_IOCTL_WAIT,
-				       &hscfg);
+		(void)woal_set_get_hs_params(priv, MLAN_ACT_GET,
+					     MOAL_IOCTL_WAIT, &hscfg);
 		seq_printf(sfp, "hssetpara=%d,0x%x,%d,%d\n", hscfg.conditions,
 			   hscfg.gpio, hscfg.gap, hscfg.hs_wake_interval);
 	}
@@ -1077,6 +1081,7 @@ static const struct file_operations config_proc_fops = {
 };
 #endif
 
+#ifdef DUMP_TO_PROC
 static int woal_drv_dump_read(struct seq_file *sfp, void *data)
 {
 	moal_handle *handle = (moal_handle *)sfp->private;
@@ -1230,6 +1235,7 @@ static const struct file_operations fw_dump_fops = {
 	.release = single_release,
 };
 #endif
+#endif
 
 /**
  *  @brief wifi status proc read function
@@ -1301,11 +1307,11 @@ int woal_string_to_number(char *s)
 
 	if (!strncmp(s, "-", 1)) {
 		pn = -1;
-		s++;
+		s = (char *)(s + 1);
 	}
 	if (!strncmp(s, "0x", 2) || !strncmp(s, "0X", 2)) {
 		base = 16;
-		s += 2;
+		s = (char *)(s + 2);
 	} else
 		base = 10;
 
@@ -1383,8 +1389,10 @@ void woal_proc_init(moal_handle *handle)
 	struct proc_dir_entry *pde = proc_mwlan;
 #endif
 	char config_proc_dir[20];
+#ifdef DUMP_TO_PROC
 	char drv_dump_dir[20];
 	char fw_dump_dir[20];
+#endif
 
 	ENTER();
 
@@ -1426,7 +1434,7 @@ void woal_proc_init(moal_handle *handle)
 		goto done;
 	}
 
-	strcpy(config_proc_dir, "config");
+	strncpy(config_proc_dir, "config", sizeof(config_proc_dir));
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26)
 	r = proc_create_data(config_proc_dir, 0666, handle->proc_wlan,
 			     &config_proc_fops, handle);
@@ -1440,7 +1448,8 @@ void woal_proc_init(moal_handle *handle)
 	if (!r)
 		PRINTM(MERROR, "Fail to create proc config\n");
 
-	strcpy(drv_dump_dir, "drv_dump");
+#ifdef DUMP_TO_PROC
+	strncpy(drv_dump_dir, "drv_dump", sizeof(drv_dump_dir));
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26)
 	r = proc_create_data(drv_dump_dir, 0644, handle->proc_wlan,
 			     &drv_dump_fops, handle);
@@ -1454,7 +1463,7 @@ void woal_proc_init(moal_handle *handle)
 	if (!r)
 		PRINTM(MERROR, "Failed to create proc drv dump\n");
 
-	strcpy(fw_dump_dir, "fw_dump");
+	strncpy(fw_dump_dir, "fw_dump", sizeof(fw_dump_dir));
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26)
 	r = proc_create_data(fw_dump_dir, 0644, handle->proc_wlan,
 			     &fw_dump_fops, handle);
@@ -1467,6 +1476,7 @@ void woal_proc_init(moal_handle *handle)
 #endif
 	if (!r)
 		PRINTM(MERROR, "Failed to create proc fw dump\n");
+#endif
 
 done:
 	LEAVE();
@@ -1482,19 +1492,23 @@ done:
 void woal_proc_exit(moal_handle *handle)
 {
 	char config_proc_dir[20];
+#ifdef DUMP_TO_PROC
 	char drv_dump_dir[20];
 	char fw_dump_dir[20];
+#endif
 
 	ENTER();
 
 	PRINTM(MINFO, "Remove Proc Interface %s\n", handle->proc_wlan_name);
 	if (handle->proc_wlan) {
-		strcpy(config_proc_dir, "config");
+		strncpy(config_proc_dir, "config", sizeof(config_proc_dir));
 		remove_proc_entry(config_proc_dir, handle->proc_wlan);
-		strcpy(drv_dump_dir, "drv_dump");
+#ifdef DUMP_TO_PROC
+		strncpy(drv_dump_dir, "drv_dump", sizeof(drv_dump_dir));
 		remove_proc_entry(drv_dump_dir, handle->proc_wlan);
-		strcpy(fw_dump_dir, "fw_dump");
+		strncpy(fw_dump_dir, "fw_dump", sizeof(fw_dump_dir));
 		remove_proc_entry(fw_dump_dir, handle->proc_wlan);
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 10, 0)
 		/* Remove only if we are the only instance using this */
@@ -1512,6 +1526,7 @@ void woal_proc_exit(moal_handle *handle)
 		}
 #endif
 	}
+#ifdef DUMP_TO_PROC
 	if (handle->fw_dump_buf) {
 		moal_vfree(handle, handle->fw_dump_buf);
 		handle->fw_dump_buf = NULL;
@@ -1522,6 +1537,7 @@ void woal_proc_exit(moal_handle *handle)
 		handle->drv_dump_len = 0;
 		handle->drv_dump_buf = NULL;
 	}
+#endif
 	LEAVE();
 }
 
@@ -1556,7 +1572,7 @@ void woal_create_proc_entry(moal_private *priv)
 			LEAVE();
 			return;
 		}
-		strcat(proc_dir_name, dev->name);
+		strncat(proc_dir_name, dev->name, sizeof(proc_dir_name) - 1);
 		/* Try to create adapterX/dev_name directory first under
 		 * /proc/mwlan/ */
 		priv->proc_entry = proc_mkdir(proc_dir_name, proc_mwlan);
@@ -1595,7 +1611,7 @@ void woal_create_proc_entry(moal_private *priv)
 		atomic_inc(&(priv->phandle->proc_wlan->count));
 #endif /* < 3.10.0 */
 #endif /* < 2.6.26 */
-		strcpy(priv->proc_entry_name, dev->name);
+		strncpy(priv->proc_entry_name, dev->name, IFNAMSIZ);
 		if (priv->proc_entry) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26)
 			r = proc_create_data("info", 0, priv->proc_entry,

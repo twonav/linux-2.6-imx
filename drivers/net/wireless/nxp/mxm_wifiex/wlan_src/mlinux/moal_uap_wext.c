@@ -84,6 +84,10 @@ static const struct iw_priv_args woal_uap_priv_args[] = {
 #endif
 #endif
 
+#if defined(UAP_CFG80211)
+	{WOAL_UAP_SET_MODE, IW_PRIV_TYPE_INT | 1, IW_PRIV_TYPE_INT | 1,
+	 "setmode"},
+#endif
 	{WOAL_UAP_SET_GET_256_CHAR, IW_PRIV_TYPE_CHAR | 256,
 	 IW_PRIV_TYPE_CHAR | 256, ""},
 	{WOAL_WL_FW_RELOAD, IW_PRIV_TYPE_CHAR | 256, IW_PRIV_TYPE_CHAR | 256,
@@ -197,7 +201,7 @@ static int woal_get_name(struct net_device *dev, struct iw_request_info *info,
 {
 	char *cwrq = wrqu->name;
 	ENTER();
-	strcpy(cwrq, "IEEE 802.11-DS");
+	strncpy(cwrq, "IEEE 802.11-DS", IFNAMSIZ);
 	LEAVE();
 	return 0;
 }
@@ -224,7 +228,11 @@ static int woal_get_wap(struct net_device *dev, struct iw_request_info *info,
 	if (priv->bss_started)
 		moal_memcpy_ext(priv->phandle, awrq->sa_data,
 				priv->current_addr, MLAN_MAC_ADDR_LENGTH,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 2, 0)
+				sizeof(awrq->sa_data_min));
+#else
 				sizeof(awrq->sa_data));
+#endif
 	else
 		memset(awrq->sa_data, 0, MLAN_MAC_ADDR_LENGTH);
 	awrq->sa_family = ARPHRD_ETHER;
@@ -401,7 +409,7 @@ static int woal_get_freq(struct net_device *dev, struct iw_request_info *info,
 		return -EFAULT;
 	}
 
-	band = (ap_cfg->bandcfg.chanBand == BAND_5GHZ);
+	band = (((ap_cfg->bandcfg.chanBand == BAND_5GHZ) ? 1 : 0));
 	fwrq->m = (long)channel_to_frequency(ap_cfg->channel, band);
 	fwrq->i = (long)ap_cfg->channel;
 	fwrq->e = 6;
@@ -1126,7 +1134,8 @@ static int woal_set_mlme(struct net_device *dev, struct iw_request_info *info,
 		if (!memcmp(bc_addr, sta_addr, ETH_ALEN)) {
 			PRINTM(MIOCTL, "Deauth all stations\n");
 			req = woal_alloc_mlan_ioctl_req(
-				sizeof(mlan_ds_get_info));
+				sizeof(mlan_ds_get_info) +
+				(MAX_STA_LIST_IE_SIZE * MAX_NUM_CLIENTS));
 			if (req == NULL) {
 				LEAVE();
 				return -ENOMEM;

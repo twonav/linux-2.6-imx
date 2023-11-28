@@ -71,6 +71,10 @@ static moal_if_ops sdiommc_ops;
 /** Device ID for SD8987 */
 #define SD_DEVICE_ID_8987 (0x9149)
 #endif
+/** Device ID for SDAW693 */
+#define SD_DEVICE_ID_AW693_FN1 (0x0211)
+/** Device ID for SDAW693 */
+#define SD_DEVICE_ID_AW693_FN2 (0x0212)
 #ifdef SD9098
 /** Device ID for SD9098 */
 #define SD_DEVICE_ID_9098_FN1 (0x914D)
@@ -85,9 +89,9 @@ static moal_if_ops sdiommc_ops;
 /** Device ID for SD9177 */
 #define SD_DEVICE_ID_9177 (0x0205)
 #endif
-#ifdef SDNW62X
-/** Device ID for SDNW62X */
-#define SD_DEVICE_ID_NW62X (0x020D)
+#ifdef SDIW624
+/** Device ID for SDIW624 */
+#define SD_DEVICE_ID_IW624 (0x020D)
 #endif
 
 /** WLAN IDs */
@@ -113,6 +117,8 @@ static const struct sdio_device_id wlan_ids[] = {
 #ifdef SD8987
 	{SDIO_DEVICE(MRVL_VENDOR_ID, SD_DEVICE_ID_8987)},
 #endif
+	{SDIO_DEVICE(NXP_VENDOR_ID, SD_DEVICE_ID_AW693_FN1)},
+	{SDIO_DEVICE(NXP_VENDOR_ID, SD_DEVICE_ID_AW693_FN2)},
 #ifdef SD9098
 	{SDIO_DEVICE(MRVL_VENDOR_ID, SD_DEVICE_ID_9098_FN1)},
 	{SDIO_DEVICE(MRVL_VENDOR_ID, SD_DEVICE_ID_9098_FN2)},
@@ -123,8 +129,8 @@ static const struct sdio_device_id wlan_ids[] = {
 #ifdef SD9177
 	{SDIO_DEVICE(NXP_VENDOR_ID, SD_DEVICE_ID_9177)},
 #endif
-#ifdef SDNW62X
-	{SDIO_DEVICE(NXP_VENDOR_ID, SD_DEVICE_ID_NW62X)},
+#ifdef SDIW624
+	{SDIO_DEVICE(NXP_VENDOR_ID, SD_DEVICE_ID_IW624)},
 #endif
 	{},
 };
@@ -242,6 +248,7 @@ static void woal_sdio_interrupt(struct sdio_func *func)
 {
 	moal_handle *handle;
 	struct sdio_mmc_card *card;
+	mlan_status status;
 
 	ENTER();
 
@@ -263,7 +270,10 @@ static void woal_sdio_interrupt(struct sdio_func *func)
 	PRINTM(MINTR, "*\n");
 
 	/* call mlan_interrupt to read int status */
-	mlan_interrupt(0, handle->pmlan_adapter);
+	status = mlan_interrupt(0, handle->pmlan_adapter);
+	if (status == MLAN_STATUS_FAILURE) {
+		PRINTM(MINTR, "mlan interrupt failed\n");
+	}
 #ifdef SDIO_SUSPEND_RESUME
 	if (handle->is_suspended) {
 		PRINTM(MINTR, "Receive interrupt in hs_suspended\n");
@@ -273,7 +283,10 @@ static void woal_sdio_interrupt(struct sdio_func *func)
 #endif
 	handle->main_state = MOAL_START_MAIN_PROCESS;
 	/* Call MLAN main process */
-	mlan_main_process(handle->pmlan_adapter);
+	status = mlan_main_process(handle->pmlan_adapter);
+	if (status == MLAN_STATUS_FAILURE) {
+		PRINTM(MINTR, "mlan main process exited with failure\n");
+	}
 	handle->main_state = MOAL_END_MAIN_PROCESS;
 	LEAVE();
 }
@@ -390,11 +403,25 @@ static t_u16 woal_update_card_type(t_void *card)
 				(strlen(INTF_CARDTYPE) + strlen(KERN_VERSION)));
 	}
 #endif
-#ifdef SDNW62X
-	if (cardp_sd->func->device == SD_DEVICE_ID_NW62X) {
-		card_type = CARD_TYPE_SDNW62X;
-		moal_memcpy_ext(NULL, driver_version, CARD_SDNW62X,
-				strlen(CARD_SDNW62X), strlen(driver_version));
+#ifdef SDIW624
+	if (cardp_sd->func->device == SD_DEVICE_ID_IW624) {
+		card_type = CARD_TYPE_SDIW624;
+		moal_memcpy_ext(NULL, driver_version, CARD_SDIW624,
+				strlen(CARD_SDIW624), strlen(driver_version));
+		moal_memcpy_ext(
+			NULL,
+			driver_version + strlen(INTF_CARDTYPE) +
+				strlen(KERN_VERSION),
+			V18, strlen(V18),
+			strlen(driver_version) -
+				(strlen(INTF_CARDTYPE) + strlen(KERN_VERSION)));
+	}
+#endif
+	if (cardp_sd->func->device == SD_DEVICE_ID_AW693_FN1 ||
+	    cardp_sd->func->device == SD_DEVICE_ID_AW693_FN2) {
+		card_type = CARD_TYPE_SDAW693;
+		moal_memcpy_ext(NULL, driver_version, CARD_SDAW693,
+				strlen(CARD_SDAW693), strlen(driver_version));
 		moal_memcpy_ext(
 			NULL,
 			driver_version + strlen(INTF_CARDTYPE) +
@@ -403,7 +430,6 @@ static t_u16 woal_update_card_type(t_void *card)
 			strlen(driver_version) -
 				(strlen(INTF_CARDTYPE) + strlen(KERN_VERSION)));
 	}
-#endif
 #ifdef SD9097
 	if (cardp_sd->func->device == SD_DEVICE_ID_9097) {
 		card_type = CARD_TYPE_SD9097;
@@ -644,9 +670,12 @@ void woal_sdio_shutdown(struct device *dev)
 				) {
 					PRINTM(MIOCTL,
 					       "disconnect on suspend\n");
-					woal_disconnect(handle->priv[i],
-							MOAL_NO_WAIT, NULL,
-							DEF_DEAUTH_REASON_CODE);
+					if (woal_disconnect(
+						    handle->priv[i],
+						    MOAL_NO_WAIT, NULL,
+						    DEF_DEAUTH_REASON_CODE))
+						PRINTM(MERROR,
+						       "failed to disconnect on suspend\n");
 				}
 			}
 		}
@@ -1346,8 +1375,11 @@ int woal_sdio_read_write_cmd52(moal_handle *handle, int func, int reg, int val)
  */
 static t_u8 woal_sdiommc_is_second_mac(moal_handle *handle)
 {
-#ifdef SD9098
 	struct sdio_mmc_card *card = (struct sdio_mmc_card *)handle->card;
+
+	if (card->func->device == SD_DEVICE_ID_AW693_FN2)
+		return MTRUE;
+#ifdef SD9098
 	if (card->func->device == SD_DEVICE_ID_9098_FN2)
 		return MTRUE;
 #endif
@@ -1363,14 +1395,10 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 	t_u32 revision_id = 0;
 	t_u32 rev_id_reg = handle->card_info->rev_id_reg;
 
-#if defined(SD8987) || defined(SD8997) || defined(SD9098) ||                   \
-	defined(SD9097) || defined(SDNW62X) || defined(SD8978) ||              \
-	defined(SD9177)
 	t_u32 magic_reg = handle->card_info->magic_reg;
 	t_u32 magic = 0;
 	t_u32 host_strap_reg = handle->card_info->host_strap_reg;
 	t_u32 strap = 0;
-#endif
 
 	ENTER();
 
@@ -1384,9 +1412,6 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 	woal_sdiommc_read_reg(handle, rev_id_reg, &revision_id);
 	PRINTM(MCMND, "revision_id=0x%x\n", revision_id);
 
-#if defined(SD8987) || defined(SD8997) || defined(SD9098) ||                   \
-	defined(SD9097) || defined(SDNW62X) || defined(SD8978) ||              \
-	defined(SD9177)
 	/** Revision ID register */
 	woal_sdiommc_read_reg(handle, magic_reg, &magic);
 	/** Revision ID register */
@@ -1395,24 +1420,26 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 	magic &= 0xFF;
 	/* 1 = SDSD, 0 --SD UART */
 	PRINTM(MCMND, "magic=0x%x strap=0x%x\n", magic, strap);
-#endif
 #if defined(SD8977)
 	if (IS_SD8977(handle->card_type)) {
 		switch (revision_id) {
 		case SD8977_V0:
-			strcpy(handle->card_info->fw_name, SD8977_V0_FW_NAME);
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD8977_WLAN_V0_FW_NAME);
+			strncpy(handle->card_info->fw_name, SD8977_V0_FW_NAME,
+				FW_NAMW_MAX_LEN);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD8977_WLAN_V0_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		case SD8977_V1:
-			strcpy(handle->card_info->fw_name, SD8977_V1_FW_NAME);
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD8977_WLAN_V1_FW_NAME);
+			strncpy(handle->card_info->fw_name, SD8977_V1_FW_NAME,
+				FW_NAMW_MAX_LEN);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD8977_WLAN_V1_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		case SD8977_V2:
-			strcpy(handle->card_info->fw_name, SD8977_V2_FW_NAME);
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD8977_WLAN_V2_FW_NAME);
+			strncpy(handle->card_info->fw_name, SD8977_V2_FW_NAME,
+				FW_NAMW_MAX_LEN);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD8977_WLAN_V2_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		default:
 			break;
@@ -1424,14 +1451,16 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 		/* Check revision ID */
 		switch (revision_id) {
 		case SD8887_A0:
-			strcpy(handle->card_info->fw_name, SD8887_A0_FW_NAME);
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD8887_WLAN_A0_FW_NAME);
+			strncpy(handle->card_info->fw_name, SD8887_A0_FW_NAME,
+				FW_NAMW_MAX_LEN);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD8887_WLAN_A0_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		case SD8887_A2:
-			strcpy(handle->card_info->fw_name, SD8887_A2_FW_NAME);
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD8887_WLAN_A2_FW_NAME);
+			strncpy(handle->card_info->fw_name, SD8887_A2_FW_NAME,
+				FW_NAMW_MAX_LEN);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD8887_WLAN_A2_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		default:
 			break;
@@ -1443,11 +1472,13 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 	if (IS_SD8997(handle->card_type)) {
 		if (magic == CHIP_MAGIC_VALUE) {
 			if (strap == CARD_TYPE_SD_UART)
-				strcpy(handle->card_info->fw_name,
-				       SDUART8997_DEFAULT_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDUART8997_DEFAULT_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 			else
-				strcpy(handle->card_info->fw_name,
-				       SDSD8997_DEFAULT_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDSD8997_DEFAULT_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 		}
 	}
 #endif
@@ -1456,11 +1487,13 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 	if (IS_SD8987(handle->card_type)) {
 		if (magic == CHIP_MAGIC_VALUE) {
 			if (strap == CARD_TYPE_SD_UART)
-				strcpy(handle->card_info->fw_name,
-				       SDUART8987_DEFAULT_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDUART8987_DEFAULT_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 			else
-				strcpy(handle->card_info->fw_name,
-				       SDSD8987_DEFAULT_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDSD8987_DEFAULT_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 		}
 	}
 #endif
@@ -1469,11 +1502,13 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 	if (IS_SD8978(handle->card_type)) {
 		if (magic == CHIP_MAGIC_VALUE) {
 			if (strap == CARD_TYPE_SD_UART)
-				strcpy(handle->card_info->fw_name,
-				       SDUART8978_DEFAULT_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDUART8978_DEFAULT_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 			else
-				strcpy(handle->card_info->fw_name,
-				       SDSD8978_DEFAULT_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDSD8978_DEFAULT_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 		}
 	}
 #endif
@@ -1485,28 +1520,32 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 		case SD9098_Z1Z2:
 			if (magic == CHIP_MAGIC_VALUE) {
 				if (strap == CARD_TYPE_SD_UART)
-					strcpy(handle->card_info->fw_name,
-					       SDUART9098_DEFAULT_COMBO_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDUART9098_DEFAULT_COMBO_FW_NAME,
+						FW_NAMW_MAX_LEN);
 				else
-					strcpy(handle->card_info->fw_name,
-					       SDSD9098_DEFAULT_COMBO_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDSD9098_DEFAULT_COMBO_FW_NAME,
+						FW_NAMW_MAX_LEN);
 			}
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD9098_DEFAULT_WLAN_FW_NAME);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD9098_DEFAULT_WLAN_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		case SD9098_A0:
 		case SD9098_A1:
 		case SD9098_A2:
 			if (magic == CHIP_MAGIC_VALUE) {
 				if (strap == CARD_TYPE_SD_UART)
-					strcpy(handle->card_info->fw_name,
-					       SDUART9098_COMBO_V1_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDUART9098_COMBO_V1_FW_NAME,
+						FW_NAMW_MAX_LEN);
 				else
-					strcpy(handle->card_info->fw_name,
-					       SDSD9098_COMBO_V1_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDSD9098_COMBO_V1_FW_NAME,
+						FW_NAMW_MAX_LEN);
 			}
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD9098_WLAN_V1_FW_NAME);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD9098_WLAN_V1_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		default:
 			break;
@@ -1520,30 +1559,46 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 		case SD9097_B1:
 			if (magic == CHIP_MAGIC_VALUE) {
 				if (strap == CARD_TYPE_SD_UART)
-					strcpy(handle->card_info->fw_name,
-					       SDUART9097_COMBO_V1_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDUART9097_COMBO_V1_FW_NAME,
+						FW_NAMW_MAX_LEN);
 				else
-					strcpy(handle->card_info->fw_name,
-					       SDSD9097_COMBO_V1_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDSD9097_COMBO_V1_FW_NAME,
+						FW_NAMW_MAX_LEN);
 			}
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD9097_WLAN_V1_FW_NAME);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD9097_WLAN_V1_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		default:
 			break;
 		}
 	}
 #endif
-#ifdef SDNW62X
-	if (IS_SDNW62X(handle->card_type)) {
+	if (IS_SDAW693(handle->card_type)) {
 		if (magic == CHIP_MAGIC_VALUE) {
 			if (strap == CARD_TYPE_SD_UART)
-				strcpy(handle->card_info->fw_name,
-				       SDUARTNW62X_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDUARTAW693_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 			else
-				strcpy(handle->card_info->fw_name,
-				       SDSDNW62X_COMBO_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SDSDAW693_COMBO_FW_NAME,
+					FW_NAMW_MAX_LEN);
 		}
+	}
+
+#ifdef SDIW624
+	if (IS_SDIW624(handle->card_type)) {
+		magic &= 0x03;
+		if (magic == 0x03)
+			PRINTM(MMSG, "wlan: SDIW624 in secure-boot mode\n");
+		if (strap == CARD_TYPE_SDIW624_UART)
+			strncpy(handle->card_info->fw_name,
+				SDUARTIW624_COMBO_FW_NAME, FW_NAMW_MAX_LEN);
+		else
+			strncpy(handle->card_info->fw_name,
+				SDSDIW624_COMBO_FW_NAME, FW_NAMW_MAX_LEN);
 	}
 #endif
 
@@ -1553,43 +1608,51 @@ static mlan_status woal_sdiommc_get_fw_name(moal_handle *handle)
 		case SD9177_A0:
 			if (magic == CHIP_MAGIC_VALUE) {
 				if (strap == CARD_TYPE_SD9177_UART)
-					strcpy(handle->card_info->fw_name,
-					       SDUART9177_DEFAULT_COMBO_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDUART9177_DEFAULT_COMBO_FW_NAME,
+						FW_NAMW_MAX_LEN);
 				else
-					strcpy(handle->card_info->fw_name,
-					       SDSD9177_DEFAULT_COMBO_FW_NAME);
+					strncpy(handle->card_info->fw_name,
+						SDSD9177_DEFAULT_COMBO_FW_NAME,
+						FW_NAMW_MAX_LEN);
 			}
-			strcpy(handle->card_info->fw_name_wlan,
-			       SD9177_DEFAULT_WLAN_FW_NAME);
+			strncpy(handle->card_info->fw_name_wlan,
+				SD9177_DEFAULT_WLAN_FW_NAME, FW_NAMW_MAX_LEN);
 			break;
 		case SD9177_A1:
 			if (magic == CHIP_MAGIC_VALUE) {
 				if (strap == CARD_TYPE_SD9177_UART) {
 					if (handle->params.rf_test_mode)
-						strcpy(handle->card_info
-							       ->fw_name,
-						       SDUART9177_DEFAULT_RFTM_COMBO_V1_FW_NAME);
+						strncpy(handle->card_info
+								->fw_name,
+							SDUART9177_DEFAULT_RFTM_COMBO_V1_FW_NAME,
+							FW_NAMW_MAX_LEN);
 					else
-						strcpy(handle->card_info
-							       ->fw_name,
-						       SDUART9177_DEFAULT_COMBO_V1_FW_NAME);
+						strncpy(handle->card_info
+								->fw_name,
+							SDUART9177_DEFAULT_COMBO_V1_FW_NAME,
+							FW_NAMW_MAX_LEN);
 				} else {
 					if (handle->params.rf_test_mode)
-						strcpy(handle->card_info
-							       ->fw_name,
-						       SDSD9177_DEFAULT_RFTM_COMBO_V1_FW_NAME);
+						strncpy(handle->card_info
+								->fw_name,
+							SDSD9177_DEFAULT_RFTM_COMBO_V1_FW_NAME,
+							FW_NAMW_MAX_LEN);
 					else
-						strcpy(handle->card_info
-							       ->fw_name,
-						       SDSD9177_DEFAULT_COMBO_V1_FW_NAME);
+						strncpy(handle->card_info
+								->fw_name,
+							SDSD9177_DEFAULT_COMBO_V1_FW_NAME,
+							FW_NAMW_MAX_LEN);
 				}
 			}
 			if (handle->params.rf_test_mode)
-				strcpy(handle->card_info->fw_name,
-				       SD9177_DEFAULT_RFTM_WLAN_V1_FW_NAME);
+				strncpy(handle->card_info->fw_name,
+					SD9177_DEFAULT_RFTM_WLAN_V1_FW_NAME,
+					FW_NAMW_MAX_LEN);
 			else
-				strcpy(handle->card_info->fw_name_wlan,
-				       SD9177_DEFAULT_WLAN_V1_FW_NAME);
+				strncpy(handle->card_info->fw_name_wlan,
+					SD9177_DEFAULT_WLAN_V1_FW_NAME,
+					FW_NAMW_MAX_LEN);
 			break;
 		default:
 			break;
@@ -1606,6 +1669,9 @@ done:
 #define DEBUG_FW_DONE 0xFF
 #define DEBUG_MEMDUMP_FINISH 0xFE
 #define MAX_POLL_TRIES 100
+
+#define HOST_TO_CARD_EVENT_REG 0x00
+#define HOST_TO_CARD_EVENT MBIT(3)
 
 typedef enum {
 	DUMP_TYPE_ITCM = 0,
@@ -1659,10 +1725,12 @@ static memory_type_mapping mem_type_mapping_tbl_8977_8997 = {"DUMP", NULL, NULL,
  *
  *  @param phandle   A pointer to moal_handle
  *  @param doneflag  A flag
+ *  @param trigger   trigger FW dump flag
  *
  *  @return         MLAN_STATUS_SUCCESS
  */
-static rdwr_status woal_cmd52_rdwr_firmware(moal_handle *phandle, t_u8 doneflag)
+static rdwr_status woal_cmd52_rdwr_firmware(moal_handle *phandle, t_u8 doneflag,
+					    t_u8 trigger)
 {
 	int ret = 0;
 	int tries = 0;
@@ -1681,6 +1749,16 @@ static rdwr_status woal_cmd52_rdwr_firmware(moal_handle *phandle, t_u8 doneflag)
 		PRINTM(MERROR, "SDIO Write ERR\n");
 		return RDWR_STATUS_FAILURE;
 	}
+	if (trigger) {
+		PRINTM(MMSG, "Trigger FW dump...\n");
+		ret = woal_sdio_writeb(phandle, HOST_TO_CARD_EVENT_REG,
+				       HOST_TO_CARD_EVENT);
+		if (ret) {
+			PRINTM(MERROR, "Fail to set HOST_TO_CARD_EVENT_REG\n");
+			return RDWR_STATUS_FAILURE;
+		}
+	}
+
 #ifdef SD9177
 	if (IS_SD9177(phandle->card_type)) {
 		if (phandle->event_fw_dump)
@@ -1744,6 +1822,9 @@ void woal_dump_firmware_info(moal_handle *phandle)
 {
 	int ret = 0;
 	unsigned int reg, reg_start, reg_end;
+#ifndef DUMP_TO_PROC
+	t_u8 path_name[64], file_name[32];
+#endif
 	t_u8 *ITCM_Ptr = NULL;
 	t_u8 *DTCM_Ptr = NULL;
 	t_u8 *SQRAM_Ptr = NULL;
@@ -1759,6 +1840,7 @@ void woal_dump_firmware_info(moal_handle *phandle)
 		PRINTM(MERROR, "Could not dump firmwware info\n");
 		return;
 	}
+#ifdef DUMP_TO_PROC
 	if (!phandle->fw_dump_buf) {
 		ret = moal_vmalloc(phandle, FW_DUMP_INFO_LEN,
 				   &(phandle->fw_dump_buf));
@@ -1770,6 +1852,17 @@ void woal_dump_firmware_info(moal_handle *phandle)
 		memset(phandle->fw_dump_buf, 0x00, FW_DUMP_INFO_LEN);
 	}
 	phandle->fw_dump_len = 0;
+#else
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0)
+	/** Create dump directort*/
+	woal_create_dump_dir(phandle, path_name, sizeof(path_name));
+#else
+	memset(path_name, 0, sizeof(path_name));
+	strncpy(path_name, "/data", sizeof(path_name));
+#endif
+	PRINTM(MMSG, "Directory name is %s\n", path_name);
+	woal_dump_drv_info(phandle, path_name);
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 32)
 	sdio_claim_host(((struct sdio_mmc_card *)phandle->card)->func);
@@ -1867,8 +1960,19 @@ void woal_dump_firmware_info(moal_handle *phandle)
 			PRINTM(MMSG, "ITCM done: size=0x%x\n",
 			       dbg_ptr - ITCM_Ptr);
 #endif
+#ifdef DUMP_TO_PROC
 			woal_save_dump_info_to_buf(phandle, ITCM_Ptr, ITCM_SIZE,
 						   FW_DUMP_TYPE_MEM_ITCM);
+#else
+			memset(file_name, 0, sizeof(file_name));
+			snprintf(file_name, sizeof(file_name), "%s",
+				 "file_sdio_ITCM");
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_save_dump_info_to_file(path_name, file_name,
+							ITCM_Ptr, ITCM_SIZE))
+				PRINTM(MMSG, "Can't save dump file %s in %s\n",
+				       file_name, path_name);
+#endif
 			dbg_ptr = DTCM_Ptr;
 			end_ptr = DTCM_Ptr + dtcm_size;
 			moal_get_system_time(phandle, &sec, &usec);
@@ -1884,8 +1988,19 @@ void woal_dump_firmware_info(moal_handle *phandle)
 			PRINTM(MMSG, "DTCM done: size=0x%x\n",
 			       dbg_ptr - DTCM_Ptr);
 #endif
+#ifdef DUMP_TO_PROC
 			woal_save_dump_info_to_buf(phandle, ITCM_Ptr, dtcm_size,
 						   FW_DUMP_TYPE_MEM_DTCM);
+#else
+			memset(file_name, 0, sizeof(file_name));
+			snprintf(file_name, sizeof(file_name), "%s",
+				 "file_sdio_DTCM");
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_save_dump_info_to_file(path_name, file_name,
+							DTCM_Ptr, dtcm_size))
+				PRINTM(MMSG, "Can't save dump file %s in %s\n",
+				       file_name, path_name);
+#endif
 			dbg_ptr = SQRAM_Ptr;
 			end_ptr = SQRAM_Ptr + sqram_size;
 			moal_get_system_time(phandle, &sec, &usec);
@@ -1901,9 +2016,20 @@ void woal_dump_firmware_info(moal_handle *phandle)
 			PRINTM(MMSG, "SQRAM done: size=0x%x\n",
 			       dbg_ptr - SQRAM_Ptr);
 #endif
+#ifdef DUMP_TO_PROC
 			woal_save_dump_info_to_buf(phandle, SQRAM_Ptr,
 						   sqram_size,
 						   FW_DUMP_TYPE_MEM_SQRAM);
+#else
+			memset(file_name, 0, sizeof(file_name));
+			snprintf(file_name, sizeof(file_name), "%s",
+				 "file_sdio_SQRAM");
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_save_dump_info_to_file(path_name, file_name,
+							SQRAM_Ptr, sqram_size))
+				PRINTM(MMSG, "Can't save dump file %s in %s\n",
+				       file_name, path_name);
+#endif
 			PRINTM(MMSG, "End output!\n");
 			break;
 		default:
@@ -1911,7 +2037,9 @@ void woal_dump_firmware_info(moal_handle *phandle)
 		}
 	} while (ctrl_data != DEBUG_SQRAM_DONE);
 
+#ifdef DUMP_TO_PROC
 	woal_append_end_block(phandle);
+#endif
 	PRINTM(MMSG,
 	       "The output ITCM/DTCM/SQRAM have been saved to files successfully!\n");
 	moal_get_system_time(phandle, &sec, &usec);
@@ -1952,6 +2080,9 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 	t_u8 i = 0;
 	t_u8 read_reg = 0;
 	t_u32 memory_size = 0;
+#ifndef DUMP_TO_PROC
+	t_u8 path_name[64], file_name[32], firmware_dump_file[128];
+#endif
 	t_u8 *end_ptr = NULL;
 	t_u8 dbg_dump_start_reg = 0;
 	t_u8 dbg_dump_end_reg = 0;
@@ -1966,6 +2097,7 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 	dbg_dump_end_reg = phandle->card_info->dump_fw_end_reg;
 	dbg_dump_ctrl_reg = phandle->card_info->dump_fw_ctrl_reg;
 
+#ifdef DUMP_TO_PROC
 	if (!phandle->fw_dump_buf) {
 		ret = moal_vmalloc(phandle, FW_DUMP_INFO_LEN,
 				   &(phandle->fw_dump_buf));
@@ -1977,12 +2109,25 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 		memset(phandle->fw_dump_buf, 0x00, FW_DUMP_INFO_LEN);
 	}
 	phandle->fw_dump_len = 0;
+#else
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0)
+	/** Create dump directort*/
+	woal_create_dump_dir(phandle, path_name, sizeof(path_name));
+#else
+	memset(path_name, 0, sizeof(path_name));
+	strncpy(path_name, "/data", sizeof(path_name));
+#endif
+	PRINTM(MMSG, "Directory name is %s\n", path_name);
+
+	woal_dump_drv_info(phandle, path_name);
+#endif
 
 	/* start dump fw memory */
 	moal_get_system_time(phandle, &sec, &usec);
 	PRINTM(MMSG, "==== DEBUG MODE OUTPUT START: %u.%06u ====\n", sec, usec);
 	/* read the number of the memories which will dump */
-	if (RDWR_STATUS_FAILURE == woal_cmd52_rdwr_firmware(phandle, doneflag))
+	if (RDWR_STATUS_FAILURE ==
+	    woal_cmd52_rdwr_firmware(phandle, doneflag, MTRUE))
 		goto done;
 	reg = dbg_dump_start_reg;
 	ret = woal_sdio_readb(phandle, reg, &dump_num);
@@ -1994,7 +2139,7 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 	/* read the length of every memory which will dump */
 	for (idx = 0; idx < dump_num; idx++) {
 		if (RDWR_STATUS_FAILURE ==
-		    woal_cmd52_rdwr_firmware(phandle, doneflag))
+		    woal_cmd52_rdwr_firmware(phandle, doneflag, MFALSE))
 			goto done;
 		memory_size = 0;
 		reg = dbg_dump_start_reg;
@@ -2038,7 +2183,8 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 		PRINTM(MMSG, "Start %s output %u.%06u, please wait...\n",
 		       mem_type_mapping_tbl[idx].mem_name, sec, usec);
 		do {
-			stat = woal_cmd52_rdwr_firmware(phandle, doneflag);
+			stat = woal_cmd52_rdwr_firmware(phandle, doneflag,
+							MFALSE);
 			if (RDWR_STATUS_FAILURE == stat)
 				goto done;
 			reg_start = dbg_dump_start_reg;
@@ -2071,11 +2217,26 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 				       dbg_ptr - mem_type_mapping_tbl[idx]
 							 .mem_Ptr);
 #endif
+#ifdef DUMP_TO_PROC
 				woal_save_dump_info_to_buf(
 					phandle,
 					mem_type_mapping_tbl[idx].mem_Ptr,
 					memory_size,
 					mem_type_mapping_tbl[idx].type);
+#else
+				memset(file_name, 0, sizeof(file_name));
+				snprintf(file_name, sizeof(file_name), "%s%s",
+					 "file_sdio_",
+					 mem_type_mapping_tbl[idx].mem_name);
+				if (MLAN_STATUS_SUCCESS !=
+				    woal_save_dump_info_to_file(
+					    path_name, file_name,
+					    mem_type_mapping_tbl[idx].mem_Ptr,
+					    memory_size))
+					PRINTM(MERROR,
+					       "Can't save dump file %s in %s\n",
+					       file_name, path_name);
+#endif
 				moal_vfree(phandle,
 					   mem_type_mapping_tbl[idx].mem_Ptr);
 				mem_type_mapping_tbl[idx].mem_Ptr = NULL;
@@ -2083,10 +2244,20 @@ void woal_dump_firmware_info_v2(moal_handle *phandle)
 			}
 		} while (1);
 	}
+#ifdef DUMP_TO_PROC
 	woal_append_end_block(phandle);
+#endif
 	moal_get_system_time(phandle, &sec, &usec);
 	PRINTM(MMSG, "==== DEBUG MODE OUTPUT END: %u.%06u ====\n", sec, usec);
 	/* end dump fw memory */
+#ifndef DUMP_TO_PROC
+	memset(firmware_dump_file, 0, sizeof(firmware_dump_file));
+	snprintf(firmware_dump_file, sizeof(firmware_dump_file), "%s/%s",
+		 path_name, file_name);
+	moal_memcpy_ext(phandle, phandle->firmware_dump_file,
+			firmware_dump_file, sizeof(firmware_dump_file),
+			sizeof(phandle->firmware_dump_file));
+#endif
 done:
 	for (idx = 0; idx < dump_num; idx++) {
 		if (mem_type_mapping_tbl[idx].mem_Ptr) {
@@ -2117,6 +2288,10 @@ void woal_dump_firmware_info_v3(moal_handle *phandle)
 	t_u8 doneflag = 0;
 	rdwr_status stat;
 	t_u32 memory_size = 0;
+#ifndef DUMP_TO_PROC
+	t_u8 path_name[64], file_name[32], firmware_dump_file[128];
+	moal_handle *ref_handle;
+#endif
 	t_u8 *end_ptr = NULL;
 	t_u8 dbg_dump_start_reg = 0;
 	t_u8 dbg_dump_end_reg = 0;
@@ -2131,7 +2306,8 @@ void woal_dump_firmware_info_v3(moal_handle *phandle)
 	if (IS_SD9177(phandle->card_type)) {
 		if (phandle->event_fw_dump) {
 			if (RDWR_STATUS_FAILURE !=
-			    woal_cmd52_rdwr_firmware(phandle, doneflag)) {
+			    woal_cmd52_rdwr_firmware(phandle, doneflag,
+						     MTRUE)) {
 				PRINTM(MMSG,
 				       "====SDIO FW DUMP EVENT MODE START ====\n");
 				return;
@@ -2143,11 +2319,27 @@ void woal_dump_firmware_info_v3(moal_handle *phandle)
 	dbg_dump_start_reg = phandle->card_info->dump_fw_start_reg;
 	dbg_dump_end_reg = phandle->card_info->dump_fw_end_reg;
 
+#ifndef DUMP_TO_PROC
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0)
+	/** Create dump directort*/
+	woal_create_dump_dir(phandle, path_name, sizeof(path_name));
+#else
+	memset(path_name, 0, sizeof(path_name));
+	strncpy(path_name, "/data", sizeof(path_name));
+#endif
+	PRINTM(MMSG, "Directory name is %s\n", path_name);
+	ref_handle = (moal_handle *)phandle->pref_mac;
+	if (ref_handle)
+		woal_dump_drv_info(ref_handle, path_name);
+	woal_dump_drv_info(phandle, path_name);
+#endif
+
 	/* start dump fw memory */
 	moal_get_system_time(phandle, &sec, &usec);
 	PRINTM(MMSG, "==== DEBUG MODE OUTPUT START: %u.%06u ====\n", sec, usec);
 	/* read the number of the memories which will dump */
-	if (RDWR_STATUS_FAILURE == woal_cmd52_rdwr_firmware(phandle, doneflag))
+	if (RDWR_STATUS_FAILURE ==
+	    woal_cmd52_rdwr_firmware(phandle, doneflag, MTRUE))
 		goto done;
 
 	/** check the reg which indicate dump starting */
@@ -2185,7 +2377,7 @@ void woal_dump_firmware_info_v3(moal_handle *phandle)
 	PRINTM(MMSG, "Start %s output %u.%06u, please wait...\n",
 	       pmem_type_mapping_tbl->mem_name, sec, usec);
 	do {
-		stat = woal_cmd52_rdwr_firmware(phandle, doneflag);
+		stat = woal_cmd52_rdwr_firmware(phandle, doneflag, MFALSE);
 		if (RDWR_STATUS_FAILURE == stat)
 			goto done;
 		reg_start = dbg_dump_start_reg;
@@ -2241,6 +2433,7 @@ void woal_dump_firmware_info_v3(moal_handle *phandle)
 			       dbg_ptr - pmem_type_mapping_tbl->mem_Ptr);
 
 #endif
+#ifdef DUMP_TO_PROC
 			if (phandle->fw_dump_buf) {
 				moal_vfree(phandle, phandle->fw_dump_buf);
 				phandle->fw_dump_buf = NULL;
@@ -2250,12 +2443,35 @@ void woal_dump_firmware_info_v3(moal_handle *phandle)
 			phandle->fw_dump_len =
 				dbg_ptr - pmem_type_mapping_tbl->mem_Ptr;
 			pmem_type_mapping_tbl->mem_Ptr = NULL;
+#else
+			memset(file_name, 0, sizeof(file_name));
+			snprintf(file_name, sizeof(file_name), "%s%s",
+				 "file_sdio_", pmem_type_mapping_tbl->mem_name);
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_save_dump_info_to_file(
+				    path_name, file_name,
+				    pmem_type_mapping_tbl->mem_Ptr,
+				    dbg_ptr - pmem_type_mapping_tbl->mem_Ptr))
+				PRINTM(MERROR,
+				       "Can't save dump file %s in %s\n",
+				       file_name, path_name);
+			moal_vfree(phandle, pmem_type_mapping_tbl->mem_Ptr);
+			pmem_type_mapping_tbl->mem_Ptr = NULL;
+#endif
 			break;
 		}
 	} while (1);
 	moal_get_system_time(phandle, &sec, &usec);
 	PRINTM(MMSG, "==== DEBUG MODE OUTPUT END: %u.%06u ====\n", sec, usec);
 	/* end dump fw memory */
+#ifndef DUMP_TO_PROC
+	memset(firmware_dump_file, 0, sizeof(firmware_dump_file));
+	snprintf(firmware_dump_file, sizeof(firmware_dump_file), "%s/%s",
+		 path_name, file_name);
+	moal_memcpy_ext(phandle, phandle->firmware_dump_file,
+			firmware_dump_file, sizeof(firmware_dump_file),
+			sizeof(phandle->firmware_dump_file));
+#endif
 done:
 	if (pmem_type_mapping_tbl->mem_Ptr) {
 		moal_vfree(phandle, pmem_type_mapping_tbl->mem_Ptr);
@@ -2311,21 +2527,25 @@ static void woal_sdiommc_reg_dbg(moal_handle *phandle)
 			reg_end = scratch_reg + 10;
 		}
 		if (loop != 2)
-			ptr += sprintf(ptr, "SDIO Func%d (%#x-%#x): ", func,
-				       reg_start, reg_end);
+			ptr += snprintf(ptr, sizeof(buf),
+					"SDIO Func%d (%#x-%#x): ", func,
+					reg_start, reg_end);
 		else
-			ptr += sprintf(ptr, "SDIO Func%d: ", func);
+			ptr += snprintf(ptr, sizeof(buf),
+					"SDIO Func%d: ", func);
 		for (reg = reg_start; reg <= reg_end;) {
 			if (func == 0)
 				ret = woal_sdio_f0_readb(phandle, reg, &data);
 			else
 				ret = woal_sdio_readb(phandle, reg, &data);
 			if (loop == 2)
-				ptr += sprintf(ptr, "(%#x) ", reg);
+				ptr += snprintf(ptr, sizeof(buf), "(%#x) ",
+						reg);
 			if (!ret)
-				ptr += sprintf(ptr, "%02x ", data);
+				ptr += snprintf(ptr, sizeof(buf), "%02x ",
+						data);
 			else {
-				ptr += sprintf(ptr, "ERR");
+				ptr += snprintf(ptr, sizeof(buf), "ERR");
 				break;
 			}
 			if (loop == 2 && reg < reg_end)
@@ -2351,6 +2571,12 @@ static void woal_sdiommc_dump_fw_info(moal_handle *phandle)
 		PRINTM(MERROR, "Could not dump firmwware info\n");
 		return;
 	}
+#ifdef DUMP_TO_PROC
+	if (phandle->fw_dump_buf) {
+		PRINTM(MERROR, "FW dump already exist\n");
+		return;
+	}
+#endif
 	/** cancel all pending commands */
 	mlan_ioctl(phandle->pmlan_adapter, NULL);
 
@@ -2417,7 +2643,8 @@ static int woal_sdiommc_dump_reg_info(moal_handle *phandle, t_u8 *drv_buf)
 
 	mlan_pm_wakeup_card(phandle->pmlan_adapter, MTRUE);
 
-	drv_ptr += sprintf(drv_ptr, "--------sdio_reg_debug_info---------\n");
+	drv_ptr += snprintf(drv_ptr, MAX_BUF_LEN,
+			    "--------sdio_reg_debug_info---------\n");
 	for (loop = 0; loop < 5; loop++) {
 		memset(buf, 0, sizeof(buf));
 		ptr = buf;
@@ -2447,10 +2674,12 @@ static int woal_sdiommc_dump_reg_info(moal_handle *phandle, t_u8 *drv_buf)
 			reg_end = scratch_reg + 10;
 		}
 		if (loop != 2)
-			ptr += sprintf(ptr, "SDIO Func%d (%#x-%#x): ", func,
-				       reg_start, reg_end);
+			ptr += snprintf(ptr, MAX_BUF_LEN,
+					"SDIO Func%d (%#x-%#x): ", func,
+					reg_start, reg_end);
 		else
-			ptr += sprintf(ptr, "SDIO Func%d: ", func);
+			ptr += snprintf(ptr, MAX_BUF_LEN,
+					"SDIO Func%d: ", func);
 		for (reg = reg_start; reg <= reg_end;) {
 			if (func == 0)
 				ret = woal_sdio_f0_readb(phandle, reg, &data);
@@ -2458,11 +2687,13 @@ static int woal_sdiommc_dump_reg_info(moal_handle *phandle, t_u8 *drv_buf)
 				ret = woal_sdio_readb(phandle, reg, &data);
 
 			if (loop == 2)
-				ptr += sprintf(ptr, "(%#x) ", reg);
+				ptr += snprintf(ptr, MAX_BUF_LEN, "(%#x) ",
+						reg);
 			if (!ret)
-				ptr += sprintf(ptr, "%02x ", data);
+				ptr += snprintf(ptr, MAX_BUF_LEN, "%02x ",
+						data);
 			else {
-				ptr += sprintf(ptr, "ERR");
+				ptr += snprintf(ptr, MAX_BUF_LEN, "ERR");
 				break;
 			}
 			if (loop == 2 && reg < reg_end)
@@ -2470,11 +2701,11 @@ static int woal_sdiommc_dump_reg_info(moal_handle *phandle, t_u8 *drv_buf)
 			else
 				reg++;
 		}
-		drv_ptr += sprintf(drv_ptr, "%s\n", buf);
+		drv_ptr += snprintf(drv_ptr, MAX_BUF_LEN, "%s\n", buf);
 	}
 
-	drv_ptr +=
-		sprintf(drv_ptr, "--------sdio_reg_debug_info End---------\n");
+	drv_ptr += snprintf(drv_ptr, MAX_BUF_LEN,
+			    "--------sdio_reg_debug_info End---------\n");
 	mlan_pm_wakeup_card(phandle->pmlan_adapter, MFALSE);
 
 	LEAVE();

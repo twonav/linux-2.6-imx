@@ -5,7 +5,7 @@
  *  related code
  *
  *
- *  Copyright 2009-2022 NXP
+ *  Copyright 2009-2023 NXP
  *
  *  This software file (the File) is distributed by NXP
  *  under the terms of the GNU General Public License Version 2, June 1991
@@ -32,6 +32,7 @@
 #include "mlan_fw.h"
 #include "mlan_join.h"
 #include "mlan_main.h"
+#include "mlan_11h.h"
 
 /********************************************************
  *			Local Variables
@@ -87,7 +88,7 @@ static country_code_mapping_t country_code_mapping[] = {
 	{"IN", 0x10, 0x06}, /* India       */
 	{"MY", 0x30, 0x06}, /* Malaysia    */
 	{"NZ", 0x30, 0x30}, /* New Zeland  */
-	{"MX", 0x10, 0x07}, /* Mexico */
+	{"MX", 0x30, 0x07}, /* Mexico */
 };
 
 /** Country code for ETSI */
@@ -397,6 +398,7 @@ static chan_freq_power_t channel_freq_power_EU_A[] = {
 	{132, 5660, WLAN_TX_PWR_EMEA_DEFAULT, MTRUE, {0x13, 0, 0}},
 	{136, 5680, WLAN_TX_PWR_EMEA_DEFAULT, MTRUE, {0x13, 0, 0}},
 	{140, 5700, WLAN_TX_PWR_EMEA_DEFAULT, MTRUE, {0x13, 0, 0}},
+	{144, 5720, WLAN_TX_PWR_EMEA_DEFAULT, MTRUE, {0x13, 0, 0}},
 	{149, 5745, WLAN_TX_PWR_EMEA_DEFAULT, MFALSE, {0x10, 0, 0}},
 	{153, 5765, WLAN_TX_PWR_EMEA_DEFAULT, MFALSE, {0x10, 0, 0}},
 	{157, 5785, WLAN_TX_PWR_EMEA_DEFAULT, MFALSE, {0x10, 0, 0}},
@@ -578,10 +580,10 @@ static chan_freq_power_t channel_freq_power_low_middle_high_band[] = {
 	{40, 5200, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
 	{44, 5220, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
 	{48, 5240, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
-	{52, 5260, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
-	{56, 5280, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
-	{60, 5300, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
-	{64, 5320, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
+	{52, 5260, WLAN_TX_PWR_DEFAULT, MTRUE, {0x10, 0, 0}},
+	{56, 5280, WLAN_TX_PWR_DEFAULT, MTRUE, {0x10, 0, 0}},
+	{60, 5300, WLAN_TX_PWR_DEFAULT, MTRUE, {0x10, 0, 0}},
+	{64, 5320, WLAN_TX_PWR_DEFAULT, MTRUE, {0x10, 0, 0}},
 	{149, 5745, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
 	{153, 5765, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
 	{157, 5785, WLAN_TX_PWR_DEFAULT, MFALSE, {0x10, 0, 0}},
@@ -2458,11 +2460,12 @@ static oper_bw_chan *wlan_get_nonglobal_operclass_table(mlan_private *pmpriv,
  *  @param pmpriv             A pointer to mlan_private structure
  *  @param channel            Channel number
  *  @param oper_class         operating class
+ *  @param bandwidth          band width
  *
  *  @return                   MLAN_STATUS_PENDING --success, otherwise fail
  */
 mlan_status wlan_check_operclass_validation(mlan_private *pmpriv, t_u8 channel,
-					    t_u8 oper_class)
+					    t_u8 oper_class, t_u8 bandwidth)
 {
 	int arraysize = 0, i = 0, channum = 0;
 	oper_bw_chan *poper_bw_chan = MNULL;
@@ -2485,7 +2488,7 @@ mlan_status wlan_check_operclass_validation(mlan_private *pmpriv, t_u8 channel,
 	}
 	if (oper_class >= 128) {
 		center_freq_idx = wlan_get_center_freq_idx(
-			pmpriv, BAND_AAC, channel, CHANNEL_BW_80MHZ);
+			pmpriv, BAND_5GHZ, channel, CHANNEL_BW_80MHZ);
 		channel = center_freq_idx;
 	}
 	poper_bw_chan = wlan_get_nonglobal_operclass_table(pmpriv, &arraysize);
@@ -2555,7 +2558,7 @@ mlan_status wlan_get_curr_oper_class(mlan_private *pmpriv, t_u8 channel,
 	}
 	if (bw == BW_80MHZ) {
 		center_freq_idx = wlan_get_center_freq_idx(
-			pmpriv, BAND_AAC, channel, CHANNEL_BW_80MHZ);
+			pmpriv, BAND_5GHZ, channel, CHANNEL_BW_80MHZ);
 		channel = center_freq_idx;
 	}
 
@@ -2593,14 +2596,16 @@ mlan_status wlan_get_curr_oper_class(mlan_private *pmpriv, t_u8 channel,
 int wlan_add_supported_oper_class_ie(mlan_private *pmpriv, t_u8 **pptlv_out,
 				     t_u8 curr_oper_class)
 {
-	t_u8 oper_class_us[] = {1,  2,	3,  4,	5,  12, 22, 23,	 24,  25, 26,
-				27, 28, 29, 30, 31, 32, 33, 128, 129, 130};
-	t_u8 oper_class_eu[] = {1, 2,  3,  4,  5,  6,	7,   8,
-				9, 10, 11, 12, 17, 128, 129, 130};
-	t_u8 oper_class_jp[] = {1,  30, 31, 32, 33,  34,  35, 36,
-				37, 38, 39, 40, 41,  42,  43, 44,
-				45, 56, 57, 58, 128, 129, 130};
-	t_u8 oper_class_cn[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 128, 129, 130};
+	t_u8 oper_class_us[] = {115, 118, 124, 121, 125, 81,  116,
+				119, 122, 126, 126, 117, 120, 123,
+				127, 127, 83,  84,  128, 129, 130};
+	t_u8 oper_class_eu[] = {115, 118, 121, 81, 116, 119, 122, 117,
+				120, 123, 83,  84, 125, 128, 129, 130};
+	t_u8 oper_class_jp[] = {115, 81,  82,  118, 118, 121, 121, 116,
+				119, 119, 122, 122, 117, 120, 120, 123,
+				123, 83,  84,  121, 128, 129, 130};
+	t_u8 oper_class_cn[] = {115, 118, 125, 116, 119, 126,
+				81,  83,  84,  128, 129, 130};
 	t_u8 country_code[][COUNTRY_CODE_LEN] = {"US", "JP", "CN"};
 	int country_id = 0, ret = 0;
 	MrvlIETypes_SuppOperClass_t *poper_class = MNULL;
@@ -2710,11 +2715,12 @@ mlan_status wlan_set_regiontable(mlan_private *pmpriv, t_u8 region, t_u16 band)
 
 		if ((j < MAX_REGION_CHANNEL_NUM) &&
 		    (region_chan_old[j].valid == MTRUE)) {
-			wlan_cfp_copy_dynamic(pmadapter, cfp, cfp_no,
+			wlan_cfp_copy_dynamic(pmadapter, cfp, (t_u8)cfp_no,
 					      region_chan_old[j].pcfp,
 					      region_chan_old[j].num_cfp);
 		} else if (cfp) {
-			wlan_cfp_copy_dynamic(pmadapter, cfp, cfp_no, MNULL, 0);
+			wlan_cfp_copy_dynamic(pmadapter, cfp, (t_u8)cfp_no,
+					      MNULL, 0);
 		}
 		i++;
 	}
@@ -2742,11 +2748,12 @@ mlan_status wlan_set_regiontable(mlan_private *pmpriv, t_u8 region, t_u16 band)
 				break;
 		}
 		if ((j < MAX_REGION_CHANNEL_NUM) && region_chan_old[j].valid) {
-			wlan_cfp_copy_dynamic(pmadapter, cfp, cfp_no,
+			wlan_cfp_copy_dynamic(pmadapter, cfp, (t_u8)cfp_no,
 					      region_chan_old[j].pcfp,
 					      region_chan_old[j].num_cfp);
 		} else if (cfp) {
-			wlan_cfp_copy_dynamic(pmadapter, cfp, cfp_no, MNULL, 0);
+			wlan_cfp_copy_dynamic(pmadapter, cfp, (t_u8)cfp_no,
+					      MNULL, 0);
 		}
 		i++;
 	}
@@ -3362,27 +3369,49 @@ void wlan_add_fw_cfp_tables(pmlan_private pmpriv, t_u8 *buf, t_u16 buf_left)
 					break;
 				}
 			}
+			PRINTM(MCMND,
+			       "OTP region: region_code=%d %c%c dfs_region=%d\n",
+			       pmadapter->otp_region->region_code,
+			       pmadapter->otp_region->country_code[0],
+			       pmadapter->otp_region->country_code[1],
+			       pmadapter->otp_region->dfs_region);
+
 			/* Update the region code and the country code in
 			 * pmadapter
 			 */
 			pmadapter->region_code =
 				pmadapter->otp_region->region_code;
-			pmadapter->country_code[0] =
-				pmadapter->otp_region->country_code[0];
-			pmadapter->country_code[1] =
-				pmadapter->otp_region->country_code[1];
+			if (pmadapter->otp_region->force_reg) {
+				/* Region is enforced. Use FW country code only
+				 */
+				pmadapter->country_code[0] =
+					pmadapter->otp_region->country_code[0];
+				pmadapter->country_code[1] =
+					pmadapter->otp_region->country_code[1];
+			} else if (memcmp(pmadapter,
+					  pmadapter->otp_region->country_code,
+					  pmadapter->country_code,
+					  COUNTRY_CODE_LEN - 1)) {
+				PRINTM(MERROR,
+				       "FW country code %c%c does not match with %c%c\n",
+				       pmadapter->otp_region->country_code[0],
+				       pmadapter->otp_region->country_code[1],
+				       pmadapter->country_code[0],
+				       pmadapter->country_code[1]);
+
+				/* FW code mismatch, replace with the driver
+				 * code */
+				pmadapter->otp_region->country_code[0] =
+					pmadapter->country_code[0];
+				pmadapter->otp_region->country_code[1] =
+					pmadapter->country_code[1];
+			}
 			pmadapter->country_code[2] = '\0';
 			pmadapter->domain_reg.country_code[0] =
 				pmadapter->otp_region->country_code[0];
 			pmadapter->domain_reg.country_code[1] =
 				pmadapter->otp_region->country_code[1];
 			pmadapter->domain_reg.country_code[2] = '\0';
-			PRINTM(MCMND,
-			       "OTP region: region_code=%d %c%c dfs_region=%d\n",
-			       pmadapter->otp_region->region_code,
-			       pmadapter->country_code[0],
-			       pmadapter->country_code[1],
-			       pmadapter->otp_region->dfs_region);
 			pmadapter->cfp_code_bg =
 				pmadapter->otp_region->region_code;
 			pmadapter->cfp_code_a =
@@ -3696,6 +3725,13 @@ mlan_status wlan_get_cfpinfo(pmlan_adapter pmadapter,
 
 	if (!pioctl_req || !pioctl_req->pbuf) {
 		PRINTM(MERROR, "MLAN IOCTL information is not present!\n");
+		ret = MLAN_STATUS_FAILURE;
+		goto out;
+	}
+	ret = wlan_11h_ioctl_nop_channel_list(pmadapter, pioctl_req);
+	if (ret) {
+		PRINTM(MERROR,
+		       "cfpinfo wlan_11h_ioctl_nop_channel_list failed!\n");
 		ret = MLAN_STATUS_FAILURE;
 		goto out;
 	}

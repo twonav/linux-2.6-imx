@@ -33,9 +33,6 @@ Change log:
 #include "mlan_wmm.h"
 #include "mlan_11n.h"
 #include "mlan_11h.h"
-#ifdef DRV_EMBEDDED_SUPPLICANT
-#include "authenticator_api.h"
-#endif
 #ifdef PCIE
 #include "mlan_pcie.h"
 #endif /* PCIE */
@@ -380,6 +377,10 @@ t_void wlan_reset_connect_state(pmlan_private priv, t_u8 drv_disconnect)
 		else
 #endif
 			wlan_11h_check_update_radar_det_state(priv);
+#if defined(USB)
+		if (IS_USB(pmadapter->card_type))
+			wlan_resync_usb_port(pmadapter);
+#endif
 	}
 
 	if (priv->port_ctrl_mode == MTRUE) {
@@ -405,17 +406,13 @@ t_void wlan_reset_connect_state(pmlan_private priv, t_u8 drv_disconnect)
 	priv->rxpd_rate_info = 0;
 	priv->max_amsdu = 0;
 	priv->amsdu_disable = MFALSE;
+	priv->multi_ap_flag = 0;
 	wlan_coex_ampdu_rxwinsize(pmadapter);
 
 	priv->sec_info.ewpa_enabled = MFALSE;
 	priv->sec_info.wpa_enabled = MFALSE;
 	priv->sec_info.wpa2_enabled = MFALSE;
 	priv->wpa_ie_len = 0;
-#ifdef DRV_EMBEDDED_SUPPLICANT
-	supplicantStopSessionTimer(priv->psapriv);
-	supplicantClrEncryptKey(priv->psapriv);
-	supplicantDisable(priv->psapriv);
-#endif
 
 	priv->sec_info.wapi_enabled = MFALSE;
 	priv->wapi_ie_len = 0;
@@ -470,11 +467,6 @@ t_void wlan_reset_connect_state(pmlan_private priv, t_u8 drv_disconnect)
 	}
 	if (pmadapter->num_cmd_timeout && pmadapter->curr_cmd &&
 	    (pmadapter->cmd_timer_is_set == MFALSE)) {
-		LEAVE();
-		return;
-	}
-
-	if (pmadapter->pending_disconnect_priv) {
 		LEAVE();
 		return;
 	}
@@ -679,9 +671,12 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 	pmlan_callbacks pcb = &pmadapter->callbacks;
 	mlan_event *pevent = MNULL;
 	t_u8 addr[MLAN_MAC_ADDR_LENGTH];
+	Event_WLS_FTM_t *event_ftm = MNULL;
 	chan_band_info *pchan_band_info = MNULL;
 	t_u8 radar_chan;
+	t_u8 bandwidth;
 	t_u16 enable = 0;
+	Event_Link_Lost *link_lost_evt = MNULL;
 
 	ENTER();
 
@@ -763,20 +758,61 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		break;
 
 	case EVENT_LINK_LOST:
-		reason_code = wlan_le16_to_cpu(*(t_u16 *)(pmbuf->pbuf +
-							  pmbuf->data_offset +
-							  sizeof(eventcause)));
-		PRINTM(MMSG, "wlan: EVENT: Link lost (reason 0x%x)\n",
-		       reason_code);
-		pmpriv->disconnect_reason_code = reason_code;
+		if (pmbuf && (pmbuf->data_len >=
+			      sizeof(eventcause) + sizeof(Event_Link_Lost))) {
+			link_lost_evt = (Event_Link_Lost *)(pmbuf->pbuf +
+							    pmbuf->data_offset +
+							    sizeof(eventcause));
+			PRINTM(MMSG,
+			       "wlan: EVENT: Link lost (reason 0x%x) bssid: " MACSTR
+			       "\n",
+			       link_lost_evt->reason_code,
+			       MAC2STR(link_lost_evt->bssid));
+			pmpriv->disconnect_reason_code =
+				link_lost_evt->reason_code;
+			if (memcmp(pmpriv->adapter, link_lost_evt->bssid,
+				   &pmpriv->curr_bss_params.attemp_bssid,
+				   MLAN_MAC_ADDR_LENGTH)) {
+				PRINTM(MMSG, "wlan: skip link lost event\n");
+				PRINTM(MMSG, "pattempted_bssid: " MACSTR "\n",
+				       MAC2STR(&pmpriv->curr_bss_params
+							.attemp_bssid));
+				break;
+			}
+		} else {
+			if (memcmp(pmpriv->adapter,
+				   pmpriv->curr_bss_params.bss_descriptor
+					   .mac_address,
+				   &pmpriv->curr_bss_params.attemp_bssid,
+				   MLAN_MAC_ADDR_LENGTH)) {
+				PRINTM(MMSG, "wlan: skip link lost event\n");
+				PRINTM(MMSG,
+				       "pattempted_bssid: " MACSTR
+				       " curr_bssid:" MACSTR "\n",
+				       MAC2STR(&pmpriv->curr_bss_params
+							.attemp_bssid),
+				       MAC2STR(pmpriv->curr_bss_params
+						       .bss_descriptor
+						       .mac_address));
+				break;
+			}
+			reason_code = wlan_le16_to_cpu(
+				*(t_u16 *)(pmbuf->pbuf + pmbuf->data_offset +
+					   sizeof(eventcause)));
+			PRINTM(MMSG, "wlan: EVENT: Link lost (reason 0x%x)\n",
+			       reason_code);
+			pmpriv->disconnect_reason_code = reason_code;
+		}
 		pmadapter->dbg.num_event_link_lost++;
 		wlan_handle_disconnect_event(pmpriv);
 		break;
 
 	case EVENT_PS_SLEEP:
 		PRINTM(MINFO, "EVENT: SLEEP\n");
-		PRINTM_NETINTF(MEVENT, pmpriv);
-		PRINTM(MEVENT, "_");
+		if (pmadapter->second_mac)
+			PRINTM(MEVENT, "__");
+		else
+			PRINTM(MEVENT, "_");
 
 		/* Handle unexpected PS SLEEP event */
 		if (pmadapter->ps_state == PS_STATE_SLEEP_CFM)
@@ -788,8 +824,10 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 
 	case EVENT_PS_AWAKE:
 		PRINTM(MINFO, "EVENT: AWAKE\n");
-		PRINTM_NETINTF(MEVENT, pmpriv);
-		PRINTM(MEVENT, "|");
+		if (pmadapter->second_mac)
+			PRINTM(MEVENT, "||");
+		else
+			PRINTM(MEVENT, "|");
 		if (!pmadapter->pps_uapsd_mode && pmpriv->media_connected &&
 		    (pmpriv->port_open || !pmpriv->port_ctrl_mode) &&
 		    pmadapter->sleep_period.period) {
@@ -894,6 +932,10 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		wlan_recv_event(pmpriv, MLAN_EVENT_ID_FW_PORT_RELEASE, MNULL);
 		/* Send OBSS scan param to the application */
 		wlan_2040_coex_event(pmpriv);
+#if defined(USB)
+		if (IS_USB(pmadapter->card_type))
+			wlan_resync_usb_port(pmadapter);
+#endif
 		break;
 
 	case EVENT_STOP_TX:
@@ -958,11 +1000,10 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 				   sizeof(pchan_band_info->bandcfg));
 			pchan_band_info->channel = pchan_info->channel;
 			if (pchan_band_info->bandcfg.chanWidth == CHAN_BW_80MHZ)
-				pchan_band_info->center_chan =
-					wlan_get_center_freq_idx(
-						priv, BAND_AAC,
-						pchan_info->channel,
-						CHANNEL_BW_80MHZ);
+				pchan_band_info
+					->center_chan = wlan_get_center_freq_idx(
+					priv, pchan_band_info->bandcfg.chanBand,
+					pchan_info->channel, CHANNEL_BW_80MHZ);
 			wlan_recv_event(pmpriv,
 					MLAN_EVENT_ID_FW_CHAN_SWITCH_COMPLETE,
 					pevent);
@@ -1011,8 +1052,8 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 				   sizeof(eventcause),
 			   pevent->event_len, pevent->event_len);
 		/* Handle / pass event data */
-		ret = wlan_11h_handle_event_chanrpt_ready(pmpriv, pevent,
-							  &radar_chan, 0);
+		ret = wlan_11h_handle_event_chanrpt_ready(
+			pmpriv, pevent, &radar_chan, &bandwidth);
 		/* Also send this event as passthru */
 		pevent->event_id = MLAN_EVENT_ID_DRV_PASSTHRU;
 		pevent->event_len = pmbuf->data_len;
@@ -1126,18 +1167,17 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		break;
 	case EVENT_ADDBA:
 		PRINTM(MEVENT, "EVENT: ADDBA Request\n");
-		if (pmpriv->media_connected == MTRUE)
-			ret = wlan_prepare_cmd(pmpriv,
-					       HostCmd_CMD_11N_ADDBA_RSP,
-					       HostCmd_ACT_GEN_SET, 0, MNULL,
-					       pmadapter->event_body);
+		if (pmpriv->media_connected == MTRUE &&
+		    !pmpriv->adapter->remain_on_channel)
+			wlan_11n_add_bastream(pmpriv, pmadapter->event_body);
 		else
 			PRINTM(MERROR,
 			       "Ignore ADDBA Request event in disconnected state\n");
 		break;
 	case EVENT_DELBA:
 		PRINTM(MEVENT, "EVENT: DELBA Request\n");
-		if (pmpriv->media_connected == MTRUE)
+		if (pmpriv->media_connected == MTRUE &&
+		    !pmpriv->adapter->remain_on_channel)
 			wlan_11n_delete_bastream(pmpriv, pmadapter->event_body);
 		else
 			PRINTM(MERROR,
@@ -1145,7 +1185,8 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		break;
 	case EVENT_BA_STREAM_TIMEOUT:
 		PRINTM(MEVENT, "EVENT:  BA Stream timeout\n");
-		if (pmpriv->media_connected == MTRUE)
+		if (pmpriv->media_connected == MTRUE &&
+		    !pmpriv->adapter->remain_on_channel)
 			wlan_11n_ba_stream_timeout(
 				pmpriv, (HostCmd_DS_11N_BATIMEOUT *)
 						pmadapter->event_body);
@@ -1232,6 +1273,7 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		PRINTM_NETINTF(MEVENT, pmpriv);
 		PRINTM(MEVENT, "EVENT: REMAIN_ON_CHANNEL_EXPIRED reason=%d\n",
 		       *(t_u16 *)pmadapter->event_body);
+		pmpriv->adapter->remain_on_channel = MFALSE;
 		wlan_recv_event(pmpriv, MLAN_EVENT_ID_DRV_FLUSH_RX_WORK, MNULL);
 		wlan_recv_event(pmpriv, MLAN_EVENT_ID_FW_REMAIN_ON_CHAN_EXPIRED,
 				MNULL);
@@ -1370,13 +1412,36 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		pevent->bss_index = pmpriv->bss_index;
 		pevent->event_id = MLAN_EVENT_ID_FW_ROAM_OFFLOAD_RESULT;
 		/** Drop event id length and 2 bytes reverved length*/
-		pevent->event_len = pmbuf->data_len - sizeof(eventcause) - 2;
-		memcpy_ext(pmadapter, (t_u8 *)pevent->event_buf,
-			   pmadapter->event_body + 2, pevent->event_len,
-			   pevent->event_len);
-		wlan_recv_event(pmpriv, pevent->event_id, pevent);
+		if ((pmbuf->data_len - sizeof(eventcause)) > 2) {
+			pevent->event_len =
+				pmbuf->data_len - sizeof(eventcause) - 2;
+			memcpy_ext(pmadapter, (t_u8 *)pevent->event_buf,
+				   pmadapter->event_body + 2, pevent->event_len,
+				   pevent->event_len);
+			wlan_recv_event(pmpriv, pevent->event_id, pevent);
+		} else {
+			PRINTM(MERROR,
+			       "EVENT: ERR:: ROAM OFFLOAD IN FW has invalid length\n");
+		}
 		break;
 	case EVENT_CLOUD_KEEP_ALIVE_RETRY_FAIL:
+		break;
+	case EVENT_WLS_FTM_COMPLETE:
+		PRINTM(MEVENT, "EVENT: FTM_GENERIC_EVENT\n");
+		pevent->bss_index = pmpriv->bss_index;
+		event_ftm =
+			(Event_WLS_FTM_t *)(pmbuf->pbuf + pmbuf->data_offset);
+		if (event_ftm->sub_event_id == WLS_SUB_EVENT_RTT_RESULTS)
+			wlan_fill_hal_rtt_results(pmpriv, event_ftm,
+						  pmbuf->data_len, pevent);
+		else {
+			pevent->event_id = MLAN_EVENT_ID_DRV_PASSTHRU;
+			pevent->event_len = pmbuf->data_len;
+			memcpy_ext(pmadapter, (t_u8 *)pevent->event_buf,
+				   pmbuf->pbuf + pmbuf->data_offset,
+				   pevent->event_len, pevent->event_len);
+		}
+		wlan_recv_event(pmpriv, pevent->event_id, pevent);
 		break;
 	case EVENT_VDLL_IND:
 		wlan_process_vdll_event(pmpriv, pmbuf);
@@ -1395,7 +1460,13 @@ mlan_status wlan_ops_sta_process_event(t_void *priv)
 		pmadapter->fw_hang_report = MTRUE;
 		wlan_recv_event(pmpriv, MLAN_EVENT_ID_DRV_DBG_DUMP, MNULL);
 		break;
-	case CHAN_LOAD_EVENT: {
+	case EVENT_IMD3_CAL_START:
+		PRINTM(MEVENT, "EVENT: EVENT_IMD3_CAL_START\n");
+		break;
+	case EVENT_IMD3_CAL_END:
+		PRINTM(MEVENT, "EVENT: EVENT_IMD3_CAL_END\n");
+		break;
+	case EVENT_CHAN_LOAD: {
 		t_u8 *ptr = MNULL;
 		HostCmd_DS_GET_CH_LOAD *cfg_cmd = MNULL;
 		ptr = (t_u8 *)(pmbuf->pbuf + pmbuf->data_offset);

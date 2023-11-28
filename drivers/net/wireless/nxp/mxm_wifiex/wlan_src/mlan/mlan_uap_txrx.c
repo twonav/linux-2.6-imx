@@ -36,9 +36,6 @@ Change log:
 #include "mlan_wmm.h"
 #include "mlan_11n_aggr.h"
 #include "mlan_11n_rxreorder.h"
-#ifdef DRV_EMBEDDED_AUTHENTICATOR
-#include "authenticator_api.h"
-#endif
 
 /********************************************************
 			Local Functions
@@ -65,7 +62,13 @@ static mlan_status wlan_upload_uap_rx_packet(pmlan_adapter pmadapter,
 	prx_pd = (RxPD *)(pmbuf->pbuf + pmbuf->data_offset);
 
 	/* Chop off RxPD */
-	pmbuf->data_len -= prx_pd->rx_pkt_offset;
+	if (pmbuf->data_len > prx_pd->rx_pkt_offset) {
+		pmbuf->data_len -= prx_pd->rx_pkt_offset;
+	} else {
+		PRINTM(MERROR,
+		       "pmbuf->data_len is smaller than prx_pd->rx_pkt_offset\n");
+		pmbuf->status_code = MLAN_ERROR_PKT_INVALID;
+	}
 	pmbuf->data_offset += prx_pd->rx_pkt_offset;
 	pmbuf->pparent = MNULL;
 
@@ -89,7 +92,6 @@ static mlan_status wlan_upload_uap_rx_packet(pmlan_adapter pmadapter,
 		       "uAP Rx Error: moal_recv_packet returned error\n");
 		pmbuf->status_code = MLAN_ERROR_PKT_INVALID;
 	}
-
 	if (ret != MLAN_STATUS_PENDING)
 		pmadapter->ops.data_complete(pmadapter, pmbuf, ret);
 #ifdef USB
@@ -244,6 +246,11 @@ t_void *wlan_ops_uap_process_txpd(t_void *priv, pmlan_buffer pmbuf)
 		plocal_tx_pd->tx_pkt_type = (t_u16)pkt_type;
 		plocal_tx_pd->tx_control = tx_control;
 	}
+	if (pmbuf->flags & MLAN_BUF_FLAG_EASYMESH) {
+		plocal_tx_pd->flags |= MRVDRV_TxPD_FLAGS_EASYMESH;
+		memcpy_ext(pmpriv->adapter, plocal_tx_pd->ra_mac, pmbuf->mac,
+			   MLAN_MAC_ADDR_LENGTH, MLAN_MAC_ADDR_LENGTH);
+	}
 
 	if (pmbuf->flags & MLAN_BUF_FLAG_TX_CTRL) {
 		if (pmbuf->u.tx_info.data_rate) {
@@ -336,14 +343,20 @@ mlan_status wlan_ops_uap_process_rx_packet(t_void *adapter, pmlan_buffer pmbuf)
 	t_u8 ta[MLAN_MAC_ADDR_LENGTH];
 	t_u16 rx_pkt_type = 0;
 	sta_node *sta_ptr = MNULL;
-#ifdef DRV_EMBEDDED_AUTHENTICATOR
-	t_u8 eapol_type[2] = {0x88, 0x8e};
-#endif
 	t_u16 adj_rx_rate = 0;
 	t_u8 antenna = 0;
 
 	t_u32 last_rx_sec = 0;
 	t_u32 last_rx_usec = 0;
+	RxPD *prx_pd2;
+	EthII_Hdr_t *peth_hdr2;
+	wlan_802_11_header *pwlan_hdr;
+	IEEEtypes_FrameCtl_t *frmctl;
+	pmlan_buffer pmbuf2 = MNULL;
+	mlan_802_11_mac_addr src_addr = {0x00};
+	mlan_802_11_mac_addr dest_addr = {0x00};
+	t_u16 hdr_len;
+	t_u8 snap_eth_hdr[5] = {0xaa, 0xaa, 0x03, 0x00, 0x00};
 	t_u8 ext_rate_info = 0;
 
 	ENTER();
@@ -380,6 +393,14 @@ mlan_status wlan_ops_uap_process_rx_packet(t_void *adapter, pmlan_buffer pmbuf)
 	}
 
 	rx_pkt_type = prx_pd->rx_pkt_type;
+	if (prx_pd->flags & RXPD_FLAG_PKT_EASYMESH) {
+		PRINTM_NETINTF(MDAT_D, priv);
+		PRINTM(MDAT_D, "UAP Rx Easymesh pkt flags : 0x%x\n",
+		       prx_pd->flags);
+		ret = wlan_check_easymesh_pkt(priv, pmbuf, prx_pd);
+		if (ret != MLAN_STATUS_SUCCESS)
+			goto done;
+	}
 	prx_pkt = (RxPacketHdr_t *)((t_u8 *)prx_pd + prx_pd->rx_pkt_offset);
 
 	PRINTM(MINFO,
@@ -420,6 +441,111 @@ mlan_status wlan_ops_uap_process_rx_packet(t_void *adapter, pmlan_buffer pmbuf)
 		pmadapter->ops.data_complete(pmadapter, pmbuf, ret);
 		goto done;
 	}
+	if (pmadapter->enable_net_mon &&
+	    (prx_pd->flags & RXPD_FLAG_UCAST_PKT)) {
+		pwlan_hdr = (wlan_802_11_header *)((t_u8 *)prx_pd +
+						   prx_pd->rx_pkt_offset);
+		frmctl = (IEEEtypes_FrameCtl_t *)pwlan_hdr;
+		if (frmctl->type == 0x02) {
+			/* This is a valid unicast destined data packet, with
+			 * 802.11 and rtap headers attached. Duplicate this
+			 * packet and process this copy as a sniffed packet,
+			 * meant for monitor iface
+			 */
+			pmbuf2 = wlan_alloc_mlan_buffer(pmadapter,
+							MLAN_RX_DATA_BUF_SIZE,
+							MLAN_RX_HEADER_LEN,
+							MOAL_ALLOC_MLAN_BUFFER);
+			if (!pmbuf2) {
+				PRINTM(MERROR,
+				       "Unable to allocate mlan_buffer for Rx");
+				PRINTM(MERROR, "sniffed packet\n");
+			} else {
+				pmbuf2->bss_index = pmbuf->bss_index;
+				pmbuf2->buf_type = pmbuf->buf_type;
+				pmbuf2->priority = pmbuf->priority;
+				pmbuf2->in_ts_sec = pmbuf->in_ts_sec;
+				pmbuf2->in_ts_usec = pmbuf->in_ts_usec;
+				pmbuf2->data_len = pmbuf->data_len;
+				memcpy(pmadapter,
+				       pmbuf2->pbuf + pmbuf2->data_offset,
+				       pmbuf->pbuf + pmbuf->data_offset,
+				       pmbuf->data_len);
+
+				prx_pd2 = (RxPD *)(pmbuf2->pbuf +
+						   pmbuf2->data_offset);
+				/* set pkt type of duplicated pkt to 802.11 */
+				prx_pd2->rx_pkt_type = PKT_TYPE_802DOT11;
+				wlan_process_uap_rx_packet(priv, pmbuf2);
+			}
+
+			/* Now, process this pkt as a normal data packet.
+			 * rx_pkt_offset points to the 802.11 hdr. Construct
+			 * 802.3 header from 802.11 hdr fields and attach it
+			 * just before the payload.
+			 */
+			memcpy(pmadapter, (t_u8 *)&dest_addr, pwlan_hdr->addr1,
+			       sizeof(pwlan_hdr->addr1));
+			memcpy(pmadapter, (t_u8 *)&src_addr, pwlan_hdr->addr2,
+			       sizeof(pwlan_hdr->addr2));
+
+			hdr_len = sizeof(wlan_802_11_header);
+
+			/* subtract mac addr field size for 3 address mac80211
+			 * header */
+			if (!(frmctl->from_ds && frmctl->to_ds))
+				hdr_len -= sizeof(mlan_802_11_mac_addr);
+
+			/* add 2 bytes of qos ctrl flags */
+			if (frmctl->sub_type & QOS_DATA)
+				hdr_len += 2;
+
+			if (prx_pd->rx_pkt_type == PKT_TYPE_AMSDU) {
+				/* no need to generate 802.3 hdr, update pkt
+				 * offset */
+				prx_pd->rx_pkt_offset += hdr_len;
+				prx_pd->rx_pkt_length -= hdr_len;
+			} else {
+				/* skip 6-byte snap and 2-byte type */
+				if (memcmp(pmadapter,
+					   (t_u8 *)pwlan_hdr + hdr_len,
+					   snap_eth_hdr,
+					   sizeof(snap_eth_hdr)) == 0)
+					hdr_len += 8;
+
+				peth_hdr2 =
+					(EthII_Hdr_t *)((t_u8 *)prx_pd +
+							prx_pd->rx_pkt_offset +
+							hdr_len -
+							sizeof(EthII_Hdr_t));
+				memcpy(pmadapter, peth_hdr2->dest_addr,
+				       (t_u8 *)&dest_addr,
+				       sizeof(peth_hdr2->dest_addr));
+				memcpy(pmadapter, peth_hdr2->src_addr,
+				       (t_u8 *)&src_addr,
+				       sizeof(peth_hdr2->src_addr));
+
+				/* Update the rx_pkt_offset to point the 802.3
+				 * hdr */
+				prx_pd->rx_pkt_offset +=
+					(hdr_len - sizeof(EthII_Hdr_t));
+				prx_pd->rx_pkt_length -=
+					(hdr_len - sizeof(EthII_Hdr_t));
+			}
+			/* update the prx_pkt pointer */
+			prx_pkt = (RxPacketHdr_t *)((t_u8 *)prx_pd +
+						    prx_pd->rx_pkt_offset);
+		} else {
+			pmbuf->status_code = MLAN_ERROR_PKT_SIZE_INVALID;
+			ret = MLAN_STATUS_FAILURE;
+			PRINTM(MERROR,
+			       "Drop invalid unicast sniffer pkt, subType=0x%x, flag=0x%x, pkt_type=%d\n",
+			       frmctl->sub_type, prx_pd->flags,
+			       prx_pd->rx_pkt_type);
+			wlan_free_mlan_buffer(pmadapter, pmbuf);
+			goto done;
+		}
+	}
 
 	if (rx_pkt_type != PKT_TYPE_BAR) {
 		priv->rxpd_rate = prx_pd->rx_rate;
@@ -436,7 +562,11 @@ mlan_status wlan_ops_uap_process_rx_packet(t_void *adapter, pmlan_buffer pmbuf)
 		}
 	}
 
-	sta_ptr = wlan_get_station_entry(priv, prx_pkt->eth803_hdr.src_addr);
+	if (prx_pd->flags & RXPD_FLAG_PKT_EASYMESH)
+		sta_ptr = wlan_get_station_entry(priv, prx_pd->ta_mac);
+	else
+		sta_ptr = wlan_get_station_entry(priv,
+						 prx_pkt->eth803_hdr.src_addr);
 	if (sta_ptr) {
 		sta_ptr->snr = prx_pd->snr;
 		sta_ptr->nf = prx_pd->nf;
@@ -450,29 +580,18 @@ mlan_status wlan_ops_uap_process_rx_packet(t_void *adapter, pmlan_buffer pmbuf)
 		}
 	}
 
-#ifdef DRV_EMBEDDED_AUTHENTICATOR
-	/**process eapol packet for uap*/
-	if (IsAuthenticatorEnabled(priv->psapriv) &&
-	    (!memcmp(pmadapter, &prx_pkt->eth803_hdr.h803_len, eapol_type,
-		     sizeof(eapol_type)))) {
-		ret = AuthenticatorProcessEapolPacket(
-			priv->psapriv, ((t_u8 *)prx_pd + prx_pd->rx_pkt_offset),
-			prx_pd->rx_pkt_length);
-		if (ret == MLAN_STATUS_SUCCESS) {
-			pmadapter->ops.data_complete(pmadapter, pmbuf, ret);
-			goto done;
-		}
-	}
-#endif
-
 	pmbuf->priority |= prx_pd->priority;
 	if (pmadapter->enable_net_mon &&
 	    (prx_pd->rx_pkt_type == PKT_TYPE_802DOT11)) {
 		wlan_process_uap_rx_packet(priv, pmbuf);
 		goto done;
 	}
-	memcpy_ext(pmadapter, ta, prx_pkt->eth803_hdr.src_addr,
-		   MLAN_MAC_ADDR_LENGTH, MLAN_MAC_ADDR_LENGTH);
+	if (prx_pd->flags & RXPD_FLAG_PKT_EASYMESH)
+		memcpy_ext(pmadapter, ta, prx_pd->ta_mac, MLAN_MAC_ADDR_LENGTH,
+			   MLAN_MAC_ADDR_LENGTH);
+	else
+		memcpy_ext(pmadapter, ta, prx_pkt->eth803_hdr.src_addr,
+			   MLAN_MAC_ADDR_LENGTH, MLAN_MAC_ADDR_LENGTH);
 	if ((rx_pkt_type != PKT_TYPE_BAR) && (prx_pd->priority < MAX_NUM_TID)) {
 		sta_ptr = wlan_get_station_entry(priv, ta);
 		if (sta_ptr) {

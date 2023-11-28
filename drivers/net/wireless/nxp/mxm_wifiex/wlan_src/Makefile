@@ -1,6 +1,6 @@
 #  File: Makefile
 #
-#  Copyright 2008-2022 NXP
+#  Copyright 2008-2023 NXP
 #
 #  This software file (the File) is distributed by NXP
 #  under the terms of the GNU General Public License Version 2, June 1991
@@ -19,8 +19,6 @@
 CONFIG_COMPATDIR=n
 ifeq ($(CONFIG_COMPATDIR), y)
 COMPATDIR=/lib/modules/$(KERNELVERSION_X86)/build/compat-wireless-3.2-rc1-1/include
-CC ?=		$(CROSS_COMPILE)gcc -I$(COMPATDIR)
-else
 CC ?=		$(CROSS_COMPILE)gcc -I$(COMPATDIR)
 endif
 
@@ -52,9 +50,12 @@ CONFIG_PCIE9097=n
 CONFIG_SD9098=n
 CONFIG_USB9098=n
 CONFIG_PCIE9098=n
-CONFIG_SDNW62X=n
-CONFIG_PCIENW62X=n
-CONFIG_USBNW62X=n
+CONFIG_SDIW624=n
+CONFIG_SDAW693=n
+CONFIG_PCIEIW624=n
+CONFIG_USBIW624=n
+CONFIG_PCIEAW693=n
+
 
 
 # Debug Option
@@ -87,23 +88,8 @@ CONFIG_OPENWRT_SUPPORT=n
 # Big-endian platform
 CONFIG_BIG_ENDIAN=n
 
-#ifdef EMBEDDED_AUTH
-# Enable driver based authenticator
-CONFIG_DRV_EMBEDDED_AUTHENTICATOR=n
-#endif
 
-#ifdef EMBEDDED_SUPP
-# Enable driver based supplicant
-CONFIG_DRV_EMBEDDED_SUPPLICANT=n
-#endif
 
-ifeq ($(CONFIG_DRV_EMBEDDED_SUPPLICANT), y)
-CONFIG_EMBEDDED_SUPP_AUTH=y
-else
-ifeq ($(CONFIG_DRV_EMBEDDED_AUTHENTICATOR), y)
-CONFIG_EMBEDDED_SUPP_AUTH=y
-endif
-endif
 
 #ifdef SDIO_MMC
 # SDIO suspend/resume
@@ -117,6 +103,8 @@ CONFIG_DFS_TESTING_SUPPORT=y
 CONFIG_MULTI_CHAN_SUPPORT=y
 
 
+
+CONFIG_DUMP_TO_PROC=y
 
 
 #32bit app over 64bit kernel support
@@ -133,12 +121,6 @@ ccflags-y += -DLINUX
 
 
 
-#if defined(EMBEDDED_SUPP) || defined(EMBEDDED_AUTH)
-ifeq ($(CONFIG_EMBEDDED_SUPP_AUTH), y)
-ccflags-y += -I$(M)/mlan/esa
-ccflags-y += -I$(M)/mlan/esa/common
-endif
-#endif
 
 
 
@@ -148,11 +130,10 @@ ifeq ($(CONFIG_IMX_SUPPORT),y)
 ccflags-y += -DIMX_SUPPORT
 ifneq ($(ANDROID_PRODUCT_OUT),)
 ccflags-y += -DIMX_ANDROID
+ccflags-y += -Wno-implicit-fallthrough
 CONFIG_ANDROID_KERNEL=y
 endif
 endif
-KERNELDIR ?= /usr/src/arm/linux_5_10_y_kernel/linux-nxp
-CROSS_COMPILE ?= /opt/fsl-imx-internal-xwayland/5.10-gatesgarth/sysroots/x86_64-pokysdk-linux/usr/bin/aarch64-poky-linux/aarch64-poky-linux-
 
 LD += -S
 
@@ -233,6 +214,11 @@ endif
 
 ifeq ($(CONFIG_ANDROID_KERNEL), y)
 	ccflags-y += -DANDROID_KERNEL
+	CONFIG_DUMP_TO_PROC=y
+endif
+
+ifeq ($(CONFIG_DUMP_TO_PROC), y)
+	ccflags-y += -DDUMP_TO_PROC
 endif
 
 ifeq ($(CONFIG_OPENWRT_SUPPORT), y)
@@ -273,9 +259,13 @@ ifeq ($(CONFIG_SD9097),y)
 	CONFIG_SDIO=y
 	ccflags-y += -DSD9097
 endif
-ifeq ($(CONFIG_SDNW62X),y)
+ifeq ($(CONFIG_SDIW624),y)
 	CONFIG_SDIO=y
-	ccflags-y += -DSDNW62X
+	ccflags-y += -DSDIW624
+endif
+ifeq ($(CONFIG_SDAW693),y)
+	CONFIG_SDIO=y
+	ccflags-y += -DSDAW693
 endif
 ifeq ($(CONFIG_SD9177),y)
 	CONFIG_SDIO=y
@@ -309,9 +299,9 @@ ifeq ($(CONFIG_USB9097),y)
 	CONFIG_MUSB=y
 	ccflags-y += -DUSB9097
 endif
-ifeq ($(CONFIG_USBNW62X),y)
+ifeq ($(CONFIG_USBIW624),y)
 	CONFIG_MUSB=y
-	ccflags-y += -DUSBNW62X
+	ccflags-y += -DUSBIW624
 endif
 ifeq ($(CONFIG_USB9098),y)
 	CONFIG_MUSB=y
@@ -333,10 +323,16 @@ ifeq ($(CONFIG_PCIE9098),y)
 	CONFIG_PCIE=y
 	ccflags-y += -DPCIE9098
 endif
-ifeq ($(CONFIG_PCIENW62X),y)
+ifeq ($(CONFIG_PCIEIW624),y)
 	CONFIG_PCIE=y
-	ccflags-y += -DPCIENW62X
+	ccflags-y += -DPCIEIW624
 endif
+#ifdef PCIEAW693_OPT
+ifeq ($(CONFIG_PCIEAW693),y)
+	CONFIG_PCIE=y
+	ccflags-y += -DPCIEAW693
+endif
+#endif
 ifeq ($(CONFIG_SDIO),y)
 	ccflags-y += -DSDIO
 	ccflags-y += -DSDIO_MMC
@@ -364,9 +360,9 @@ ifeq ($(GCC_VERSION),1)
 	ccflags-y += -Wno-packed-bitfield-compat
 endif
 WimpGCC_VERSION := $(shell echo `gcc -dumpversion | cut -f1 -d.`| bc )
-#ifeq ($(shell test $(WimpGCC_VERSION) -ge 7; echo $$?),0)
-#ccflags-y += -Wimplicit-fallthrough=3
-#endif
+ifeq ($(shell test $(WimpGCC_VERSION) -ge 7; echo $$?),0)
+ccflags-y += -Wimplicit-fallthrough=3
+endif
 #ccflags-y += -Wunused-but-set-variable
 #ccflags-y += -Wmissing-prototypes
 #ccflags-y += -Wold-style-definition
@@ -496,17 +492,7 @@ endif
 endif
 
 
-#ifdef EMBEDDED_AUTH
-ifeq ($(CONFIG_DRV_EMBEDDED_AUTHENTICATOR), y)
-    ccflags-y += -DDRV_EMBEDDED_AUTHENTICATOR
-endif
-#endif
 
-#ifdef EMBEDDED_SUPP
-ifeq ($(CONFIG_DRV_EMBEDDED_SUPPLICANT), y)
-    ccflags-y += -DDRV_EMBEDDED_SUPPLICANT
-endif
-#endif
 
 
 MOALOBJS =	mlinux/moal_main.o \
@@ -586,37 +572,9 @@ endif
 
 
 
-#if defined(EMBEDDED_SUPP) || defined(EMBEDDED_AUTH)
-ifeq ($(CONFIG_EMBEDDED_SUPP_AUTH), y)
-MLANOBJS += mlan/esa/common/crypto_api.o \
-			mlan/esa/common/aes_cmac_rom.o \
-			mlan/esa/common/crypt_new_rom.o \
-			mlan/esa/common/pmkCache.o \
-			mlan/esa/common/pmkCache_rom.o \
-			mlan/esa/common/parser.o \
-			mlan/esa/common/parser_rom.o \
-			mlan/esa/keyMgmtApStaCommon.o \
-			mlan/esa/hostsa_init.o \
-			mlan/esa/authenticator_api.o
-endif
-#endif
 
 
-#ifdef EMBEDDED_SUPP
-ifeq ($(CONFIG_DRV_EMBEDDED_SUPPLICANT),y)
-MLANOBJS += mlan/esa/keyMgmtSta.o \
-			mlan/esa/keyMgmtSta_rom.o \
-			mlan/esa/supplicant.o
-endif
-#endif
 
-#ifdef EMBEDDED_AUTH
-ifeq ($(CONFIG_DRV_EMBEDDED_AUTHENTICATOR),y)
-MLANOBJS += mlan/esa/AssocAp_srv_rom.o \
-			mlan/esa/keyMgmtAp_rom.o \
-			mlan/esa/keyMgmtAp.o
-endif
-#endif
 
 obj-m := mlan.o
 mlan-objs := $(MLANOBJS)
@@ -659,7 +617,7 @@ appsbuild:
 		mkdir $(BINDIR); \
 	fi
 
-	cp -f README_MLAN $(BINDIR)
+	cp -f README $(BINDIR)
 
 ifneq ($(APPDIR),)
 	cp -rf mapp/mlanconfig/config $(BINDIR)
@@ -678,7 +636,7 @@ build:		echo default
 	cp -rpf script/load $(BINDIR)/
 	cp -rpf script/unload $(BINDIR)/
 
-	cp -f README_MLAN $(BINDIR)
+	cp -f README $(BINDIR)
 
 ifneq ($(APPDIR),)
 	cp -rf mapp/mlanconfig/config $(BINDIR)

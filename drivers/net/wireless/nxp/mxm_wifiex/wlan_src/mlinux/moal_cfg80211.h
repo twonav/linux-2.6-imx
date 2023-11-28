@@ -58,7 +58,6 @@
 
 /* define for custom ie operation */
 #define MLAN_CUSTOM_IE_AUTO_IDX_MASK 0xffff
-#define MLAN_CUSTOM_IE_NEW_MASK 0x8000
 #define IE_MASK_WPS 0x0001
 #define IE_MASK_P2P 0x0002
 #define IE_MASK_WFD 0x0004
@@ -66,6 +65,10 @@
 #define IE_MASK_EXTCAP 0x0010
 
 #define MRVL_PKT_TYPE_MGMT_FRAME 0xE5
+
+#if defined(UAP_CFG80211) || defined(STA_CFG80211)
+#define MRVL_PKT_TYPE_MGMT_EASYMESH 0xCF
+#endif
 
 mlan_status woal_cfg80211_set_key(moal_private *priv, t_u8 is_enable_wep,
 				  t_u32 cipher, const t_u8 *key, int key_len,
@@ -162,7 +165,8 @@ int woal_cfg80211_flush_pmksa(struct wiphy *wiphy, struct net_device *dev);
 #endif
 
 int woal_cfg80211_set_bitrate_mask(struct wiphy *wiphy, struct net_device *dev,
-#if ((CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 19, 2)) || IMX_ANDROID_13)
+#if ((CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 19, 2)) || IMX_ANDROID_13 ||  \
+     IMX_ANDROID_12_BACKPORT)
 				   unsigned int link_id,
 #endif
 				   const u8 *peer,
@@ -441,7 +445,8 @@ int woal_cfg80211_set_beacon(struct wiphy *wiphy, struct net_device *dev,
 			     struct beacon_parameters *params);
 #endif
 
-#if ((CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 19, 2)) || IMX_ANDROID_13)
+#if ((CFG80211_VERSION_CODE >= KERNEL_VERSION(5, 19, 2)) || IMX_ANDROID_13 ||  \
+     IMX_ANDROID_12_BACKPORT)
 int woal_cfg80211_del_beacon(struct wiphy *wiphy, struct net_device *dev,
 			     unsigned int link_id);
 #else
@@ -532,7 +537,8 @@ int woal_cfg80211_mgmt_frame_ie(
 int woal_get_active_intf_freq(moal_private *priv);
 
 void woal_cfg80211_setup_ht_cap(struct ieee80211_sta_ht_cap *ht_info,
-				t_u32 dev_cap, t_u8 *mcs_set);
+				t_u32 dev_cap, t_u8 *mcs_set,
+				t_u8 mpdu_density);
 #if KERNEL_VERSION(3, 6, 0) <= CFG80211_VERSION_CODE
 void woal_cfg80211_setup_vht_cap(moal_private *priv,
 				 struct ieee80211_sta_vht_cap *vht_cap);
