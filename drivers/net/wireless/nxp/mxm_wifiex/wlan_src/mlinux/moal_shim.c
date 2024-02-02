@@ -2721,6 +2721,7 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 
 	t_u8 auto_fw_dump = MFALSE;
 	ENTER();
+	PRINTM(MERROR, "DBG: %s:%d, event: %d\n", __func__, __LINE__, pmevent->event_id);
 	if (pmevent->event_id == MLAN_EVENT_ID_FW_DUMP_INFO) {
 		if (!handle->is_fw_dump_timer_set) {
 			PRINTM(MMSG, "FW trigger fw dump\n");
@@ -4108,8 +4109,10 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 #endif /* UAP_WEXT */
 		break;
 	case MLAN_EVENT_ID_DRV_MGMT_FRAME:
+		PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 #ifdef UAP_WEXT
 		if (IS_UAP_WEXT(cfg80211_wext)) {
+			PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 			woal_broadcast_event(priv, pmevent->event_buf,
 					     pmevent->event_len);
 		}
@@ -4117,10 +4120,12 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 		if (IS_STA_OR_UAP_CFG80211(cfg80211_wext)) {
+			PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)
 			if (priv->netdev &&
 			    priv->netdev->ieee80211_ptr->wiphy->mgmt_stypes &&
 			    priv->mgmt_subtype_mask) {
+				PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 				/* frmctl + durationid + addr1 + addr2 + addr3 +
 				 * seqctl */
 #define PACKET_ADDR4_POS (2 + 2 + 6 + 6 + 6 + 2)
@@ -4133,10 +4138,12 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 					if (!priv->phandle->chan.center_freq) {
 						PRINTM(MINFO,
 						       "Skip to report mgmt packet to cfg80211\n");
+						PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 						break;
 					}
 					freq = priv->phandle->chan.center_freq;
 				}
+				PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 
 				pkt = ((t_u8 *)pmevent->event_buf +
 				       sizeof(pmevent->event_id));
@@ -4164,6 +4171,17 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 #if CFG80211_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
 				/**Forward Deauth, Auth and disassoc frame to
 				 * Host*/
+
+				PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
+				PRINTM(MERROR, "DBG: %s:%d:  priv->host_mlme: %u\n", __func__, __LINE__, priv->host_mlme);
+				PRINTM(MERROR, "DBG: %s:%d:  GET_BSS_ROLE(priv): %u\n", __func__, __LINE__, GET_BSS_ROLE(priv));
+				PRINTM(MERROR, "DBG: %s:%d:  ieee80211_is_deauth: %u\n", __func__, __LINE__,
+									ieee80211_is_deauth(((struct ieee80211_mgmt *)pkt)->frame_control));
+				PRINTM(MERROR, "DBG: %s:%d:  ieee80211_is_auth: %u\n", __func__, __LINE__,
+									ieee80211_is_auth(((struct ieee80211_mgmt *)pkt)->frame_control));
+				PRINTM(MERROR, "DBG: %s:%d:  ieee80211_is_disassoc: %u\n", __func__, __LINE__,
+									ieee80211_is_disassoc(((struct ieee80211_mgmt *)pkt)->frame_control));
+
 				if (priv->host_mlme &&
 				    (GET_BSS_ROLE(priv) != MLAN_BSS_ROLE_UAP) &&
 				    (ieee80211_is_deauth(
@@ -4175,10 +4193,12 @@ mlan_status moal_recv_event(t_void *pmoal, pmlan_event pmevent)
 				     ieee80211_is_disassoc(
 					     ((struct ieee80211_mgmt *)pkt)
 						     ->frame_control))) {
+					PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 					if (ieee80211_is_auth(
 						    ((struct ieee80211_mgmt *)
 							     pkt)
 							    ->frame_control)) {
+						PRINTM(MERROR, "DBG: %s:%d\n", __func__, __LINE__);
 						priv->auth_tx_cnt = 0;
 						PRINTM(MEVENT,
 						       "HostMlme %s: Received auth frame type = 0x%x\n",

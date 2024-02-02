@@ -3401,6 +3401,7 @@ mlan_status wlan_process_802dot11_mgmt_pkt(mlan_private *priv, t_u8 *payload,
 			pmadapter,
 			(t_u8 *)(pevent->event_buf + sizeof(pevent->event_id)),
 			payload, payload_len, payload_len);
+		PRINTM(MERROR, "DBG: processing the mgmt frame in %s\n", __func__);
 	}
 	wlan_recv_event(priv, pevent->event_id, pevent);
 	if (event_buf)
