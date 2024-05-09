@@ -1589,8 +1589,8 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 	/* Mask Relax decision by PMU STATE */
-	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
-	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_2, 0x00);
+	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
+	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_2, 0x00);
 }
 
 
