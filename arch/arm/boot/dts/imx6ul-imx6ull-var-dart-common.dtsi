@@ -236,7 +236,7 @@
 			cy,easy_wakeup_gesture = <0>;
 
 			/*
-			 Terra (Youritech): btn_keys device tree configuration is respected and
+			 Terra (Youritech) & Cross+ (Youritech): btn_keys device tree configuration is respected and
 			 button events happen when pressing virtual buttons.
 			 evtest:
 			 Input device name: "cyttsp5_btn"
@@ -246,7 +246,8 @@
 					Event code 63 (KEY_F5)
 					Event code 64 (KEY_F6)
 					Event code 65 (KEY_F7)
-			 NOTE:Order of keys in the vector is important.
+			 NOTE: Order of keys in the vector is important. We must make sure that both touch panels 
+			 have the same coordinate system.
 
 			 Cross+ with cypress (not Youritech): btn_keys device tree configuration is NOT respected
 			 and virtual keys are treated manually in cyttsp5_mt_common
@@ -259,7 +260,7 @@
 
 			NOTE: it would be more correct to move this configuration to device specific .dtsi
 			*/
-			cy,btn_keys = <KEY_F7 KEY_F6 KEY_F5>;
+			cy,btn_keys = <KEY_F5 KEY_F6 KEY_F7>;
 
 			cy,mt {
 				cy,name = "cyttsp5_mt";
