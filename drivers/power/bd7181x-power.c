@@ -26,7 +26,7 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 
-#if 0
+#if 1
 #define bd7181x_info	dev_info
 #else
 #define bd7181x_info(...)
@@ -100,16 +100,16 @@ module_param(mmc_name, charp, 0644);
 
 struct tn_power_values_st {
 	// Termination current: Charging Termination Current for Fast Charge 10 mA to 200 mA range. Depends on Rsense value
-	//IFST_TERM Rsence 10mOhm		30mOhm
-	// 0x00 	-> 		0mA			0mA
-	// 0x01 	-> 		10mA		3.33mA
-	// 0x02 	-> 		20mA		6.66mA
-	// 0x03 	-> 		30mA		10mA
-	// 0x04 	-> 		40mA		13.3mA
-	// 0x05 	-> 		50mA		16.7mA
-	// 0x06 	-> 		100mA		33.3mA
-	// 0x07 	-> 		150mA		50mA
-	// 0x08 	-> 		200mA		66.7mA
+	//IFST_TERM Rsence 10mOhm		30mOhm		6.8mOhm(Terra)	7.5mOhm(Roc)
+	// 0x00 	-> 		0mA			0mA			0mA				0mA
+	// 0x01 	-> 		10mA		3.33mA		14.49mA			13.33mA
+	// 0x02 	-> 		20mA		6.66mA		28.98mA			26.66mA
+	// 0x03 	-> 		30mA		10mA		43.47mA			40mA
+	// 0x04 	-> 		40mA		13.3mA		57.97mA			53.33mA
+	// 0x05 	-> 		50mA		16.7mA		72.46mA			66.66mA
+	// 0x06 	-> 		100mA		33.3mA		144.92mA		133.33mA
+	// 0x07 	-> 		150mA		50mA		217.39mA		200mA
+	// 0x08 	-> 		200mA		66.7mA		289.85mA		266.66mA
 	int term_current;
 	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range. Depends on Rsense value
 	int fast_charge_current;
@@ -1083,8 +1083,10 @@ static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 		if (soc < 0)
 			soc = 0;
 
-		if ((soc > CANCEL_ADJ_COULOMB_SOC_H_1) || ((soc < CANCEL_ADJ_COULOMB_SOC_L_1) && (soc > CANCEL_ADJ_COULOMB_SOC_H_2)) || (soc < CANCEL_ADJ_COULOMB_SOC_L_2) || 
-			((pwr->temp <= FORCE_ADJ_COULOMB_TEMP_H) && (pwr->temp >= FORCE_ADJ_COULOMB_TEMP_L))) {
+		if ((soc > CANCEL_ADJ_COULOMB_SOC_H_1) || // soc > 70%
+		    ((soc < CANCEL_ADJ_COULOMB_SOC_L_1) && (soc > CANCEL_ADJ_COULOMB_SOC_H_2)) || // soc < 55% && soc > 35%
+			(soc < CANCEL_ADJ_COULOMB_SOC_L_2) || // soc < 0%
+			((pwr->temp <= FORCE_ADJ_COULOMB_TEMP_H) && (pwr->temp >= FORCE_ADJ_COULOMB_TEMP_L))) { // temp <= 35ºC && temp >= 15ºC
 			bcap = pwr->designed_cap * soc / 1000;
 
 			/* Stop Coulomb Counter */
@@ -1591,8 +1593,8 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 	/* Mask Relax decision by PMU STATE */
-	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
-	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_2, 0x00);
+	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_1, 0x01); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
+	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_2, 0x01); // use smallest value possible
 }
 
 
