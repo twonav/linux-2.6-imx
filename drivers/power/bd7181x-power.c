@@ -38,7 +38,8 @@
 #define JITTER_REPORT_CAP	10000		/* seconds */
 
 #define MIN_VOLTAGE		3000000 // bellow this value soc -> 0
-#define THR_VOLTAGE		3800000 // There is no charging if Vsys is less than 3.8V
+// THR_VOLTAGE used for % adjustment which makes no sense : DISABLED (3.8V -> 3V)
+#define THR_VOLTAGE		3000000 // There is no charging if Vsys is less than 3.8V
 #define MAX_CURRENT		1000000	// uA
 #define TRICKLE_CURRENT		25000	// uA
 #define PRECHARGE_CURRENT	300000	// uA
@@ -183,7 +184,7 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 			3708454,
 			3637984,
 			3438226,
-			3000000,
+			3430000,
 	}
 };
 
@@ -265,7 +266,7 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 			3671200,
 			3635200,
 			3444900,
-			2850000, 
+			3440000,
 	}		
 };
 
@@ -310,7 +311,7 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 			3610121,
 			3550071,
 			3231182,
-			3000000,
+			3220000,
 	}		
 };				
 
@@ -355,7 +356,7 @@ static const struct tn_power_values_st TN_POWER_ROC = {
 			3645600,
 			3623900,
 			3370300,
-			3010000,
+			3360000,
 	}
 };
 
@@ -1423,7 +1424,8 @@ static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
 	switch (pwr->rpt_status) { /* Adjust for 0% between THR_VOLTAGE and MIN_VOLTAGE */
 	case POWER_SUPPLY_STATUS_DISCHARGING:
 	case POWER_SUPPLY_STATUS_NOT_CHARGING:
-		if (pwr->vsys_min <= THR_VOLTAGE) { // WHY calculate SOC only whev latest minimun Vsys <= Vthr ????????????????? STILL I DONT GET IT 
+		// WHY adjust SOC only whev latest minimun Vsys <= Vthr -> results to jumps in % -> DISABLE IT (THR_VOLTAGE->3V)
+		if (pwr->vsys_min <= THR_VOLTAGE) {
 			int i;
 			int ocv;
 			int lost_cap;
