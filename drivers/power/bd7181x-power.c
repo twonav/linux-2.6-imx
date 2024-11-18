@@ -26,7 +26,7 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 
-#if 1
+#if 1 // Enable logs for testing, it should be DISABLED before release
 #define bd7181x_info	dev_info
 #else
 #define bd7181x_info(...)
@@ -1058,7 +1058,6 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, int ocv_type) {
  * @return 0
  */
 static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
-	return 0;
 	u32 relaxed_coulomb_cnt;
 
 	relaxed_coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_REX_CCNTD_3) & 0x1FFFFFFFUL;
@@ -1215,7 +1214,6 @@ static int bd7181x_get_battery_parameters(struct bd7181x_power* pwr)
  */
 static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 {
-	return 0;
 	int tmp_curr_mA;
 
 	tmp_curr_mA = pwr->curr / 1000;
@@ -1617,8 +1615,9 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 	/* Mask Relax decision by PMU STATE */
-	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_1, 0x01); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
-	bd7181x_reg_write(mfd, BD7181X_REG_REX_CTRL_2, 0x01); // use smallest value possible
+	// TWON-19218: Pending to test with bd7181x_reg_write (instead of bd7181x_set_bits)
+	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_1, 0x00); // IMPORTANT: Disable Relax State detection to avoid jumps in % capacity
+	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_2, 0x00);
 }
 
 
