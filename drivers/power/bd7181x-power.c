@@ -1154,6 +1154,28 @@ static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
 	return 0;
 }
 
+/** @brief reset coulomb counter values at full charged state
+ * @param pwr power device
+ * @return 0
+ */
+static int bd7181x_reset_coulomb_count_at_low_bat(struct bd7181x_power* pwr)
+{
+	/* Stop Coulomb Counter */
+	bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+
+	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
+	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, 0);
+
+	pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+	bd7181x_info(pwr->dev, "Reset Coulomb Counter at EMPTY\n");
+	bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
+
+	/* Start Coulomb Counter */
+	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+
+	return 0;
+}
+
 /** @brief get battery parameters, such as voltages, currents, temperatures.
  * @param pwr power device
  * @return 0
@@ -1849,10 +1871,12 @@ static void bd7181x_low_batt_check(struct bd7181x_power *pwr) {
 	if (conditional_max_reached(&emergency_counter, condition, EMERGENCY_SIGNAL_CONSECUTIVE_HITS)) {
 		printk("BD7181x-power: sending SIGTERM signal to vbat_emergency_pid\n");
 		send_signal(SIGTERM, &vbat_emergency_pid);
+		bd7181x_reset_coulomb_count_at_low_bat(pwr);
 	}
 	else if (conditional_max_reached(&sigterm_counter, condition, SIGNAL_CONSECUTIVE_HITS)) {
 		printk("BD7181x-power: sending SIGTERM signal to vbat_low_related_pid\n");
 		send_signal(SIGTERM, &vbat_low_related_pid);
+		bd7181x_reset_coulomb_count_at_low_bat(pwr);
 	}
 }
 
