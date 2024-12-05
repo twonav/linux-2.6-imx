@@ -26,7 +26,8 @@
 #include <linux/sched.h>
 #include <linux/pid.h>
 
-#if 1 // Enable logs for testing, it should be DISABLED before release
+#if 0
+// Enable logs for testing, it should be DISABLED before release
 #define bd7181x_info	dev_info
 #else
 #define bd7181x_info(...)
