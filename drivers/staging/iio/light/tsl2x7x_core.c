@@ -235,8 +235,8 @@ static const struct tsl2x7x_settings tsl2x7x_default_settings = {
 	.als_cal_target = 150,
 	.als_thresh_low = 200,
 	.als_thresh_high = 256,
-	.persistence = 255,
-	.interrupts_en = 0,
+	.persistence = 255, /* 255 disables interrupts indirrectly, consecutive measurements out of low-high thresholds before int is sent */
+	.interrupts_en = 0, /* TSL2X7X_CNTL_ALS_INT_ENBL mask to enable interrupts, revise  IRQF_TRIGGER_RISING/FALLING */
 	.prox_thres_low  = 0,
 	.prox_thres_high = 512,
 	.prox_max_samples_cal = 30,
@@ -1776,7 +1776,7 @@ static int tsl2x7x_probe(struct i2c_client *clientp,
 		ret = devm_request_threaded_irq(&clientp->dev, clientp->irq,
 						NULL,
 						&tsl2x7x_event_handler,
-						IRQF_TRIGGER_RISING |
+						IRQF_TRIGGER_FALLING | // if interrupts enabled revise trigger RISING/FALLING
 						IRQF_ONESHOT,
 						"TSL2X7X_event",
 						indio_dev);

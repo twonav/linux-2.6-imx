@@ -64,7 +64,7 @@
 	init-gpios-common {
 		compatible = "gpio-leds";
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_imx6_commmon>;
+		pinctrl-0 = <&pinctrl_leds>;
 
 		notifications_led {
 			label = "blue";
@@ -212,7 +212,7 @@
 
 #ifdef WIFI
 &i2c2 {
-	clock-frequency = <400000>;
+	clock-frequency = <100000>; /* 400KHz distors CLK */
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_i2c2>;
 	status = "okay";
@@ -409,8 +409,13 @@
 	};
 
 	tsl2x7x@39 {
-        	compatible = "taos,tsl2572";
-        	reg = <0x39>;
+        compatible = "taos,tsl2572";
+        reg = <0x39>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_tsl2572>;
+		interrupt-parent = <&gpio4>;
+		interrupts = <17 IRQ_TYPE_EDGE_FALLING>; /* tsl driver needs same configuration */
+		irq-gpios = <&gpio4 17 GPIO_ACTIVE_LOW>;
     };
 };
 #endif
@@ -430,20 +435,15 @@
 
 &iomuxc {
 	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_imx6_commmon>;
+	pinctrl-0 = <&pinctrl_imx6_common>;
+
 	imx6ul-evk {
-		pinctrl_imx6_commmon: imx6commmongrp {
+		pinctrl_imx6_common: imx6commongrp {
 			fsl,pins = <
 				/* MX6UL_PAD_CSI_HSYNC__GPIO4_IO20		0x1b0b0	User LED - Check */
-				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00		0x1b0b0   /* necessary for USB-ID --- old pin cfg -> 0x17059 */
-				MX6UL_PAD_GPIO1_IO07__GPIO1_IO07		0x1b0b0   /* Notification Led */
 				/* MX6UL_PAD_GPIO1_IO06__ENET2_MDIO	0x1b0b0 Need to Check */
 				/*-------------------------------GPS-----------------------------------*/
 				MX6UL_PAD_UART3_RTS_B__GPIO1_IO27		0x130b0 /* GPS_SYSTEM_ON (INPUT) Pull down!! */
-				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26		0x1b0b0 /* GPS_ON_OFF */
-				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18		0x1b0b0 /* GPS_RESET */
-				MX6UL_PAD_ENET1_TX_DATA0__GPIO2_IO03	0x1b0b0 /* GPS_PWR_EN */
-				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19		0x1b0b0 /* GPS_BOOTSEL */
 				/*-------------------------------PCAP----------------------------------*/
 				MX6UL_PAD_ENET1_RX_ER__GPIO2_IO07		0x1b0b0 /* PCAP_RESET */
 				MX6UL_PAD_ENET1_RX_EN__GPIO2_IO02		0x1b0b0 /* PCAP_INT */					
@@ -451,7 +451,18 @@
 				/*MX6UL_PAD_LCD_DATA17__GPIO3_IO22		0x40000000 Sample to get feedback from grpio sysfs*/
 				/*-------------------------------BD7181x--------------------------------*/
 				MX6UL_PAD_ENET2_TX_DATA1__GPIO2_IO12    0x1b0b0 /* PMICIO.INT_OUT */
+				MX6UL_PAD_GPIO1_IO00__GPIO1_IO00		0x1b0b0   /* necessary for USB-ID - Detect Charging */
 			>;			
+		};
+
+		pinctrl_leds: ledspins {
+			fsl,pins = <
+				MX6UL_PAD_GPIO1_IO07__GPIO1_IO07		0x1b0b0 /* Notification Led */
+				MX6UL_PAD_ENET1_TX_DATA0__GPIO2_IO03	0x1b0b0 /* GPS_PWR_EN */
+				MX6UL_PAD_UART1_CTS_B__GPIO1_IO18		0x1b0b0 /* GPS_RESET */
+				MX6UL_PAD_UART3_CTS_B__GPIO1_IO26		0x1b0b0 /* GPS_ON_OFF */
+				MX6UL_PAD_UART1_RTS_B__GPIO1_IO19		0x1b0b0 /* GPS_BOOTSEL */
+			>;
 		};
 
 		pinctrl_pwm1: pwm1grp {
@@ -530,11 +541,17 @@
 			>;
 		};
 
+		pinctrl_tsl2572: tsl2572_pins {
+			fsl,pins = <
+				MX6UL_PAD_CSI_MCLK__GPIO4_IO17 0x1b059 /* tsl2572 INT */
+			>;
+		};
+
 #ifdef WIFI
         pinctrl_i2c2: i2c2grp {
             fsl,pins = <
-                MX6UL_PAD_CSI_HSYNC__I2C2_SCL   0x4001b8b0
-                MX6UL_PAD_CSI_VSYNC__I2C2_SDA   0x4001b8b0
+                MX6UL_PAD_CSI_HSYNC__I2C2_SCL   0x4001b898 /* Reduce DSE (drive strenght) - previous 0x4001b8b0 */
+                MX6UL_PAD_CSI_VSYNC__I2C2_SDA   0x4001b898 /* Reduce DSE (drive strenght) - previous 0x4001b8b0 */
             >;
         };
 #endif
