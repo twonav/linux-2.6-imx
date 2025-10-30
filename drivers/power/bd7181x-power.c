@@ -1270,7 +1270,7 @@ static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 	int tmp_curr_mA;
 
 	tmp_curr_mA = pwr->curr / 1000;
-	if ((tmp_curr_mA * tmp_curr_mA) <= (THR_RELAX_CURRENT * THR_RELAX_CURRENT)) { /* No load */
+	if ((tmp_curr_mA * tmp_curr_mA) <= (THR_RELAX_CURRENT * THR_RELAX_CURRENT) && !pwr->charger_online) { /* No load */
 		pwr->relax_time += (JITTER_DEFAULT / 1000);
 	}
 	else {
