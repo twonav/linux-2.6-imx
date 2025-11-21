@@ -106,7 +106,9 @@ enum bd7181x_init_mode {
 #define OCV_TABLE_SIZE		23
 
 static inline int is_leap_year(int year) {
-	/* For years 2000-2099, leap year is every 4 years */
+	/* Returns 1 if year is a leap year in the range 2000-2099, 0 otherwise.
+	 * For years 2000-2099, leap year is every 4 years.
+	 */
 	return (year % 4 == 0);
 }
 
@@ -148,8 +150,8 @@ static int bd7181x_days_since_last_poweroff(struct bd7181x *mfd) {
 	last_day = bcd2bin(last_day_bcd);
 	last_month = bcd2bin(last_month_bcd);
 	last_year = 2000 + bcd2bin(last_year_bcd);
-	printk(KERN_ERR "bd7181x-power: Current date: %04d-%02d-%02d\n", year, month, day);
-	printk(KERN_ERR "bd7181x-power: Last power-off date: %04d-%02d-%02d\n", last_year, last_month, last_day);
+	printk(KERN_INFO "bd7181x-power: Current date: %04d-%02d-%02d\n", year, month, day);
+	printk(KERN_INFO "bd7181x-power: Last power-off date: %04d-%02d-%02d\n", last_year, last_month, last_day);
 	today = days_since_2000(year, month, day);
 	last_power_off_day = days_since_2000(last_year, last_month, last_day);
 	return today - last_power_off_day;
@@ -1708,6 +1710,10 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 		printk(KERN_ERR "bd7181x: RTC was stopped\n");
 		vbat_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U); // in mV
 		ocv_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U); // OCV in mV
+		if (vbat_mV < 0 || ocv_mV < 0) {
+			printk(KERN_ERR "bd7181x: Failed to read voltage registers (vbat_mV=%d, ocv_mV=%d)\n", vbat_mV, ocv_mV);
+			return BD7181X_INIT_NONE;
+		}
 		vdiff = abs(vbat_mV - ocv_mV);
 		if (vdiff > VBAT_OCV_DIFF_THRESHOLD) { // 100mV threshold
 			printk(KERN_NOTICE "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
@@ -1728,7 +1734,7 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 	}
 	else {
 		replacable_battery = supports_replacable_battery();
-		if(replacable_battery) {
+		if (replacable_battery) {
 			/* If the battery is replaced "fast" (<25secs) the RTC may still stay alive due to charged capacitors
 			   and very low power consumption leading to the OCV registers not being actualized. So we try to detect
 			   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
@@ -1991,9 +1997,14 @@ static void store_state(struct bd7181x_power *pwr) {
 	bd7181x_reg_write16(pwr->mfd, BD7181X_VBAT_END, vbat);
 
 	// Store current HW RTC date (day, month, year) in user reserved registers
-	bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_DAY, bd7181x_reg_read(pwr->mfd, BD7181X_REG_DAY)); // day
-	bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_MONTH, bd7181x_reg_read(pwr->mfd, BD7181X_REG_MONTH)); // month
-	bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_YEAR, bd7181x_reg_read(pwr->mfd, BD7181X_REG_YEAR)); // year
+	int day = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DAY);
+	int month = bd7181x_reg_read(pwr->mfd, BD7181X_REG_MONTH);
+	int year = bd7181x_reg_read(pwr->mfd, BD7181X_REG_YEAR);
+	if (day >= 0 && month >= 0 && year >= 0) {
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_DAY, day); // day
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_MONTH, month); // month
+		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_YEAR, year); // year
+	}
 }
 
 /**@brief timed work function called by system
