@@ -152,10 +152,17 @@ static int bd7181x_days_since_last_poweroff(struct bd7181x *mfd) {
 	last_day = bcd2bin(last_day_bcd);
 	last_month = bcd2bin(last_month_bcd);
 	last_year = bcd2bin(last_year_bcd);
+	if (last_year < 100)
+		last_year += 2000;
 	printk(KERN_INFO "bd7181x-power: Current date: %04d-%02d-%02d\n", year, month, day);
 	printk(KERN_INFO "bd7181x-power: Last power-off date: %04d-%02d-%02d\n", last_year, last_month, last_day);
 	today = days_since_2000(year, month, day);
 	last_power_off_day = days_since_2000(last_year, last_month, last_day);
+	if (last_power_off_day > today) {
+		printk(KERN_ERR "bd7181x-power: Last power-off date is in the future! Current date: %04d-%02d-%02d, Last power-off date: %04d-%02d-%02d\n",
+			year, month, day, last_year, last_month, last_day);
+		return -EINVAL;
+	}
 	return today - last_power_off_day;
 }
 
@@ -1717,7 +1724,7 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 			return BD7181X_INIT_NONE;
 		}
 		vdiff = abs(vbat_mV - ocv_mV);
-		if (vdiff > VBAT_OCV_DIFF_THRESHOLD) { // 100mV threshold
+		if (vdiff > VBAT_OCV_DIFF_THRESHOLD) {
 			printk(KERN_INFO "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
 			mode = BD7181X_INIT_USE_CV_SA;
 		} else {
@@ -1752,13 +1759,13 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 
 			if (charge_state_on == charge_state_off) {
 				if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
-					printk(KERN_INFO "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
+					printk(KERN_INFO "bd7181x: significant difference between Vstart&Vstop: %d, assuming new battery\n", volt_diff);
 					mode = BD7181X_INIT_USE_CV_SA;
 				}
 			}
 			else {
 				if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
-					printk(KERN_INFO "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
+					printk(KERN_INFO "bd7181x: difference between start&stop conditions: %d, assuming new battery\n", volt_diff);
 					mode = BD7181X_INIT_USE_CV_SA;
 				}
 			}
