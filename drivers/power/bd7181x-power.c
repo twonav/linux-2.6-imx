@@ -24,6 +24,7 @@
 #include <linux/uaccess.h>
 #include <linux/sched.h>
 #include <linux/pid.h>
+#include <linux/bcd.h>
 
 #if 0
 // Enable logs for testing, it should be DISABLED before release
@@ -62,6 +63,7 @@
 #define VBAT_OCV_DIFF 50 // ESTIMATION: OCV is aproximatelly 0.05V higher than CV
 #define VBAT_PRE_CHARGE_DIFF 50
 #define VBAT_FAST_CHARGE_DIFF 100
+#define VBAT_OCV_DIFF_THRESHOLD 100 // 100mV
 
 #define THR_RELAX_CURRENT	10		/* mA */ // Coulomb counter related
 #define THR_RELAX_TIME		(60 * 60)	/* sec. */ // Coulomb counter related
@@ -103,9 +105,9 @@ enum bd7181x_init_mode {
 
 #define OCV_TABLE_SIZE		23
 
-// Helper: Convert BCD to binary
-static int bcd2bin(u8 val) {
-	return ((val >> 4) * 10) + (val & 0x0F);
+static inline int is_leap_year(int year) {
+	/* For years 2000-2099, leap year is every 4 years */
+	return (year % 4 == 0);
 }
 
 // Helper: Days since 2000-01-01 (simple, not handling leap seconds, but handles leap years)
@@ -113,10 +115,10 @@ static int days_since_2000(int year, int month, int day) {
 	static const int days_in_month[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
 	int y, m, days = 0;
 	for (y = 2000; y < year; ++y)
-		days += 365 + (((y % 4 == 0) && ((y % 100 != 0) || (y % 400 == 0))) ? 1 : 0);
+		days += 365 + (is_leap_year(y) ? 1 : 0);
 	for (m = 1; m < month; ++m) {
 		days += days_in_month[m-1];
-		if ((m == 2) && ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))))
+		if ((m == 2) && (is_leap_year(year)))
 			days += 1;
 	}
 	days += day - 1;
@@ -125,7 +127,7 @@ static int days_since_2000(int year, int month, int day) {
 
 // Returns days passed since last power-off (stored in 0xB3-0xB5) to now (0x22-0x24)
 static int bd7181x_days_since_last_poweroff(struct bd7181x *mfd) {
-	int today, last_power_off_day;
+	int day, month, year, last_day, last_month, last_year, today, last_power_off_day;
 	int day_bcd = bd7181x_reg_read(mfd, BD7181X_REG_DAY);
 	int month_bcd = bd7181x_reg_read(mfd, BD7181X_REG_MONTH);
 	int year_bcd = bd7181x_reg_read(mfd, BD7181X_REG_YEAR);
@@ -140,12 +142,12 @@ static int bd7181x_days_since_last_poweroff(struct bd7181x *mfd) {
 		return -EINVAL;
 	}
 
-	int day = bcd2bin(day_bcd);
-	int month = bcd2bin(month_bcd);
-	int year = 2000 + bcd2bin(year_bcd);
-	int last_day = bcd2bin(last_day_bcd);
-	int last_month = bcd2bin(last_month_bcd);
-	int last_year = 2000 + bcd2bin(last_year_bcd);
+	day = bcd2bin(day_bcd);
+	month = bcd2bin(month_bcd);
+	year = 2000 + bcd2bin(year_bcd);
+	last_day = bcd2bin(last_day_bcd);
+	last_month = bcd2bin(last_month_bcd);
+	last_year = 2000 + bcd2bin(last_year_bcd);
 	printk(KERN_ERR "bd7181x-power: Current date: %04d-%02d-%02d\n", year, month, day);
 	printk(KERN_ERR "bd7181x-power: Last power-off date: %04d-%02d-%02d\n", last_year, last_month, last_day);
 	today = days_since_2000(year, month, day);
@@ -1676,10 +1678,10 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_VPRE, 0x97); // precharge voltage thresholds VPRE_LO: 2.8V, VPRE_HI: 3.0V
 
 	/* Mask Relax decision by PMU STATE */
-	/* NOTE: Relax state detection only works when kernel is running, device is on
-	   When device is off only the coulomb counters are active.
-	   Moreover with the current relaxed state configuration, current less than 10mA
-	   for 1hr, we will never reach it because base consumption is aprox 70mA */
+	/* NOTE: Relax state detection only works when kernel is running (device is on)
+	   When device is off, only the coulomb counters are active.
+	   Moreover, with the current relaxed state configuration, which requires current
+	   less than 10mA for 1hr, we will never reach it because base consumption is aprox 70mA */
 	bd7181x_set_bits(mfd, BD7181X_REG_REX_CTRL_1, REX_PMU_STATE_MASK);
 }
 
@@ -1687,10 +1689,10 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
  {
 	int r;
-	int vbat_mV, ocv_mV, vdiff;
+	int vbat_mV, ocv_mV, vdiff, days_since_last_poweroff, rtc_stored;
 	enum bd7181x_init_mode mode = BD7181X_INIT_NONE;
 
-	int days_since_last_poweroff = bd7181x_days_since_last_poweroff(mfd);
+	days_since_last_poweroff = bd7181x_days_since_last_poweroff(mfd);
 	if (days_since_last_poweroff < 0) {
 		printk(KERN_ERR "bd7181x: Failed to read days since last power-off (error %d)\n", days_since_last_poweroff);
 	} else {
@@ -1698,16 +1700,20 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 	}
 
 	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
-	if ((r & XSTB) == 0x00) { // RTC stopped either due to battery removal or unknown reason
+	if (r < 0) {
+		printk(KERN_ERR "bd7181x: Failed to read BD7181X_REG_CONF (err=%d)\n", r);
+		return BD7181X_INIT_NONE;
+	}
+	else if ((r & XSTB) == 0x00) { // RTC stopped either due to battery removal or unknown reason
 		printk(KERN_ERR "bd7181x: RTC was stopped\n");
 		vbat_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U); // in mV
 		ocv_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U); // OCV in mV
 		vdiff = abs(vbat_mV - ocv_mV);
-		if (vdiff > 100) { // 100mV threshold
+		if (vdiff > VBAT_OCV_DIFF_THRESHOLD) { // 100mV threshold
 			printk(KERN_NOTICE "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
 			mode = BD7181X_INIT_USE_CV_SA;
 		} else {
-			int rtc_stored = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
+			rtc_stored = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
 			if (rtc_stored < 0) {
 				printk(KERN_ERR "bd7181x: Failed to read LAST_POWER_OFF_DAY register: %d\n", rtc_stored);
 				mode = BD7181X_INIT_NONE;
@@ -1770,8 +1776,17 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	init_mode = bd7181x_select_init_strategy(mfd);
 
 	if (init_mode != BD7181X_INIT_NONE) {
-		printk(KERN_ERR "bd7181x-power: battery needs estimation, initializing PMIC\n");
-
+		switch (init_mode) {
+			case BD7181X_INIT_USE_OCV:
+				printk(KERN_ERR "bd7181x-power: battery initialization using OCV estimation, initializing PMIC\n");
+				break;
+			case BD7181X_INIT_USE_CV_SA:
+				printk(KERN_ERR "bd7181x-power: battery initialization using CV_SA estimation, initializing PMIC\n");
+				break;
+			default:
+				printk(KERN_ERR "bd7181x-power: battery needs estimation, initializing PMIC\n");
+				break;
+		}
 		//if (r & BAT_DET) {
 			/* Init HW, when the battery is inserted. */
 
