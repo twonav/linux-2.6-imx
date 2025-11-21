@@ -146,10 +146,12 @@ static int bd7181x_days_since_last_poweroff(struct bd7181x *mfd) {
 
 	day = bcd2bin(day_bcd);
 	month = bcd2bin(month_bcd);
-	year = 2000 + bcd2bin(year_bcd);
+	year = bcd2bin(year_bcd);
+	if (year < 100)
+		year += 2000;
 	last_day = bcd2bin(last_day_bcd);
 	last_month = bcd2bin(last_month_bcd);
-	last_year = 2000 + bcd2bin(last_year_bcd);
+	last_year = bcd2bin(last_year_bcd);
 	printk(KERN_INFO "bd7181x-power: Current date: %04d-%02d-%02d\n", year, month, day);
 	printk(KERN_INFO "bd7181x-power: Last power-off date: %04d-%02d-%02d\n", last_year, last_month, last_day);
 	today = days_since_2000(year, month, day);
@@ -1698,7 +1700,7 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 	if (days_since_last_poweroff < 0) {
 		printk(KERN_ERR "bd7181x: Failed to read days since last power-off (error %d)\n", days_since_last_poweroff);
 	} else {
-		printk(KERN_ERR "bd7181x: Last power-off was %d days ago\n", days_since_last_poweroff);
+		printk(KERN_INFO "bd7181x: Last power-off was %d days ago\n", days_since_last_poweroff);
 	}
 
 	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
@@ -1707,7 +1709,7 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 		return BD7181X_INIT_NONE;
 	}
 	else if ((r & XSTB) == 0x00) { // RTC stopped either due to battery removal or unknown reason
-		printk(KERN_ERR "bd7181x: RTC was stopped\n");
+		printk(KERN_INFO "bd7181x: RTC was stopped\n");
 		vbat_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U); // in mV
 		ocv_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U); // OCV in mV
 		if (vbat_mV < 0 || ocv_mV < 0) {
@@ -1716,7 +1718,7 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 		}
 		vdiff = abs(vbat_mV - ocv_mV);
 		if (vdiff > VBAT_OCV_DIFF_THRESHOLD) { // 100mV threshold
-			printk(KERN_NOTICE "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
+			printk(KERN_INFO "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
 			mode = BD7181X_INIT_USE_CV_SA;
 		} else {
 			rtc_stored = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
@@ -1724,10 +1726,10 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 				printk(KERN_ERR "bd7181x: Failed to read LAST_POWER_OFF_DAY register: %d\n", rtc_stored);
 				mode = BD7181X_INIT_NONE;
 			} else if (rtc_stored == 0x00) {
-				printk(KERN_NOTICE "bd7181x: VBAT (%dmV) close to OCV (%dmV), use OCV for estimation, assume new battery\n", vbat_mV, ocv_mV);
+				printk(KERN_INFO "bd7181x: VBAT (%dmV) close to OCV (%dmV), use OCV for estimation, assume new battery\n", vbat_mV, ocv_mV);
 				mode = BD7181X_INIT_USE_OCV;
 			} else {
-				printk(KERN_NOTICE "bd7181x: VBAT (%dmV) close to OCV (%dmV), do not reestimate\n", vbat_mV, ocv_mV);
+				printk(KERN_INFO "bd7181x: VBAT (%dmV) close to OCV (%dmV), do not reestimate\n", vbat_mV, ocv_mV);
 				mode = BD7181X_INIT_NONE;
 			}
 		}
@@ -1750,13 +1752,13 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 
 			if (charge_state_on == charge_state_off) {
 				if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
-					printk(KERN_ERR "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
+					printk(KERN_INFO "bd7181x: significant difference between Vstart&Vstop :%d, assuming new battery\n",volt_diff);
 					mode = BD7181X_INIT_USE_CV_SA;
 				}
 			}
 			else {
 				if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
-					printk(KERN_ERR "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
+					printk(KERN_INFO "bd7181x: difference between start&stop conditions :%d, assuming new battery\n",volt_diff);
 					mode = BD7181X_INIT_USE_CV_SA;
 				}
 			}
@@ -1784,13 +1786,13 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	if (init_mode != BD7181X_INIT_NONE) {
 		switch (init_mode) {
 			case BD7181X_INIT_USE_OCV:
-				printk(KERN_ERR "bd7181x-power: battery initialization using OCV estimation, initializing PMIC\n");
+				printk(KERN_INFO "bd7181x-power: battery initialization using OCV estimation, initializing PMIC\n");
 				break;
 			case BD7181X_INIT_USE_CV_SA:
-				printk(KERN_ERR "bd7181x-power: battery initialization using CV_SA estimation, initializing PMIC\n");
+				printk(KERN_INFO "bd7181x-power: battery initialization using CV_SA estimation, initializing PMIC\n");
 				break;
 			default:
-				printk(KERN_ERR "bd7181x-power: battery needs estimation, initializing PMIC\n");
+				printk(KERN_INFO "bd7181x-power: battery needs estimation, initializing PMIC\n");
 				break;
 		}
 		//if (r & BAT_DET) {
@@ -1990,16 +1992,16 @@ static void bd7181x_send_signals(struct bd7181x_power *pwr) {
 }
 
 static void store_state(struct bd7181x_power *pwr) {
-	int charge_state, vbat;
+	int charge_state, vbat, day, month, year;
 	charge_state = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
 	vbat = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_VM_SA_VBAT_U);
 	bd7181x_reg_write(pwr->mfd, BD7181X_CHG_STATE_END, charge_state);
 	bd7181x_reg_write16(pwr->mfd, BD7181X_VBAT_END, vbat);
 
 	// Store current HW RTC date (day, month, year) in user reserved registers
-	int day = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DAY);
-	int month = bd7181x_reg_read(pwr->mfd, BD7181X_REG_MONTH);
-	int year = bd7181x_reg_read(pwr->mfd, BD7181X_REG_YEAR);
+	day = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DAY);
+	month = bd7181x_reg_read(pwr->mfd, BD7181X_REG_MONTH);
+	year = bd7181x_reg_read(pwr->mfd, BD7181X_REG_YEAR);
 	if (day >= 0 && month >= 0 && year >= 0) {
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_DAY, day); // day
 		bd7181x_reg_write(pwr->mfd, BD7181X_REG_LAST_POWER_OFF_MONTH, month); // month
