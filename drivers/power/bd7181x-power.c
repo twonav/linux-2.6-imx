@@ -113,25 +113,33 @@ static int days_since_2000(int year, int month, int day) {
 	static const int days_in_month[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
 	int y, m, days = 0;
 	for (y = 2000; y < year; ++y)
-		days += 365 + ((y%4==0 && (y%100!=0 || y%400==0)) ? 1 : 0);
+		days += 365 + (((y % 4 == 0) && ((y % 100 != 0) || (y % 400 == 0))) ? 1 : 0);
 	for (m = 1; m < month; ++m) {
 		days += days_in_month[m-1];
-		if (m == 2 && (year%4==0 && (year%100!=0 || year%400==0)))
+		if ((m == 2) && ((year % 4 == 0) && ((year % 100 != 0) || (year % 400 == 0))))
 			days += 1;
 	}
-	days += day-1;
+	days += day - 1;
 	return days;
 }
 
 // Returns days passed since last power-off (stored in 0xB3-0xB5) to now (0x22-0x24)
 static int bd7181x_days_since_last_poweroff(struct bd7181x *mfd) {
 	int today, last_power_off_day;
-	u8 day_bcd = bd7181x_reg_read(mfd, BD7181X_REG_DAY);
-	u8 month_bcd = bd7181x_reg_read(mfd, BD7181X_REG_MONTH);
-	u8 year_bcd = bd7181x_reg_read(mfd, BD7181X_REG_YEAR);
-	u8 last_day_bcd = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
-	u8 last_month_bcd = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_MONTH);
-	u8 last_year_bcd = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_YEAR);
+	int day_bcd = bd7181x_reg_read(mfd, BD7181X_REG_DAY);
+	int month_bcd = bd7181x_reg_read(mfd, BD7181X_REG_MONTH);
+	int year_bcd = bd7181x_reg_read(mfd, BD7181X_REG_YEAR);
+	int last_day_bcd = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
+	int last_month_bcd = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_MONTH);
+	int last_year_bcd = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_YEAR);
+
+	if (day_bcd < 0 || month_bcd < 0 || year_bcd < 0 ||
+	    last_day_bcd < 0 || last_month_bcd < 0 || last_year_bcd < 0) {
+		printk(KERN_ERR "bd7181x-power: Failed to read RTC registers: day=%d month=%d year=%d last_day=%d last_month=%d last_year=%d\n",
+			day_bcd, month_bcd, year_bcd, last_day_bcd, last_month_bcd, last_year_bcd);
+		return -EINVAL;
+	}
+
 	int day = bcd2bin(day_bcd);
 	int month = bcd2bin(month_bcd);
 	int year = 2000 + bcd2bin(year_bcd);
@@ -1683,7 +1691,11 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 	enum bd7181x_init_mode mode = BD7181X_INIT_NONE;
 
 	int days_since_last_poweroff = bd7181x_days_since_last_poweroff(mfd);
-	printk(KERN_ERR "bd7181x: Last power-off was %d days ago\n", days_since_last_poweroff);
+	if (days_since_last_poweroff < 0) {
+		printk(KERN_ERR "bd7181x: Failed to read days since last power-off (error %d)\n", days_since_last_poweroff);
+	} else {
+		printk(KERN_ERR "bd7181x: Last power-off was %d days ago\n", days_since_last_poweroff);
+	}
 
 	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
 	if ((r & XSTB) == 0x00) { // RTC stopped either due to battery removal or unknown reason
@@ -1695,8 +1707,11 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 			printk(KERN_NOTICE "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
 			mode = BD7181X_INIT_USE_CV_SA;
 		} else {
-			int rtc_storred = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
-			if (rtc_storred == 0x00) {
+			int rtc_stored = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
+			if (rtc_stored < 0) {
+				printk(KERN_ERR "bd7181x: Failed to read LAST_POWER_OFF_DAY register: %d\n", rtc_stored);
+				mode = BD7181X_INIT_NONE;
+			} else if (rtc_stored == 0x00) {
 				printk(KERN_NOTICE "bd7181x: VBAT (%dmV) close to OCV (%dmV), use OCV for estimation, assume new battery\n", vbat_mV, ocv_mV);
 				mode = BD7181X_INIT_USE_OCV;
 			} else {
@@ -1709,8 +1724,8 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 		replacable_battery = supports_replacable_battery();
 		if(replacable_battery) {
 			/* If the battery is replaced "fast" (<25secs) the RTC may still stay alive due to charged capacitors
-				and very low power consumption leading to the OCV registers not beiing actualized. So we try to detect
-				a new battery by comparing Voltage difference between on-off voltage which is less accurate.
+			   and very low power consumption leading to the OCV registers not being actualized. So we try to detect
+			   a new battery by comparing Voltage difference between on-off voltage which is less accurate.
 			*/
 			int charge_state_on, charge_state_off, volt_on, volt_off, volt_diff;
 			charge_state_on =  bd7181x_reg_read(mfd, BD7181X_REG_CHG_STATE);
