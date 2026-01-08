@@ -837,11 +837,11 @@ static int bd7181x_get_init_bat_stat(struct bd7181x_power *pwr) {
 	int vcell;
 
 	vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U) * 1000;
-	bd7181x_info(pwr->dev, "VM_OCV_PRE = %d\n", vcell);
+	dev_info(pwr->dev, "VM_OCV_PRE = %d\n", vcell);
 	pwr->hw_ocv1 = vcell;
 
 	vcell = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PST_U) * 1000;
-	bd7181x_info(pwr->dev, "VM_OCV_PST = %d\n", vcell);
+	dev_info(pwr->dev, "VM_OCV_PST = %d\n", vcell);
 	pwr->hw_ocv2 = vcell;
 	printk(KERN_ERR "bd7181x_get_init_bat_stat OCV :%d\n",vcell);
 
@@ -1098,19 +1098,19 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, enum bd7181x_init_mod
 		/* Get init OCV by HW */
 		bd7181x_get_init_bat_stat(pwr);
 		ocv = (pwr->hw_ocv1 >= pwr->hw_ocv2) ? pwr->hw_ocv1 : pwr->hw_ocv2;
-		bd7181x_info(pwr->dev, "INIT coulomb Counter with REAL OCV value: %d\n", ocv);
+		dev_info(pwr->dev, "INIT coulomb Counter with REAL OCV value: %d\n", ocv);
 	} else if (mode == BD7181X_INIT_USE_CV_SA) {
 		/* Approximate OCV by Current Voltage (Simple Average) */
 		bd7181x_calib_voltage(pwr, &ocv);
-		bd7181x_info(pwr->dev, "INIT coulomb Counter with ESTIMATED OCV value: %d\n", ocv);
+		dev_info(pwr->dev, "INIT coulomb Counter with ESTIMATED OCV value: %d\n", ocv);
 	} else {
-		bd7181x_info(pwr->dev, "INIT coulomb Counter: No initialization performed (mode=%d)\n", mode);
+		dev_info(pwr->dev, "INIT coulomb Counter: No initialization performed (mode=%d)\n", mode);
 		return 0;
 	}
 
 	/* Get init soc from ocv/soc table */
 	soc = bd7181x_voltage_to_capacity(ocv);
-	bd7181x_info(pwr->dev, "soc %d[0.1%%]\n", soc);
+	dev_info(pwr->dev, "soc %d[0.1%%]\n", soc);
 	if (soc < 0)
 		soc = 0;
 	bcap = pwr->designed_cap * soc / 1000;
@@ -1119,7 +1119,7 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, enum bd7181x_init_mod
 	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x1FFFUL));
 
 	pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
-	bd7181x_info(pwr->dev, "%s() CC_CCNTD = %d\n", __func__, pwr->coulomb_cnt);
+	dev_info(pwr->dev, "%s() CC_CCNTD = %d\n", __func__, pwr->coulomb_cnt);
 
 	/* Start canceling offset of the DS ADC. This needs 1 second at least */
 	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCCALIB); // 0x71h -> 0x20 FORCE CALIBRATION....
@@ -1142,18 +1142,18 @@ static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 
 		/* Get OCV at relaxed state by HW */
 		ocv = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_REX_SA_VBAT_U) * 1000;
-		bd7181x_info(pwr->dev, "ocv %d\n", ocv);
+		dev_info(pwr->dev, "ocv %d\n", ocv);
 
 		/* Clear Relaxed Coulomb Counter */
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_CLR);
 
 		diff_coulomb_cnt = relaxed_coulomb_cnt - (bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL);
 		diff_coulomb_cnt = diff_coulomb_cnt >> 16;
-		bd7181x_info(pwr->dev, "diff_coulomb_cnt = %d\n", diff_coulomb_cnt);
+		dev_info(pwr->dev, "diff_coulomb_cnt = %d\n", diff_coulomb_cnt);
 
 		/* Get soc at relaxed state from ocv/soc table */
 		soc = bd7181x_voltage_to_capacity(ocv);
-		bd7181x_info(pwr->dev, "soc %d[0.1%%]\n", soc);
+		dev_info(pwr->dev, "soc %d[0.1%%]\n", soc);
 		if (soc < 0)
 			soc = 0;
 
@@ -1170,8 +1170,8 @@ static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x1FFFUL) + diff_coulomb_cnt);
 
 			pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
-			bd7181x_info(pwr->dev, "Adjust Coulomb Counter at Relaxed State\n");
-			bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
+			dev_info(pwr->dev, "Adjust Coulomb Counter at Relaxed State\n");
+			dev_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
 
 			/* Start Coulomb Counter */
 			bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
@@ -1208,7 +1208,7 @@ static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
 		if (diff_coulomb_cnt > 0) {
 			diff_coulomb_cnt = 0;
 		}
-		bd7181x_info(pwr->dev, "diff_coulomb_cnt = %d\n", diff_coulomb_cnt);
+		dev_info(pwr->dev, "diff_coulomb_cnt = %d\n", diff_coulomb_cnt);
 
 		/* Stop Coulomb Counter */
 		bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
@@ -1217,8 +1217,8 @@ static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
 		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((pwr->designed_cap + pwr->designed_cap / 200) & 0x1FFFUL) + diff_coulomb_cnt);
 
 		pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
-		bd7181x_info(pwr->dev, "Reset Coulomb Counter at POWER_SUPPLY_STATUS_FULL\n");
-		bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
+		dev_info(pwr->dev, "Reset Coulomb Counter at POWER_SUPPLY_STATUS_FULL\n");
+		dev_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
 
 		/* Start Coulomb Counter */
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
@@ -1240,8 +1240,8 @@ static int bd7181x_reset_coulomb_count_at_low_bat(struct bd7181x_power* pwr)
 	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, 0);
 
 	pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
-	bd7181x_info(pwr->dev, "Reset Coulomb Counter at EMPTY\n");
-	bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
+	dev_info(pwr->dev, "Reset Coulomb Counter at EMPTY\n");
+	dev_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
 
 	/* Start Coulomb Counter */
 	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
@@ -1309,7 +1309,7 @@ static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 
 		/* Get soc at relaxed state from ocv/soc table */
 		soc = bd7181x_voltage_to_capacity(ocv);
-		bd7181x_info(pwr->dev, "soc %d[0.1%%]\n", soc);
+		dev_info(pwr->dev, "soc %d[0.1%%]\n", soc);
 		if (soc < 0)
 			soc = 0;
 
@@ -1324,8 +1324,8 @@ static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x1FFFUL));
 
 			pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
-			bd7181x_info(pwr->dev, "Adjust Coulomb Counter by SW at Relaxed State\n");
-			bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
+			dev_info(pwr->dev, "Adjust Coulomb Counter by SW at Relaxed State\n");
+			dev_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
 
 			/* Start Coulomb Counter */
 			bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
