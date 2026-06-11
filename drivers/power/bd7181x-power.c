@@ -351,7 +351,7 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	.term_current = 0x05, // 0.02C = 0.02 * 2650 =  -> 53mA 0x05(50mA) 0x06(100mA)
 	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7
 	.capacity = 2650,
-	.low_voltage_th = 0x0C8, // 3200 * 16mV (step) = 200 -> 0x00C8
+	.low_voltage_th = 0x0C8, // 3200 / 16mV (step) = 200 -> 0x00C8
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	// Because Murata chip cannot enter low power modes and is connected dirrectly to the battery, when 100% is reached
 	// and charger gets disconnected, a significant voltage drop (from 4.2 -> 4.16) is caused. With a recharge threshold of
@@ -396,13 +396,14 @@ static const struct tn_power_values_st TN_POWER_MOTOMA_3V8 = {
 	.term_current = 0x03, // 0.01C = 0.01 * 3000 =  -> 30mA 0x03(43.47mA)
 	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7 , 7*145mA = 1015mA
 	.capacity = 3000,
-	.low_voltage_th = 0x0C8, // 3200 * 16mV (step) = 200 -> 0x00C8
+	.low_voltage_th = 0x0DB, // 3500 / 16mV (step) = 219-> 0x00DB
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.34-0.016=4.324V
 	// When 100% is reached and charger gets disconnected, a voltage drop (from 4.34 -> 4.3) is caused.
-	// With a recharge threshold of 4.24V the recharge cycle happens when 4.3V -> 4.24V  every ??? hour, 100%->XX%->100%.
+	// With a recharge threshold of 4.24V the recharge cycle happens when 4.3V drops to 4.24V
+	// once charging reaches 100% and charger gets disconnected.
 	.recharge_threshold = 0x45, // 0.1V -> 4.34 - 0.1V = 4.24V
 	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
-	.vbat_chg1 = 0x1F, // // 4.34V maximum value that PMIC supports
+	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
 	.vbat_chg2 = 0x18, // 4.2V
 	.vbat_chg3 = 0x13, // 4.1V
 	.dcin_anticolapse_voltage = 0x37, // 55*80mV steps = 4.4V
