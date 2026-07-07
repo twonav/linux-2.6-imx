@@ -96,6 +96,19 @@
 #define BD7181X_REG_LAST_POWER_OFF_MONTH	0xB4
 #define BD7181X_REG_LAST_POWER_OFF_YEAR		0xB5
 
+/*
+ * Optional factory calibration in PMIC retained registers.
+ * Unset/invalid values are ignored and the hardware profile defaults are used.
+ */
+#define BD7181X_REG_CALIB_RSENSE_MOHM_X10	0xB6
+#define BD7181X_REG_CALIB_CAPACITY_MAH_U	0xB7
+#define BD7181X_REG_CALIB_CAPACITY_MAH_L	0xB8
+
+#define BD7181X_CALIB_RSENSE_MIN_MOHM_X10	40
+#define BD7181X_CALIB_RSENSE_MAX_MOHM_X10	200
+#define BD7181X_CALIB_CAPACITY_MIN_MAH		500
+#define BD7181X_CALIB_CAPACITY_MAX_MAH		10000
+
 // Initialization strategy for battery estimation SOC (OCV/voltage)
 enum bd7181x_init_mode {
 	BD7181X_INIT_NONE = 0,
@@ -175,9 +188,16 @@ module_param(battery_type, charp, 0644);
 static char *mmc_name = "TX2932"; // Kingston 32G
 module_param(mmc_name, charp, 0644);
 
+#define BD7181X_RSENSE_6P9_MOHM_X10	69
+#define BD7181X_RSENSE_7P5_MOHM_X10	75
+#define BD7181X_RSENSE_10_MOHM_X10	100
+#define BD7181X_RSENSE_30_MOHM_X10	300
+
 struct tn_power_values_st {
-	// Termination current: Charging Termination Current for Fast Charge 10 mA to 200 mA range. Depends on Rsense value
-	//IFST_TERM Rsence 10mOhm		30mOhm		6.8mOhm(Terra)	7.5mOhm(Roc)
+	// Rsense value in 0.1mOhm units: 69 means 6.9mOhm.
+	int rsense_mohm_x10;
+	// Desired charging termination current in mA. The IFST_TERM register value depends on Rsense and is rounded up.
+	//IFST_TERM Rsense 10mOhm		30mOhm		6.9mOhm(Terra)	7.5mOhm(Roc)
 	// 0x00 	-> 		0mA			0mA			0mA				0mA
 	// 0x01 	-> 		10mA		3.33mA		14.49mA			13.33mA
 	// 0x02 	-> 		20mA		6.66mA		28.98mA			26.66mA
@@ -187,17 +207,17 @@ struct tn_power_values_st {
 	// 0x06 	-> 		100mA		33.3mA		144.92mA		133.33mA
 	// 0x07 	-> 		150mA		50mA		217.39mA		200mA
 	// 0x08 	-> 		200mA		66.7mA		289.85mA		266.66mA
-	int term_current;
-	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range. Depends on Rsense value
-	int fast_charge_current;
+	int term_current_ma;
+	// Desired battery charging current for fast charge in mA. The IFST register value depends on Rsense.
+	int fast_charge_current_ma;
 	int capacity;
 	// Battery Voltage Alarm Threshold. Setting Range is from 0.000V to 8.176V, 16mV steps.
 	// Note : Alarms are reported as interrupts (INTB) INT_STAT_12 register but also have to be enabled
 	// When voltage becomes lower than this value a low voltage signal is sent
 	int low_voltage_th;
-	// Battery over-current threshold. The value is set in 64 mA units (RSENS=10mohm). Depends on Rsense value
+	// Desired battery over-current threshold in mA. The OCURTHR register value depends on Rsense.
 	// Note: there are 3 thresholds available
-	int over_current_threshold;
+	int over_current_threshold_ma;
 	// Charging Termination Battery voltage threshold for Fast Charge.
 	// During constant voltage charge phase voltage must be higher than this value
 	// IMPORTANT: fast charge termination voltage has to be HIGHER than recharge threshold
@@ -225,13 +245,14 @@ struct tn_power_values_st {
 
 static const struct tn_power_values_st TN_POWER_CROSS = {
 	// Ext MOSFET and Rsns=10mOh
-	.term_current = 0x06, // 0.02C = 0.02 * 3300 = 66mA -> 0x05(50mA) 0x06(100mA)
-	.fast_charge_current = 0x0A, // 1A -> 0x0A (100mA steps)
+	.rsense_mohm_x10 = BD7181X_RSENSE_10_MOHM_X10,
+	.term_current_ma = 100, // 0.02C = 0.02 * 3300 = 66mA -> configured to 100mA
+	.fast_charge_current_ma = 1000,
 	.capacity = 3300,
 	.low_voltage_th = 0x00D6, // 0x00D6 (214) * 16mV = 3.4297V,
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V : Voltage has to be higher than 4.184V when charging with constant voltage
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V : Recharg will start when voltage drops under 4.15V
-	.over_current_threshold = 0xAB, // 0XAB -> 171 * 64mA(step) = 1094.4mA
+	.over_current_threshold_ma = 1100,
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
@@ -266,13 +287,14 @@ static const struct tn_power_values_st TN_POWER_CROSS = {
 
 static const struct tn_power_values_st TN_POWER_TRAIL = {
 	// Ext MOSFET and Rsns=10mOh
-	.term_current = 0x06, // 0.02C = 0.02 * 4000 = 80mA -> 0x05(50mA) 0x06(100mA)
-	.fast_charge_current = 0x0A,
+	.rsense_mohm_x10 = BD7181X_RSENSE_10_MOHM_X10,
+	.term_current_ma = 100, // 0.02C = 0.02 * 4000 = 80mA -> configured to 100mA
+	.fast_charge_current_ma = 1000,
 	.capacity = 4000,
 	.low_voltage_th = 0x00D0, // 3340 / 16mV = 208 -> 0x00D0
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
-	.over_current_threshold = 0xAB, // 1100mA
+	.over_current_threshold_ma = 1100,
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
@@ -307,13 +329,14 @@ static const struct tn_power_values_st TN_POWER_TRAIL = {
 
 static const struct tn_power_values_st TN_POWER_AVENTURA = {
 	// Ext MOSFET and Rsns=10mOh
-	.term_current = 0x08, // 0.05C = 0.05 * 6000 = 300mA -> 0x08(200mA)
-	.fast_charge_current = 0x0A,
+	.rsense_mohm_x10 = BD7181X_RSENSE_10_MOHM_X10,
+	.term_current_ma = 300, // 0.05C = 0.05 * 6000 = 300mA -> use nearest/max supported setting
+	.fast_charge_current_ma = 1000,
 	.capacity = 6000,
 	.low_voltage_th = 0x00D0, // 3331 / 16mV = 208 -> 0x00D0
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	.recharge_threshold = 0x16, // OVP:4.25V Recharge-threshold: 4.2-0.05=4.15V
-	.over_current_threshold = 0xAB, // 1100mA
+	.over_current_threshold_ma = 1100,
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
@@ -348,8 +371,9 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 
 static const struct tn_power_values_st TN_POWER_TERRA = {
 	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
-	.term_current = 0x05, // 0.02C = 0.02 * 2650 =  -> 53mA 0x05(50mA) 0x06(100mA)
-	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7
+	.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10,
+	.term_current_ma = 53, // 0.02C = 0.02 * 2650 = 53mA -> Rsense 6.9mOhm: 0x04 ~= 58mA
+	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
 	.capacity = 2650,
 	.low_voltage_th = 0x0C8, // 3200 / 16mV (step) = 200 -> 0x00C8
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
@@ -358,7 +382,7 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	// 4.1V the recharge cycle happens every hour, 100%->97%->100%. If we increase the threshold to 4.15V the cycle will be much shorter and this
 	// can reduce battery life. Until we do something about the recharge threshold should be set to 4.1V.
 	.recharge_threshold = 0x15, // 0.1V -> 4.2-0.1=4.1V
-	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
+	.over_current_threshold_ma = 1100, // Rsense 6.9mOhm: 0x0C ~= 1113mA
 	.vbat_chg1 = 0x18, // 4.2V
 	.vbat_chg2 = 0x13, // 4.1V
 	.vbat_chg3 = 0x10, // 4.04V
@@ -393,16 +417,18 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 
 static const struct tn_power_values_st TN_POWER_MOTOMA_3V8 = {
 	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
-	.term_current = 0x03, // 0.01C = 0.01 * 3000 =  -> 30mA 0x03(43.47mA)
-	.fast_charge_current = 0x07, // 1A : 1000mA/145mA(steps)=6.89 -> 7 , 7*145mA = 1015mA
-	.capacity = 3000,
+	.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10,
+	.term_current_ma = 30, // 0.01C = 0.01 * 3000 = 30mA -> Rsense 6.9mOhm: 0x03 ~= 43mA
+	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
+	// capacity 3000mAh : turns off with 19% -> 3000 * (100 - 19) / 100 = 2430
+	.capacity = 2430, // adjusted capacity to turn off with 0% and 3.5V
 	.low_voltage_th = 0x0DB, // 3500 / 16mV (step) = 219-> 0x00DB
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.34-0.016=4.324V
 	// When 100% is reached and charger gets disconnected, a voltage drop (from 4.34 -> 4.3) is caused.
 	// With a recharge threshold of 4.24V the recharge cycle happens when 4.3V drops to 4.24V
 	// once charging reaches 100% and charger gets disconnected.
 	.recharge_threshold = 0x45, // 0.1V -> 4.34 - 0.1V = 4.24V
-	.over_current_threshold = 0x76, // 0x76 -> 118 * 92.8(steps) = 1095mA
+	.over_current_threshold_ma = 1100, // Rsense 6.9mOhm: 0x0C ~= 1113mA
 	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
 	.vbat_chg2 = 0x18, // 4.2V
 	.vbat_chg3 = 0x13, // 4.1V
@@ -437,9 +463,10 @@ static const struct tn_power_values_st TN_POWER_MOTOMA_3V8 = {
 
 static const struct tn_power_values_st TN_POWER_ROC = {
 	// Ext MOSFET and Rsns=5mOh (R)+~5mOhms (Rpistas) -> 10mOhms CHANGE -> 7mOhms
-	.term_current = 0x06, // Theoretical term current 0.05C = 0.05 * 2500 = 125mA -> 0x05(67mA) 0x06(133mA) -> 133mA
+	.rsense_mohm_x10 = BD7181X_RSENSE_7P5_MOHM_X10,
+	.term_current_ma = 125, // 0.05C = 0.05 * 2500 = 125mA -> Rsense 7.5mOhm: 0x06 ~= 133mA
 	// Rsense 7.5mOhms -> step is 133mA
-	.fast_charge_current = 0x08,
+	.fast_charge_current_ma = 1000, // Rsense 7.5mOhm: 0x08 ~= 1067mA
 	.capacity = 2500, // real value might be a little more (2540mAh)
 	.low_voltage_th = 0x0D5, // 3408 * 16mV (step) = 213 -> 0x00D5
 	.fast_charge_termination_voltage = 0x62,// 4.34-0.016V = 4.324V
@@ -447,7 +474,7 @@ static const struct tn_power_values_st TN_POWER_ROC = {
 	// and charger gets disconnected, a significant voltage drop (from 4.34 -> ~4.28) is caused. Our intention is 30m-1h
 	// recharge cycle.
 	.recharge_threshold = 0x45, // 0.1V -> 4.34-0.1V=4.24V -> measure 30 min 80mA -> 4259
-	.over_current_threshold = 0x12, // 9 * 64 (steps) = 1152mA for Rsense 10mOhms (not used)
+	.over_current_threshold_ma = 1100, // Rsense 7.5mOhm: 0x0D ~= 1109mA
 	.vbat_chg1 = 0x1F, // 4.34V maximum value that PMIC supports
 	.vbat_chg2 = 0x18, // 4.2V
 	.vbat_chg3 = 0x13, // 4.1V
@@ -480,22 +507,184 @@ static const struct tn_power_values_st TN_POWER_ROC = {
 	}
 };
 
-/*
-Rsense configuration:
-6.9mOhm -> factor 0.69
-10mOhm  -> factor 1
-30mOhm  -> factor 3
-
-NOTE: Terra has Rsense 6.9mOhms, all other devices have 10mOhms
-
-*/
-static u32 rsense_capacity_factor = 360; // (* factor)
-static u32 rsense_current_factor = 1000; // (/ factor)
-
 static struct tn_power_values_st tn_power_values;
 
-static void twonav_init_type(void) {
+static const int bd7181x_iterm_current_ma_10mohm[] = {
+	0, 10, 20, 30, 40, 50, 100, 150, 200
+};
 
+#define BD7181X_IFST_MAX_REG		0x14
+#define BD7181X_IFST_STEP_MA_10MOHM	100
+#define BD7181X_OCUR_MAX_REG		0xFF
+#define BD7181X_OCUR_STEP_MA_10MOHM	64
+#define BD7181X_CC_CAP_FACTOR_10MOHM	360
+#define BD7181X_CURRENT_SCALE_10MOHM	1000
+
+static u32 bd7181x_rsense_mohm_x10(void) {
+	return tn_power_values.rsense_mohm_x10 ?
+		tn_power_values.rsense_mohm_x10 :
+		BD7181X_RSENSE_10_MOHM_X10;
+}
+
+static int bd7181x_current_ma_from_10mohm(int current_ma) {
+	u32 rsense = bd7181x_rsense_mohm_x10();
+
+	return (current_ma * BD7181X_RSENSE_10_MOHM_X10 +
+		rsense / 2) / rsense;
+}
+
+static u32 bd7181x_current_scale(void) {
+	u32 rsense = bd7181x_rsense_mohm_x10();
+
+	return (BD7181X_CURRENT_SCALE_10MOHM *
+		BD7181X_RSENSE_10_MOHM_X10 + rsense / 2) / rsense;
+}
+
+static u32 bd7181x_capacity_scale(void) {
+	return (BD7181X_CC_CAP_FACTOR_10MOHM *
+		bd7181x_rsense_mohm_x10() +
+		BD7181X_RSENSE_10_MOHM_X10 / 2) /
+		BD7181X_RSENSE_10_MOHM_X10;
+}
+
+static int bd7181x_iterm_reg_to_ma(int reg) {
+	if (reg < 0 ||
+		reg >= (int)ARRAY_SIZE(bd7181x_iterm_current_ma_10mohm)) {
+		return 0;
+	}
+
+	return bd7181x_current_ma_from_10mohm(
+		bd7181x_iterm_current_ma_10mohm[reg]);
+}
+
+static int bd7181x_iterm_ma_to_reg(int target_ma) {
+	int i;
+	int max_reg = ARRAY_SIZE(bd7181x_iterm_current_ma_10mohm) - 1;
+
+	if (target_ma <= 0) {
+		return 0;
+	}
+
+	for (i = 1; i <= max_reg; i++) {
+		if (bd7181x_iterm_reg_to_ma(i) >= target_ma) {
+			return i;
+		}
+	}
+
+	return max_reg;
+}
+
+static int bd7181x_ifst_reg_to_ma(int reg) {
+	if (reg < 0 || reg > BD7181X_IFST_MAX_REG) {
+		return 0;
+	}
+
+	return bd7181x_current_ma_from_10mohm(
+		reg * BD7181X_IFST_STEP_MA_10MOHM);
+}
+
+static int bd7181x_ifst_ma_to_reg(int target_ma) {
+	int i;
+	int best_reg = 0;
+	int best_delta = -1;
+
+	if (target_ma <= 0) {
+		return 0;
+	}
+
+	for (i = 1; i <= BD7181X_IFST_MAX_REG; i++) {
+		int current_ma = bd7181x_ifst_reg_to_ma(i);
+		int delta = current_ma - target_ma;
+
+		if (delta < 0) {
+			delta = -delta;
+		}
+
+		if (best_delta < 0 || delta < best_delta) {
+			best_reg = i;
+			best_delta = delta;
+		}
+	}
+
+	return best_reg;
+}
+
+static int bd7181x_ocur_reg_to_ma(int reg) {
+	if (reg < 0 || reg > BD7181X_OCUR_MAX_REG) {
+		return 0;
+	}
+
+	return bd7181x_current_ma_from_10mohm(
+		reg * BD7181X_OCUR_STEP_MA_10MOHM);
+}
+
+static int bd7181x_ocur_ma_to_reg(int target_ma) {
+	int i;
+	int best_reg = 0;
+	int best_delta = -1;
+
+	if (target_ma <= 0) {
+		return 0;
+	}
+
+	for (i = 1; i <= BD7181X_OCUR_MAX_REG; i++) {
+		int current_ma = bd7181x_ocur_reg_to_ma(i);
+		int delta = current_ma - target_ma;
+
+		if (delta < 0) {
+			delta = -delta;
+		}
+
+		if (best_delta < 0 || delta < best_delta) {
+			best_reg = i;
+			best_delta = delta;
+		}
+	}
+
+	return best_reg;
+}
+
+static int bd7181x_read_calib_capacity_mah(struct bd7181x *mfd) {
+	int cap_u = bd7181x_reg_read(mfd, BD7181X_REG_CALIB_CAPACITY_MAH_U);
+	int cap_l = bd7181x_reg_read(mfd, BD7181X_REG_CALIB_CAPACITY_MAH_L);
+
+	if (cap_u < 0 || cap_l < 0) {
+		return 0;
+	}
+
+	return (cap_u << 8) | cap_l;
+}
+
+static void twonav_apply_calibration_overrides(struct bd7181x *mfd) {
+	int rsense_mohm_x10;
+	int capacity_mah;
+
+	rsense_mohm_x10 = bd7181x_reg_read(mfd,
+		BD7181X_REG_CALIB_RSENSE_MOHM_X10);
+	if (rsense_mohm_x10 >= BD7181X_CALIB_RSENSE_MIN_MOHM_X10 &&
+		rsense_mohm_x10 <= BD7181X_CALIB_RSENSE_MAX_MOHM_X10) {
+		tn_power_values.rsense_mohm_x10 = rsense_mohm_x10;
+		printk(KERN_INFO "bd7181x-power: calibrated Rsense=%d.%dmOhm\n",
+			rsense_mohm_x10 / 10, rsense_mohm_x10 % 10);
+	} else if (rsense_mohm_x10 > 0) {
+		printk(KERN_WARNING "bd7181x-power: ignoring invalid Rsense calibration %d from 0x%02X\n",
+			rsense_mohm_x10, BD7181X_REG_CALIB_RSENSE_MOHM_X10);
+	}
+
+	capacity_mah = bd7181x_read_calib_capacity_mah(mfd);
+	if (capacity_mah >= BD7181X_CALIB_CAPACITY_MIN_MAH &&
+		capacity_mah <= BD7181X_CALIB_CAPACITY_MAX_MAH) {
+		tn_power_values.capacity = capacity_mah;
+		printk(KERN_INFO "bd7181x-power: calibrated capacity=%dmAh\n",
+			capacity_mah);
+	} else if (capacity_mah > 0) {
+		printk(KERN_WARNING "bd7181x-power: ignoring invalid capacity calibration %d from 0x%02X/0x%02X\n",
+			capacity_mah, BD7181X_REG_CALIB_CAPACITY_MAH_U,
+			BD7181X_REG_CALIB_CAPACITY_MAH_L);
+	}
+}
+
+static void twonav_init_type(struct bd7181x *mfd) {
 	/* We can differentiate between mmcs using kernel parameter mmc_name
 	// Kingston 32GB: TX2932
 	// Kingston 16GB: TB2916
@@ -505,23 +694,17 @@ static void twonav_init_type(void) {
 
 	if(strstr(hwtype, "trailplus") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
-		rsense_capacity_factor = 248; // verify
-		rsense_current_factor = 1449; // verify
+		tn_power_values.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10; // verify
 	}
 	else if(strstr(hwtype, "trail") != NULL) {
 		tn_power_values = TN_POWER_TRAIL;
-		rsense_capacity_factor = 360;
-		rsense_current_factor = 1000;
 	}
 	else if(strstr(hwtype, "crossplus") != NULL) {
 		tn_power_values = TN_POWER_CROSS;
-		rsense_capacity_factor = 248;
-		rsense_current_factor = 1449;
+		tn_power_values.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10;
 	}
 	else if(strstr(hwtype, "cross") != NULL) {
 		tn_power_values = TN_POWER_CROSS;
-		rsense_capacity_factor = 360;
-		rsense_current_factor = 1000;
 	}
 	else if(strstr(hwtype, "terra") != NULL) {
 		if (strstr(battery_type, "motoma-3v8") != NULL) {
@@ -530,32 +713,27 @@ static void twonav_init_type(void) {
 		else {
 			tn_power_values = TN_POWER_TERRA;
 		}
-		rsense_capacity_factor = 248; // 360 * 0.69
-		rsense_current_factor = 1449; // 1000 / 0.69
 	}
 	else if(strstr(hwtype, "aventuraplus") != NULL) {
 		tn_power_values = TN_POWER_AVENTURA;
-		rsense_capacity_factor = 248; // verify
-		rsense_current_factor = 1449; // verify
+		tn_power_values.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10; // verify
 	}
 	else if(strstr(hwtype, "roc") != NULL) {
 		tn_power_values = TN_POWER_ROC;
-		rsense_capacity_factor = 270; // 360 * 0.75
-		rsense_current_factor = 1333; // 1000 / 0.75
 	}
 	else /*if(strstr(hwtype, "aventura") != NULL)*/ {
 		tn_power_values = TN_POWER_AVENTURA;
-		rsense_capacity_factor = 360;
-		rsense_current_factor = 1000;
 	}
+
+	twonav_apply_calibration_overrides(mfd);
 }
 
 static u32 A10s_mAh(u32 val) {
-	return (val * 1000 / rsense_capacity_factor);
+	return (val * 1000 / bd7181x_capacity_scale());
 }
 
 static int mAh_A10s(int val) {
-	return (val * rsense_capacity_factor / 1000);
+	return (val * bd7181x_capacity_scale() / 1000);
 }
 
 static int replacable_battery = 0;
@@ -569,7 +747,11 @@ static int supports_replacable_battery(void) {
 }
 
 static int get_iterm_current(void) {
-	return tn_power_values.term_current;
+	return bd7181x_iterm_ma_to_reg(tn_power_values.term_current_ma);
+}
+
+static int get_iterm_current_ma(void) {
+	return bd7181x_iterm_reg_to_ma(get_iterm_current());
 }
 
 static int get_recharge_threshold(void) {
@@ -581,11 +763,15 @@ static int get_fast_charge_termination_voltage(void) {
 }
 
 static int get_fast_charge_current(void) {
-	return tn_power_values.fast_charge_current;
+	return bd7181x_ifst_ma_to_reg(tn_power_values.fast_charge_current_ma);
+}
+
+static int get_fast_charge_current_ma(void) {
+	return bd7181x_ifst_reg_to_ma(get_fast_charge_current());
 }
 
 static int get_over_current_threshold(void) {
-	return tn_power_values.over_current_threshold;
+	return bd7181x_ocur_ma_to_reg(tn_power_values.over_current_threshold_ma);
 }
 
 static int get_battery_capacity(void) {
@@ -921,7 +1107,7 @@ static int bd7181x_get_vbat_curr(struct bd7181x_power *pwr, int *vcell, int *cur
 	}
 
 	*vcell = tmp_vcell * 1000;
-	*curr = tmp_curr * rsense_current_factor;
+	*curr = tmp_curr * bd7181x_current_scale();
 	return 0;
 }
 
@@ -940,7 +1126,7 @@ static int bd7181x_get_current_ds_adc(struct bd7181x_power *pwr) {
 		r = -(r & ~CURDIR_Discharging);
 	}
 
-	return r * rsense_current_factor;
+	return r * bd7181x_current_scale();
 }
 
 /** @brief get system average voltage
@@ -1724,10 +1910,10 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 	// Configure Trickle and Pre-charging current
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IPRE, 0xAC); // Trickle: 25mA Pre-charge:300mA
 
-	// Battery Charging Current for Fast Charge 100 mA to 2000 mA range, 100 mA steps.
+	// Battery Charging Current for Fast Charge. Register value depends on Rsense.
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST, get_fast_charge_current());
 
-	// Charging Termination Current for Fast Charge 10 mA to 200 mA range.
+	// Charging Termination Current for Fast Charge. Register value depends on Rsense.
 	bd7181x_reg_write(mfd, BD7181X_REG_CHG_IFST_TERM, get_iterm_current());
 
 	// Battery over-voltage detection threshold. 4.25V
@@ -2489,10 +2675,10 @@ static int bd7181x_battery_get_property(struct power_supply *psy,
 						val->intval = PRECHARGE_CURRENT;
 						break;
 					case CHG_STATE_FAST_CHARGE:
-						val->intval = MAX_CURRENT;
+						val->intval = get_fast_charge_current_ma() * 1000;
 						break;
 					case CHG_STATE_TOP_OFF:
-						val->intval = get_iterm_current() * 10000;
+						val->intval = get_iterm_current_ma() * 1000;
 						break;
 					default:
 						val->intval = MAX_CURRENT;
@@ -3215,7 +3401,7 @@ static int bd7181x_power_probe(struct platform_device *pdev)
 	/* Start Coulomb Counter */
 	/* bd7181x_set_bits(pwr->mfd, BD7181x_REG_CC_CTRL, CCNTENB); */
 
-	twonav_init_type();
+	twonav_init_type(bd7181x);
 
 	bd7181x_init_hardware(pwr);
 
@@ -3343,4 +3529,3 @@ MODULE_AUTHOR("Tony Luo <luofc@embest-tech.com>");
 MODULE_AUTHOR("Peter Yang <yanglsh@embest-tech.com>");
 MODULE_DESCRIPTION("BD71815/BD71817 Battery Charger Power driver");
 MODULE_LICENSE("GPL");
-
