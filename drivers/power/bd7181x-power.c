@@ -421,7 +421,7 @@ static const struct tn_power_values_st TN_POWER_MOTOMA_3V8 = {
 	.term_current_ma = 30, // 0.01C = 0.01 * 3000 = 30mA -> Rsense 6.9mOhm: 0x03 ~= 43mA
 	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
 	// capacity 3000mAh : turns off with 19% -> 3000 * (100 - 19) / 100 = 2430
-	.capacity = 2430, // adjusted capacity to turn off with 0% and 3.5V
+	.capacity = 2216, // adjusted capacity to turn off with 0% and 3.5V
 	.low_voltage_th = 0x0DB, // 3500 / 16mV (step) = 219-> 0x00DB
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.34-0.016=4.324V
 	// When 100% is reached and charger gets disconnected, a voltage drop (from 4.34 -> 4.3) is caused.
