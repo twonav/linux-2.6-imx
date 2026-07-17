@@ -418,7 +418,8 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 static const struct tn_power_values_st TN_POWER_MOTOMA_3V8 = {
 	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
 	.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10,
-	.term_current_ma = 30, // 0.01C = 0.01 * 3000 = 30mA -> Rsense 6.9mOhm: 0x03 ~= 43mA
+	// calculo teorico segun fabricante: .term_current_ma = 30, // 0.01C = 0.01 * 3000 = 30mA -> Rsense 6.9mOhm: 0x03 ~= 43mA
+	.term_current_ma = 50, // TWON-19801: subimos a 50 mA para llegar al led verde (full charge)
 	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
 	// capacity 3000mAh : turns off with 19% -> 3000 * (100 - 19) / 100 = 2430
 	.capacity = 2216, // adjusted capacity to turn off with 0% and 3.5V
@@ -1705,6 +1706,9 @@ static int bd7181x_calc_soc_norm(struct bd7181x_power* pwr) {
 	if (pwr->soc_norm > 100) {
 		pwr->soc_norm = 100;
 	}
+	if (pwr->rpt_status == POWER_SUPPLY_STATUS_FULL) { // TWON-19801
+		pwr->soc_norm = 100;
+	}
 
 	bd7181x_info(pwr->dev, "%s() pwr->soc_norm = %d\n", __func__, pwr->soc_norm);
 
@@ -1820,6 +1824,9 @@ static int bd7181x_calc_soc(struct bd7181x_power* pwr) {
 		if (pwr->soc == 100) {
 			pwr->soc = 99;
 		}
+		break;
+	case POWER_SUPPLY_STATUS_FULL: // TWON-19801
+		pwr->soc = 100;
 		break;
 	default:
 		break;
@@ -2300,12 +2307,12 @@ static void bd_work_callback(struct work_struct *work)
 	bd7181x_coulomb_count(pwr);
 	bd7181x_update_cycle(pwr);
 	bd7181x_calc_full_cap(pwr);
+	bd7181x_charge_status(pwr); // TWON-19801: set charge_status before soc
 	bd7181x_calc_soc_org(pwr);
 	bd7181x_calc_soc_norm(pwr);
 	bd7181x_calc_soc(pwr);
 	bd7181x_calc_soc_clamp(pwr);
 	bd7181x_get_online(pwr);
-	bd7181x_charge_status(pwr);
 
 	if (changed || cap_counter++ > JITTER_REPORT_CAP / JITTER_DEFAULT) {
 		power_supply_changed(pwr->ac);
