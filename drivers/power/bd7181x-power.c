@@ -372,9 +372,7 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 static const struct tn_power_values_st TN_POWER_TERRA = {
 	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
 	.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10,
-	.term_current_ma = 70, // 0.02C = 0.02 * 2650 = 53mA -> Rsense 6.9mOhm: 0x04 ~= 58mA
-						   // forzamos 70 mA para mantener el mismo BD7181X_REG_CHG_IFST_TERM=0x05
-						   // que teniamos en kernel 1.1.69
+	.term_current_ma = 70, // 0.02C=53mA (teórico), pero forzamos 70mA para que IFST_TERM sea 0x05 (~72mA) como en kernel 1.1.69
 	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
 	.capacity = 2650,
 	.low_voltage_th = 0x0C8, // 3200 / 16mV (step) = 200 -> 0x00C8
