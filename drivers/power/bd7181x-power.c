@@ -372,7 +372,7 @@ static const struct tn_power_values_st TN_POWER_AVENTURA = {
 static const struct tn_power_values_st TN_POWER_TERRA = {
 	// Ext MOSFET and Rsns=6.9mOh - (steps are changed)
 	.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10,
-	.term_current_ma = 53, // 0.02C = 0.02 * 2650 = 53mA -> Rsense 6.9mOhm: 0x04 ~= 58mA
+	.term_current_ma = 70, // 0.02C=53mA (teórico), pero forzamos 70mA para que IFST_TERM sea 0x05 (~72mA) como en kernel 1.1.69
 	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
 	.capacity = 2650,
 	.low_voltage_th = 0x0C8, // 3200 / 16mV (step) = 200 -> 0x00C8
@@ -422,7 +422,7 @@ static const struct tn_power_values_st TN_POWER_MOTOMA_3V8 = {
 	.term_current_ma = 50, // TWON-19801: subimos a 50 mA para llegar al led verde (full charge)
 	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
 	// capacity 3000mAh : turns off with 19% -> 3000 * (100 - 19) / 100 = 2430
-	.capacity = 2216, // adjusted capacity to turn off with 0% and 3.5V
+	.capacity = 2333, // adjusted capacity to turn off with 0% and 3.5V
 	.low_voltage_th = 0x0DB, // 3500 / 16mV (step) = 219-> 0x00DB
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.34-0.016=4.324V
 	// When 100% is reached and charger gets disconnected, a voltage drop (from 4.34 -> 4.3) is caused.
