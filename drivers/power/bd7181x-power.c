@@ -104,6 +104,12 @@
 #define BD7181X_REG_CALIB_CAPACITY_MAH_U	0xB7
 #define BD7181X_REG_CALIB_CAPACITY_MAH_L	0xB8
 
+/* One-shot retained marker: bit 7 is valid, bits 6:0 hold shutdown SOC. */
+#define BD7181X_REG_LAST_SHUTDOWN_SOC		0xB9
+
+#define BD7181X_SHUTDOWN_SOC_VALID		0x80
+#define BD7181X_SHUTDOWN_SOC_MASK		0x7F
+
 #define BD7181X_CALIB_RSENSE_MIN_MOHM_X10	40
 #define BD7181X_CALIB_RSENSE_MAX_MOHM_X10	300
 #define BD7181X_CALIB_CAPACITY_MIN_MAH		500
@@ -1046,10 +1052,11 @@ static int bd7181x_reg_write16(struct bd7181x *mfd, int reg, u16 val) {
 
 /** @brief read quad register once
  *  @param mfd bd7181x device
- *  @param reg	 register address of lower register
- *  @return register value
+ *  @param reg register address of the first register
+ *  @param val register value
+ *  @return 0 on success, negative error code on failure
  */
-static int bd7181x_reg_read32(struct bd7181x *mfd, int reg) {
+static int bd7181x_reg_read32(struct bd7181x *mfd, int reg, u32 *val) {
 	union {
 		u32 long_type;
 		char chars[4];
@@ -1061,10 +1068,252 @@ static int bd7181x_reg_read32(struct bd7181x *mfd, int reg) {
 #else
 	r = regmap_bulk_read(mfd->regmap, reg, u.chars, sizeof u.chars);
 #endif
-	if (r) {
-		return -1;
+	if (r)
+		return r;
+
+	*val = be32_to_cpu(u.long_type);
+	return 0;
+}
+
+#define BD7181X_COULOMB_COUNT_MASK	0x0FFFFFFFUL
+#define BD7181X_COULOMB_RESERVED_MASK	0xF0000000UL
+#define BD7181X_COULOMB_READ_RETRIES	3
+#define BD7181X_COULOMB_RETRY_MS		20
+#define BD7181X_RETAINED_COUNT_MAX_PERCENT	105
+
+static int bd7181x_decode_coulomb_count(struct bd7181x_power *pwr,
+					int reg, u32 raw, u32 *count)
+{
+	if (raw & BD7181X_COULOMB_RESERVED_MASK) {
+		dev_err_ratelimited(pwr->dev,
+			"CC_DIAG anomaly=reserved_bits_set reg=0x%02x raw_count=0x%08x\n",
+			(unsigned int)reg, raw);
+		return -EIO;
 	}
-	return be32_to_cpu(u.long_type);
+
+	*count = raw & BD7181X_COULOMB_COUNT_MASK;
+	return 0;
+}
+
+/** @brief read and validate a 28-bit Coulomb Counter register group */
+static int bd7181x_read_coulomb_count(struct bd7181x_power *pwr,
+				      int reg, u32 *count)
+{
+	u32 raw;
+	int ret;
+
+	ret = bd7181x_reg_read32(pwr->mfd, reg, &raw);
+
+	if (ret) {
+		dev_err_ratelimited(pwr->dev,
+			"CC_DIAG anomaly=runtime_count_read_failed reg=0x%02x error=%d\n",
+			(unsigned int)reg, ret);
+		return ret;
+	}
+
+	return bd7181x_decode_coulomb_count(pwr, reg, raw, count);
+}
+
+/** @brief read a Coulomb Counter during initialization, with retries */
+static int bd7181x_read_coulomb_count_init(struct bd7181x_power *pwr,
+					   int reg, u32 *count)
+{
+	u32 raw;
+	int attempt;
+	int ret = 0;
+
+	for (attempt = 0; attempt < BD7181X_COULOMB_READ_RETRIES;
+	     attempt++) {
+		ret = bd7181x_reg_read32(pwr->mfd, reg, &raw);
+		if (!ret)
+			break;
+
+		if (attempt + 1 < BD7181X_COULOMB_READ_RETRIES)
+			msleep(BD7181X_COULOMB_RETRY_MS);
+	}
+
+	if (ret) {
+		dev_err(pwr->dev,
+			"CC_DIAG anomaly=init_count_read_failed reg=0x%02x attempts=%d error=%d\n",
+			(unsigned int)reg, BD7181X_COULOMB_READ_RETRIES,
+			ret);
+		return ret;
+	}
+
+	if (attempt)
+		dev_warn(pwr->dev,
+			 "CC_DIAG event=init_count_read_recovered reg=0x%02x retries=%d\n",
+			 (unsigned int)reg, attempt);
+
+	return bd7181x_decode_coulomb_count(pwr, reg, raw, count);
+}
+
+static void bd7181x_log_coulomb_state(struct bd7181x_power *pwr,
+				      const char *event, u32 count,
+				      bool anomaly)
+{
+	u32 capacity = count >> 16;
+	int soc = -1;
+	int cc_ctrl;
+	int dcin_status;
+	int charge_state;
+	int current_raw;
+	int current_uA;
+	int cc_enabled;
+	int dcin_present;
+	int vbat_mV;
+
+	if (pwr->designed_cap > 0)
+		soc = capacity * 100 / pwr->designed_cap;
+
+	cc_ctrl = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CC_CTRL);
+	dcin_status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
+	charge_state = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CHG_STATE);
+	current_raw = bd7181x_reg_read16(pwr->mfd,
+					 BD7181X_REG_CC_CURCD_U);
+	current_uA = current_raw;
+	if (current_uA & CURDIR_Discharging)
+		current_uA = -(current_uA & ~CURDIR_Discharging);
+	current_uA *= bd7181x_current_scale();
+	vbat_mV = bd7181x_reg_read16(pwr->mfd,
+				     BD7181X_REG_VM_SA_VBAT_U);
+	cc_enabled = cc_ctrl < 0 ? -1 : !!(cc_ctrl & CCNTENB);
+	dcin_present = dcin_status < 0 ? -1 : !!(dcin_status & VBUS_DET);
+
+	if (anomaly)
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=%s raw_count=0x%08x capacity=%u designed_capacity=%d soc=%d%% CC_CTRL=0x%02x CCNTENB=%d DCIN_STAT=0x%02x DCIN_PRESENT=%d CHG_STATE=0x%02x CC_CURCD=0x%04x current=%duA VBAT=%dmV\n",
+			 event, count, capacity, pwr->designed_cap, soc,
+			 (unsigned int)cc_ctrl, cc_enabled,
+			 (unsigned int)dcin_status, dcin_present,
+			 (unsigned int)charge_state, (unsigned int)current_raw,
+			 current_uA, vbat_mV);
+	else
+		dev_warn(pwr->dev,
+			 "CC_DIAG event=%s raw_count=0x%08x capacity=%u designed_capacity=%d soc=%d%% CC_CTRL=0x%02x CCNTENB=%d DCIN_STAT=0x%02x DCIN_PRESENT=%d CHG_STATE=0x%02x CC_CURCD=0x%04x current=%duA VBAT=%dmV\n",
+			 event, count, capacity, pwr->designed_cap, soc,
+			 (unsigned int)cc_ctrl, cc_enabled,
+			 (unsigned int)dcin_status, dcin_present,
+			 (unsigned int)charge_state, (unsigned int)current_raw,
+			 current_uA, vbat_mV);
+}
+
+static void bd7181x_check_retained_shutdown_soc(
+					struct bd7181x_power *pwr)
+{
+	u32 capacity = pwr->coulomb_cnt >> 16;
+	u32 boot_soc;
+	int stored;
+	int shutdown_soc;
+	int dcin_status;
+	int ret;
+
+	stored = bd7181x_reg_read(pwr->mfd,
+				  BD7181X_REG_LAST_SHUTDOWN_SOC);
+	if (stored < 0) {
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=shutdown_soc_marker_read_failed error=%d\n",
+			 stored);
+		return;
+	}
+
+	/* Consume the marker so an unclean power loss cannot reuse stale data. */
+	ret = bd7181x_reg_write(pwr->mfd,
+				BD7181X_REG_LAST_SHUTDOWN_SOC, 0);
+	if (ret)
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=shutdown_soc_marker_clear_failed error=%d\n",
+			 ret);
+
+	if (!(stored & BD7181X_SHUTDOWN_SOC_VALID))
+		return;
+
+	shutdown_soc = stored & BD7181X_SHUTDOWN_SOC_MASK;
+	if (shutdown_soc > 100 || pwr->designed_cap <= 0) {
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=shutdown_soc_marker_invalid marker=0x%02x\n",
+			 (unsigned int)stored);
+		return;
+	}
+
+	boot_soc = capacity * 100 / pwr->designed_cap;
+	dcin_status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
+	if (boot_soc > shutdown_soc &&
+	    (dcin_status < 0 || !(dcin_status & VBUS_DET))) {
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=retained_soc_increased shutdown_soc=%d boot_soc=%u delta=%d DCIN_STAT=0x%02x\n",
+			 shutdown_soc, boot_soc, (int)boot_soc - shutdown_soc,
+			 (unsigned int)dcin_status);
+		bd7181x_log_coulomb_state(pwr,
+					   "retained_soc_increased",
+					   pwr->coulomb_cnt, true);
+	} else {
+		dev_warn(pwr->dev,
+			 "CC_DIAG event=retained_soc_compare shutdown_soc=%d boot_soc=%u delta=%d DCIN_STAT=0x%02x\n",
+			 shutdown_soc, boot_soc, (int)boot_soc - shutdown_soc,
+			 (unsigned int)dcin_status);
+	}
+}
+
+static void bd7181x_clear_shutdown_soc_marker(struct bd7181x_power *pwr)
+{
+	int ret;
+
+	ret = bd7181x_reg_write(pwr->mfd,
+				BD7181X_REG_LAST_SHUTDOWN_SOC, 0);
+	if (ret)
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=shutdown_soc_marker_clear_failed error=%d\n",
+			 ret);
+}
+
+static void bd7181x_store_shutdown_soc_marker(struct bd7181x_power *pwr,
+					       u32 count)
+{
+	u32 capacity = count >> 16;
+	u32 soc;
+	int ret;
+
+	if (pwr->designed_cap <= 0)
+		return;
+
+	soc = capacity * 100 / pwr->designed_cap;
+	if (soc > 100) {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+		return;
+	}
+
+	ret = bd7181x_reg_write(pwr->mfd,
+				BD7181X_REG_LAST_SHUTDOWN_SOC,
+				BD7181X_SHUTDOWN_SOC_VALID | soc);
+	if (ret)
+		dev_warn(pwr->dev,
+			 "CC_DIAG anomaly=shutdown_soc_marker_write_failed soc=%u error=%d\n",
+			 soc, ret);
+}
+
+static int bd7181x_validate_retained_coulomb_count(
+					struct bd7181x_power *pwr)
+{
+	u32 capacity;
+	u32 maximum;
+
+	if (pwr->designed_cap <= 0)
+		return -EINVAL;
+
+	capacity = pwr->coulomb_cnt >> 16;
+	maximum = pwr->designed_cap *
+		  BD7181X_RETAINED_COUNT_MAX_PERCENT / 100;
+	if (capacity > maximum) {
+		dev_err(pwr->dev,
+			"Implausible retained Coulomb Counter: raw=0x%08x capacity=%u maximum=%u\n",
+			pwr->coulomb_cnt, capacity, maximum);
+		bd7181x_log_coulomb_state(pwr, "retained_count_out_of_range",
+					   pwr->coulomb_cnt, true);
+		return -ERANGE;
+	}
+
+	return 0;
 }
 
 /** @brief get initial battery Open Circuit Voltages at PMIC boot
@@ -1331,7 +1580,7 @@ static int bd7181x_calib_voltage(struct bd7181x_power* pwr, int* ocv) {
  */
 static int init_coulomb_counter(struct bd7181x_power* pwr, enum bd7181x_init_mode mode) {
 	u32 bcap;
-	int soc, ocv;
+	int soc, ocv, ret;
 
 	if (mode == BD7181X_INIT_USE_OCV) {
 		/* Get init OCV by HW */
@@ -1355,9 +1604,14 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, enum bd7181x_init_mod
 	bcap = pwr->designed_cap * soc / 1000;
 
 	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
-	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x1FFFUL));
+	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x0FFFUL));
 
-	pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+	ret = bd7181x_read_coulomb_count_init(pwr,
+					       BD7181X_REG_CC_CCNTD_3,
+					       &pwr->coulomb_cnt);
+	if (ret)
+		return ret;
+
 	dev_warn(pwr->dev, "%s() CC_CCNTD = %d\n", __func__, pwr->coulomb_cnt);
 
 	/* Start canceling offset of the DS ADC. This needs 1 second at least */
@@ -1372,8 +1626,14 @@ static int init_coulomb_counter(struct bd7181x_power* pwr, enum bd7181x_init_mod
  */
 static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 	u32 relaxed_coulomb_cnt;
+	u32 current_coulomb_cnt;
+	int ret;
 
-	relaxed_coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_REX_CCNTD_3) & 0x1FFFFFFFUL;
+	ret = bd7181x_read_coulomb_count(pwr, BD7181X_REG_REX_CCNTD_3,
+					  &relaxed_coulomb_cnt);
+	if (ret)
+		return ret;
+
 	if (relaxed_coulomb_cnt != 0) {
 		u32 bcap;
 		int soc, ocv;
@@ -1383,10 +1643,16 @@ static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 		ocv = bd7181x_reg_read16(pwr->mfd, BD7181X_REG_REX_SA_VBAT_U) * 1000;
 		dev_warn(pwr->dev, "ocv %d\n", ocv);
 
+		ret = bd7181x_read_coulomb_count(pwr,
+						  BD7181X_REG_CC_CCNTD_3,
+						  &current_coulomb_cnt);
+		if (ret)
+			return ret;
+
 		/* Clear Relaxed Coulomb Counter */
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_REX_CTRL_1, REX_CLR);
 
-		diff_coulomb_cnt = relaxed_coulomb_cnt - (bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL);
+		diff_coulomb_cnt = relaxed_coulomb_cnt - current_coulomb_cnt;
 		diff_coulomb_cnt = diff_coulomb_cnt >> 16;
 		dev_warn(pwr->dev, "diff_coulomb_cnt = %d\n", diff_coulomb_cnt);
 
@@ -1406,14 +1672,19 @@ static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 			bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
-			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x1FFFUL) + diff_coulomb_cnt);
+			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x0FFFUL) + diff_coulomb_cnt);
 
-			pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+			ret = bd7181x_read_coulomb_count(pwr,
+							  BD7181X_REG_CC_CCNTD_3,
+							  &pwr->coulomb_cnt);
+
+			/* Always restart counting, including after a readback error. */
+			bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+			if (ret)
+				return ret;
+
 			dev_warn(pwr->dev, "Adjust Coulomb Counter at Relaxed State\n");
 			dev_warn(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
-
-			/* Start Coulomb Counter */
-			bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 			/* If the following commented out code is enabled, the SOC is not clamped at the relax time. */
 			/* Reset SOCs */
@@ -1434,15 +1705,27 @@ static int bd7181x_adjust_coulomb_count(struct bd7181x_power* pwr) {
 static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
 {
 	u32 full_charged_coulomb_cnt;
+	u32 current_coulomb_cnt;
+	int ret;
 
-	full_charged_coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_FULL_CCNTD_3) & 0x1FFFFFFFUL;
+	ret = bd7181x_read_coulomb_count(pwr, BD7181X_REG_FULL_CCNTD_3,
+					  &full_charged_coulomb_cnt);
+	if (ret)
+		return ret;
+
 	if (full_charged_coulomb_cnt != 0) {
 		int diff_coulomb_cnt;
+
+		ret = bd7181x_read_coulomb_count(pwr,
+						  BD7181X_REG_CC_CCNTD_3,
+						  &current_coulomb_cnt);
+		if (ret)
+			return ret;
 
 		/* Clear Full Charged Coulomb Counter */
 		bd7181x_set_bits(pwr->mfd, BD7181X_REG_FULL_CTRL, FULL_CLR);
 
-		diff_coulomb_cnt = full_charged_coulomb_cnt - (bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL);
+		diff_coulomb_cnt = full_charged_coulomb_cnt - current_coulomb_cnt;
 		diff_coulomb_cnt = diff_coulomb_cnt >> 16;
 		if (diff_coulomb_cnt > 0) {
 			diff_coulomb_cnt = 0;
@@ -1453,14 +1736,19 @@ static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
 		bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
-		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((pwr->designed_cap + pwr->designed_cap / 200) & 0x1FFFUL) + diff_coulomb_cnt);
+		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((pwr->designed_cap + pwr->designed_cap / 200) & 0x0FFFUL) + diff_coulomb_cnt);
 
-		pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+		ret = bd7181x_read_coulomb_count(pwr,
+						  BD7181X_REG_CC_CCNTD_3,
+						  &pwr->coulomb_cnt);
+
+		/* Always restart counting, including after a readback error. */
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+		if (ret)
+			return ret;
+
 		dev_warn(pwr->dev, "Reset Coulomb Counter at POWER_SUPPLY_STATUS_FULL\n");
 		dev_warn(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
-
-		/* Start Coulomb Counter */
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 	}
 
 	return 0;
@@ -1472,18 +1760,24 @@ static int bd7181x_reset_coulomb_count_at_full_charge(struct bd7181x_power* pwr)
  */
 static int bd7181x_reset_coulomb_count_at_low_bat(struct bd7181x_power* pwr)
 {
+	int ret;
+
 	/* Stop Coulomb Counter */
 	bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
 	bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, 0);
 
-	pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+	ret = bd7181x_read_coulomb_count(pwr, BD7181X_REG_CC_CCNTD_3,
+					  &pwr->coulomb_cnt);
+
+	/* Always restart counting, including after a readback error. */
+	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+	if (ret)
+		return ret;
+
 	dev_warn(pwr->dev, "Reset Coulomb Counter at EMPTY\n");
 	dev_warn(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
-
-	/* Start Coulomb Counter */
-	bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 	return 0;
 }
@@ -1528,6 +1822,7 @@ static int bd7181x_get_battery_parameters(struct bd7181x_power* pwr)
 static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 {
 	int tmp_curr_mA;
+	int ret;
 
 	tmp_curr_mA = pwr->curr / 1000;
 	if ((tmp_curr_mA * tmp_curr_mA) <= (THR_RELAX_CURRENT * THR_RELAX_CURRENT) && !pwr->charger_online) { /* No load */
@@ -1560,14 +1855,19 @@ static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
 			bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
-			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x1FFFUL));
+			bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((bcap + pwr->designed_cap / 200) & 0x0FFFUL));
 
-			pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+			ret = bd7181x_read_coulomb_count(pwr,
+							  BD7181X_REG_CC_CCNTD_3,
+							  &pwr->coulomb_cnt);
+
+			/* Always restart counting, including after a readback error. */
+			bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+			if (ret)
+				return ret;
+
 			dev_warn(pwr->dev, "Adjust Coulomb Counter by SW at Relaxed State\n");
 			dev_warn(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
-
-			/* Start Coulomb Counter */
-			bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 			/* If the following commented out code is enabled, the SOC is not clamped at the relax time. */
 			/* Reset SOCs */
@@ -1587,12 +1887,29 @@ static int bd7181x_adjust_coulomb_count_sw(struct bd7181x_power* pwr)
  * @return 0
  */
 static int bd7181x_coulomb_count(struct bd7181x_power* pwr) {
+	u32 count;
+	int ret;
+
 	if (pwr->state_machine == STAT_POWER_ON) {
-		pwr->state_machine = STAT_INITIALIZED;
 		/* Start Coulomb Counter */
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+		ret = bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL,
+					CCNTENB);
+		if (ret) {
+			dev_err_ratelimited(pwr->dev,
+				"Failed to start Coulomb Counter: %d\n", ret);
+			return ret;
+		}
+
+		pwr->state_machine = STAT_INITIALIZED;
 	} else if (pwr->state_machine == STAT_INITIALIZED) {
-		pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+		ret = bd7181x_read_coulomb_count(pwr,
+						  BD7181X_REG_CC_CCNTD_3,
+						  &count);
+		if (ret)
+			return ret;
+
+		/* Only replace the cached value after a successful read. */
+		pwr->coulomb_cnt = count;
 		// bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
 	}
 	return 0;
@@ -1664,21 +1981,30 @@ static int bd7181x_calc_full_cap(struct bd7181x_power* pwr) {
  * @return 0
  */
 static int bd7181x_calc_soc_org(struct bd7181x_power* pwr) {
+	int ret;
+
 	pwr->soc_org = (pwr->coulomb_cnt >> 16) * 100 /  pwr->designed_cap;
 	if (pwr->soc_org > 100) {
+		bd7181x_log_coulomb_state(pwr, "runtime_count_above_100pct",
+					   pwr->coulomb_cnt, true);
 		pwr->soc_org = 100;
 		/* Stop Coulomb Counter */
 		bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 
 		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_1, 0);
-		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((pwr->designed_cap + pwr->designed_cap / 200) & 0x1FFFUL));
+		bd7181x_reg_write16(pwr->mfd, BD7181X_REG_CC_CCNTD_3, ((pwr->designed_cap + pwr->designed_cap / 200) & 0x0FFFUL));
 
-		pwr->coulomb_cnt = bd7181x_reg_read32(pwr->mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
+		ret = bd7181x_read_coulomb_count(pwr,
+						  BD7181X_REG_CC_CCNTD_3,
+						  &pwr->coulomb_cnt);
+
+		/* Always restart counting, including after a readback error. */
+		bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+		if (ret)
+			return ret;
+
 		bd7181x_info(pwr->dev, "Limit Coulomb Counter\n");
 		bd7181x_info(pwr->dev, "CC_CCNTD = %d\n", pwr->coulomb_cnt);
-
-		/* Start Coulomb Counter */
-		bd7181x_set_bits(pwr->mfd, BD7181X_REG_CC_CTRL, CCNTENB);
 	}
 
 	bd7181x_info(pwr->dev, "%s() pwr->soc_org = %d\n", __func__, pwr->soc_org);
@@ -1942,15 +2268,18 @@ static void bd7181x_init_registers(struct bd7181x *mfd)
 }
 
 
-static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
- {
+static int bd7181x_select_init_strategy(struct bd7181x *mfd,
+					enum bd7181x_init_mode *mode)
+{
 	int r;
 	int vbat_mV, ocv_mV, vdiff, days_since_last_poweroff, rtc_stored;
-	enum bd7181x_init_mode mode = BD7181X_INIT_NONE;
+
+	*mode = BD7181X_INIT_NONE;
 
 	days_since_last_poweroff = bd7181x_days_since_last_poweroff(mfd);
 	if (days_since_last_poweroff < 0) {
 		printk(KERN_ERR "bd7181x: Failed to read days since last power-off (error %d)\n", days_since_last_poweroff);
+		return days_since_last_poweroff;
 	} else {
 		printk(KERN_WARNING "bd7181x: Last power-off was %d days ago\n", days_since_last_poweroff);
 	}
@@ -1958,7 +2287,7 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 	r = bd7181x_reg_read(mfd, BD7181X_REG_CONF); // 0x37
 	if (r < 0) {
 		printk(KERN_ERR "bd7181x: Failed to read BD7181X_REG_CONF (err=%d)\n", r);
-		return BD7181X_INIT_NONE;
+		return r;
 	}
 	else if ((r & XSTB) == 0x00) { // RTC stopped either due to battery removal or unknown reason
 		printk(KERN_WARNING "bd7181x: RTC was stopped\n");
@@ -1966,28 +2295,27 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 		ocv_mV = bd7181x_reg_read16(mfd, BD7181X_REG_VM_OCV_PRE_U); // OCV in mV
 		if (vbat_mV < 0 || ocv_mV < 0) {
 			printk(KERN_ERR "bd7181x: Failed to read voltage registers (vbat_mV=%d, ocv_mV=%d)\n", vbat_mV, ocv_mV);
-			return BD7181X_INIT_NONE;
+			return vbat_mV < 0 ? vbat_mV : ocv_mV;
 		}
 		vdiff = abs(vbat_mV - ocv_mV);
 		if (vdiff > VBAT_OCV_DIFF_THRESHOLD) {
 			printk(KERN_WARNING "bd7181x: VBAT (%dmV) differs from stored OCV (%dmV) by %dmV (>100mV), use SA for (re)estimation\n", vbat_mV, ocv_mV, vdiff);
-			mode = BD7181X_INIT_USE_CV_SA;
+			*mode = BD7181X_INIT_USE_CV_SA;
 		} else {
 			rtc_stored = bd7181x_reg_read(mfd, BD7181X_REG_LAST_POWER_OFF_DAY);
 			if (rtc_stored < 0) {
 				printk(KERN_ERR "bd7181x: Failed to read LAST_POWER_OFF_DAY register: %d\n", rtc_stored);
-				mode = BD7181X_INIT_NONE;
+				return rtc_stored;
 			} else if (rtc_stored == 0x00) {
 				printk(KERN_WARNING "bd7181x: VBAT (%dmV) close to OCV (%dmV), use OCV for estimation, assume new battery\n", vbat_mV, ocv_mV);
-				mode = BD7181X_INIT_USE_OCV;
+				*mode = BD7181X_INIT_USE_OCV;
 			} else {
 				printk(KERN_WARNING "bd7181x: VBAT (%dmV) close to OCV (%dmV), do not reestimate\n", vbat_mV, ocv_mV);
-				mode = BD7181X_INIT_NONE;
 			}
 		}
 	}
 	else {
-		replacable_battery = supports_replacable_battery();
+			replacable_battery = supports_replacable_battery();
 		if (replacable_battery) {
 			/* If the battery is replaced "fast" (<25secs) the RTC may still stay alive due to charged capacitors
 			   and very low power consumption leading to the OCV registers not being actualized. So we try to detect
@@ -1995,29 +2323,41 @@ static enum bd7181x_init_mode bd7181x_select_init_strategy(struct bd7181x *mfd)
 			*/
 			int charge_state_on, charge_state_off, volt_on, volt_off, volt_diff;
 			charge_state_on =  bd7181x_reg_read(mfd, BD7181X_REG_CHG_STATE);
-			if (charge_state_on > 0) charge_state_on = 1;
 			charge_state_off = bd7181x_reg_read(mfd, BD7181X_CHG_STATE_END);
-			if (charge_state_off > 0) charge_state_off = 1;
 			volt_on = bd7181x_reg_read16(mfd, BD7181X_REG_VM_SA_VBAT_U);
 			volt_off = bd7181x_reg_read16(mfd, BD7181X_VBAT_END);
+			if (charge_state_on < 0 || charge_state_off < 0 ||
+			    volt_on < 0 || volt_off < 0) {
+				printk(KERN_ERR "bd7181x: Failed to read retained battery state (charge_on=%d charge_off=%d volt_on=%d volt_off=%d)\n",
+					charge_state_on, charge_state_off,
+					volt_on, volt_off);
+				if (charge_state_on < 0)
+					return charge_state_on;
+				if (charge_state_off < 0)
+					return charge_state_off;
+				return volt_on < 0 ? volt_on : volt_off;
+			}
+
+			charge_state_on = !!charge_state_on;
+			charge_state_off = !!charge_state_off;
 			volt_diff = abs(volt_on - volt_off);
 
 			if (charge_state_on == charge_state_off) {
 				if (volt_diff > BAT_DET_DIFF_THRESHOLD_SAME_STATE) {
 					printk(KERN_WARNING "bd7181x: significant difference between Vstart&Vstop: %d, assuming new battery\n", volt_diff);
-					mode = BD7181X_INIT_USE_CV_SA;
+					*mode = BD7181X_INIT_USE_CV_SA;
 				}
 			}
 			else {
 				if (volt_diff > BAT_DET_DIFF_THRESHOLD_DIFFERENT_STATE) {
 					printk(KERN_WARNING "bd7181x: difference between start&stop conditions: %d, assuming new battery\n", volt_diff);
-					mode = BD7181X_INIT_USE_CV_SA;
+					*mode = BD7181X_INIT_USE_CV_SA;
 				}
 			}
 		}
 	}
 
-	return mode;
+	return 0;
 }
 
 
@@ -2030,10 +2370,40 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 	struct bd7181x *mfd = pwr->mfd;
 	enum bd7181x_init_mode init_mode;
 	int cc_batcap1_th;
+	int ret;
 
 	bd7181x_init_registers(mfd);
 
-	init_mode = bd7181x_select_init_strategy(mfd);
+	ret = bd7181x_select_init_strategy(mfd, &init_mode);
+	if (ret)
+		return ret;
+
+	pwr->designed_cap = get_battery_capacity();
+	pwr->full_cap = get_battery_capacity();
+
+	if (init_mode == BD7181X_INIT_NONE) {
+		ret = bd7181x_read_coulomb_count_init(pwr,
+						       BD7181X_REG_CC_CCNTD_3,
+						       &pwr->coulomb_cnt);
+		if (ret)
+			return ret;
+
+		ret = bd7181x_validate_retained_coulomb_count(pwr);
+		bd7181x_check_retained_shutdown_soc(pwr);
+		if (ret == -ERANGE) {
+			dev_warn(pwr->dev,
+				 "Retained Coulomb Counter is implausible; reinitializing from current voltage\n");
+			init_mode = BD7181X_INIT_USE_CV_SA;
+		} else if (ret) {
+			return ret;
+		}
+
+		if (init_mode == BD7181X_INIT_NONE)
+			bd7181x_log_coulomb_state(pwr, "retained_count_at_boot",
+						   pwr->coulomb_cnt, false);
+	} else {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+	}
 
 	if (init_mode != BD7181X_INIT_NONE) {
 		switch (init_mode) {
@@ -2075,17 +2445,15 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 		/* Clear Coulomb Counter Reset bit*/
 		bd7181x_clear_bits(mfd, BD7181X_REG_CC_CTRL, CCNTRST); // Release reset
 
-		/* Set default Battery Capacity */
-		pwr->designed_cap = get_battery_capacity();
-		pwr->full_cap = get_battery_capacity();
-
 		/* Set initial Coulomb Counter by HW OCV
 		 * This estimation is and should only be performed once, when a new battery is connected.
 		 * PRE and POST vbat registers are fixed to the same values until the battery is removed
 		 * so they cannot be used to estimate the capacity on a later stage i.e. after charge/re-charge
 		 * because the result would be based on values that do not reflect current battery state
 		 *  */
-		init_coulomb_counter(pwr, init_mode);
+		ret = init_coulomb_counter(pwr, init_mode);
+		if (ret)
+			return ret;
 
 		/* IMPORTANT: IN ORDER TO ENABLE EXT_MOSFET WE HAVE TO DISABLE THE CHARGER FIRST */
 		bd7181x_reg_write(mfd, BD7181X_REG_CHG_SET1, WDT_AUTO_CHG_DISABLE);
@@ -2120,20 +2488,31 @@ static int bd7181x_init_hardware(struct bd7181x_power *pwr)
 
 		pwr->state_machine = STAT_POWER_ON;
 	}
-	else {
-		pwr->designed_cap = get_battery_capacity();
-		pwr->full_cap = get_battery_capacity();	// bd7181x_reg_read16(pwr->mfd, BD7181X_REG_CC_BATCAP_U);
-		pwr->state_machine = STAT_INITIALIZED;	// STAT_INITIALIZED
-	}
 
 	bd7181x_reg_write16(mfd, BD7181X_REG_ALM_VBAT_TH_U, get_lowbatt_voltage_th());
+
+	if (init_mode == BD7181X_INIT_NONE) {
+		/* INIT_NONE preserves the count, but must resume accumulation. */
+		ret = bd7181x_set_bits(mfd, BD7181X_REG_CC_CTRL, CCNTENB);
+		if (ret) {
+			dev_err(pwr->dev,
+				"Failed to enable retained Coulomb Counter: %d\n",
+				ret);
+			return ret;
+		}
+
+		pwr->state_machine = STAT_INITIALIZED;
+	}
 
 	pwr->temp = bd7181x_get_temp(pwr);
 	bd7181x_info(pwr->dev, "Temperature = %d\n", pwr->temp);
 	bd7181x_adjust_coulomb_count(pwr);
 	bd7181x_reset_coulomb_count_at_full_charge(pwr);
-	pwr->coulomb_cnt = bd7181x_reg_read32(mfd, BD7181X_REG_CC_CCNTD_3) & 0x1FFFFFFFUL;
-	bd7181x_calc_soc_org(pwr);
+
+	ret = bd7181x_calc_soc_org(pwr);
+	if (ret)
+		return ret;
+
 	pwr->soc_norm = pwr->soc_org;
 	pwr->soc = pwr->soc_norm;
 	pwr->clamp_soc = pwr->soc;
@@ -2272,7 +2651,7 @@ static void bd_work_callback(struct work_struct *work)
 {
 	struct bd7181x_power *pwr;
 	struct delayed_work *delayed_work;
-	int status, changed = 0;
+	int status, changed = 0, cc_ret;
 	static int cap_counter = 0;
 
 	delayed_work = container_of(work, struct delayed_work, work);
@@ -2304,14 +2683,18 @@ static void bd_work_callback(struct work_struct *work)
 	bd7181x_adjust_coulomb_count(pwr);
 	bd7181x_reset_coulomb_count_at_full_charge(pwr);
 	bd7181x_adjust_coulomb_count_sw(pwr);
-	bd7181x_coulomb_count(pwr);
+	cc_ret = bd7181x_coulomb_count(pwr);
 	bd7181x_update_cycle(pwr);
 	bd7181x_calc_full_cap(pwr);
 	bd7181x_charge_status(pwr); // TWON-19801: set charge_status before soc
-	bd7181x_calc_soc_org(pwr);
-	bd7181x_calc_soc_norm(pwr);
-	bd7181x_calc_soc(pwr);
-	bd7181x_calc_soc_clamp(pwr);
+	if (!cc_ret) {
+		cc_ret = bd7181x_calc_soc_org(pwr);
+		if (!cc_ret) {
+			bd7181x_calc_soc_norm(pwr);
+			bd7181x_calc_soc(pwr);
+			bd7181x_calc_soc_clamp(pwr);
+		}
+	}
 	bd7181x_get_online(pwr);
 
 	if (changed || cap_counter++ > JITTER_REPORT_CAP / JITTER_DEFAULT) {
@@ -3410,7 +3793,12 @@ static int bd7181x_power_probe(struct platform_device *pdev)
 
 	twonav_init_type(bd7181x);
 
-	bd7181x_init_hardware(pwr);
+	ret = bd7181x_init_hardware(pwr);
+	if (ret) {
+		dev_err(&pdev->dev,
+			"failed to initialize battery hardware: %d\n", ret);
+		goto fail_register_bat;
+	}
 
 	//pwr->bat.desc = &bd7181x_desc;
 	//ret = power_supply_register(&pdev->dev, &pwr->bat);
@@ -3468,6 +3856,98 @@ fail_register_bat:
 	return ret;
 }
 
+static void bd7181x_power_shutdown(struct platform_device *pdev)
+{
+	struct bd7181x_power *pwr = platform_get_drvdata(pdev);
+	u32 shutdown_count;
+	bool shutdown_count_valid;
+	int cc_ctrl;
+	int dcin_status;
+	int ret;
+
+	if (!pwr)
+		return;
+
+	cancel_delayed_work_sync(&pwr->bd_work);
+	store_state(pwr);
+	shutdown_count = pwr->coulomb_cnt;
+
+	ret = bd7181x_read_coulomb_count(pwr,
+					 BD7181X_REG_CC_CCNTD_3,
+					 &shutdown_count);
+	shutdown_count_valid = !ret;
+	if (shutdown_count_valid)
+		pwr->coulomb_cnt = shutdown_count;
+	else
+		bd7181x_log_coulomb_state(pwr,
+					   "shutdown_count_read_failed",
+					   shutdown_count, true);
+
+	dcin_status = bd7181x_reg_read(pwr->mfd, BD7181X_REG_DCIN_STAT);
+	if (dcin_status < 0) {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+		dev_err(pwr->dev,
+			"Failed to read DC input during shutdown: %d; leaving Coulomb Counter enabled\n",
+			dcin_status);
+		bd7181x_log_coulomb_state(pwr, "shutdown_dcin_read_failed",
+						   shutdown_count, true);
+		return;
+	}
+
+	if (dcin_status & VBUS_DET) {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+		bd7181x_log_coulomb_state(pwr,
+					   shutdown_count_valid ?
+					   "shutdown_with_charger" :
+					   "shutdown_with_charger_cached_count",
+						   shutdown_count, false);
+		return;
+	}
+
+	ret = bd7181x_clear_bits(pwr->mfd, BD7181X_REG_CC_CTRL,
+				 CCNTENB);
+	if (ret) {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+		dev_err(pwr->dev,
+			"Failed to stop Coulomb Counter during shutdown: %d\n",
+			ret);
+		bd7181x_log_coulomb_state(pwr, "shutdown_stop_failed",
+						   shutdown_count, true);
+		return;
+	}
+
+	cc_ctrl = bd7181x_reg_read(pwr->mfd, BD7181X_REG_CC_CTRL);
+	if (cc_ctrl < 0 || (cc_ctrl & CCNTENB)) {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+		bd7181x_log_coulomb_state(pwr,
+					   cc_ctrl < 0 ?
+					   "shutdown_cc_ctrl_read_failed" :
+					   "shutdown_counter_still_enabled",
+					   shutdown_count, true);
+		return;
+	}
+
+	/* Read again after CCNTENB is clear to record the frozen value. */
+	ret = bd7181x_read_coulomb_count(pwr,
+					 BD7181X_REG_CC_CCNTD_3,
+					 &shutdown_count);
+	shutdown_count_valid = !ret;
+	if (!shutdown_count_valid) {
+		bd7181x_clear_shutdown_soc_marker(pwr);
+		bd7181x_log_coulomb_state(pwr,
+					   "shutdown_frozen_count_read_failed",
+					   pwr->coulomb_cnt, true);
+		return;
+	}
+
+	pwr->coulomb_cnt = shutdown_count;
+	bd7181x_store_shutdown_soc_marker(pwr, shutdown_count);
+
+	bd7181x_log_coulomb_state(pwr,
+				   "shutdown_counter_stopped",
+					   shutdown_count, false);
+}
+
 /** @brief remove pwr device
  * @param pdev platform deivce of bd7181x_power
  * @return 0
@@ -3505,6 +3985,7 @@ static int __exit bd7181x_power_remove(struct platform_device *pdev)
 static struct platform_driver bd7181x_power_driver = {
 	.probe = bd7181x_power_probe,
 	.remove = __exit_p(bd7181x_power_remove),
+	.shutdown = bd7181x_power_shutdown,
 	.driver = {
 		.name = "bd7181x-power",
 		.owner = THIS_MODULE,
