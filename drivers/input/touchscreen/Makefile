@@ -85,6 +85,7 @@ obj-$(CONFIG_TOUCHSCREEN_ZFORCE)	+= zforce_ts.o
 
 obj-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5)      += cyttsp5.o
 cyttsp5-y := cyttsp5_core.o cyttsp5_mt_common.o
+CFLAGS_cyttsp5_mt_common.o += -DDEBUG
 cyttsp5-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_MT_A) += cyttsp5_mta.o
 cyttsp5-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_MT_B) += cyttsp5_mtb.o
 cyttsp5-$(CONFIG_TOUCHSCREEN_CYPRESS_CYTTSP5_BUTTON) += cyttsp5_btn.o
