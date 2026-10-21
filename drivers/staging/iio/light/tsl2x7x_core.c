@@ -22,6 +22,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/ratelimit.h>
 #include <linux/slab.h>
 #include <linux/iio/events.h>
 #include <linux/iio/iio.h>
@@ -178,6 +179,7 @@ struct tsl2X7X_chip {
 	const struct tsl2x7x_chip_info	*chip_info;
 	const struct iio_info *info;
 	s64 event_timestamp;
+	struct ratelimit_state als_invalid_rs;
 	/*
 	 * This structure is intentionally large to accommodate
 	 * updates via sysfs.
@@ -185,6 +187,52 @@ struct tsl2X7X_chip {
 	 */
 	struct tsl2x7x_lux tsl2x7x_device_lux[TSL2X7X_MAX_LUX_TABLE_SIZE];
 };
+
+static bool tsl2x7x_has_proximity(const struct tsl2X7X_chip *chip)
+{
+	switch (chip->id) {
+	case tsl2571:
+	case tsl2572:
+		return false;
+	default:
+		return true;
+	}
+}
+
+static bool tsl2x7x_is_proximity_register(int reg)
+{
+	switch (reg) {
+	case TSL2X7X_PRX_TIME:
+	case TSL2X7X_PRX_MINTHRESHLO:
+	case TSL2X7X_PRX_MINTHRESHHI:
+	case TSL2X7X_PRX_MAXTHRESHLO:
+	case TSL2X7X_PRX_MAXTHRESHHI:
+	case TSL2X7X_PRX_COUNT:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static u8 tsl2x7x_interrupt_mask(const struct tsl2X7X_chip *chip)
+{
+	u8 interrupts = chip->settings.interrupts_en;
+
+	if (!tsl2x7x_has_proximity(chip))
+		interrupts &= ~TSL2X7X_CNTL_PROX_INT_ENBL;
+
+	return interrupts;
+}
+
+static u8 tsl2x7x_control_value(const struct tsl2X7X_chip *chip)
+{
+	u8 value = TSL2X7X_CNTL_PWR_ON | TSL2X7X_CNTL_ADC_ENBL;
+
+	if (tsl2x7x_has_proximity(chip))
+		value |= TSL2X7X_CNTL_PROX_DET_ENBL;
+
+	return value | tsl2x7x_interrupt_mask(chip);
+}
 
 /* Different devices require different coefficents */
 static const struct tsl2x7x_lux tsl2x71_lux_table[TSL2X7X_DEF_LUX_TABLE_SZ] = {
@@ -324,6 +372,22 @@ static int tsl2x7x_write_control_reg(struct tsl2X7X_chip *chip, u8 data)
 	return ret;
 }
 
+static int tsl2x7x_read_control_reg(struct tsl2X7X_chip *chip)
+{
+	int ret;
+
+	ret = i2c_smbus_read_byte_data(chip->client,
+				       TSL2X7X_CMD_REG | TSL2X7X_CNTRL);
+	if (ret < 0)
+		dev_err(&chip->client->dev,
+			"%s: failed to read ENABLE register: %d\n",
+			__func__, ret);
+
+	return ret;
+}
+
+static int tsl2x7x_recover(struct iio_dev *indio_dev);
+
 /**
  * tsl2x7x_get_lux() - Reads and calculates current lux value.
  * @indio_dev:	pointer to IIO device
@@ -348,7 +412,7 @@ static int tsl2x7x_get_lux(struct iio_dev *indio_dev)
 	u8 buf[4];
 	struct tsl2x7x_lux *p;
 	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
-	int i, ret;
+	int control, i, ret;
 	u32 ch0lux = 0;
 	u32 ch1lux = 0;
 
@@ -368,9 +432,29 @@ static int tsl2x7x_get_lux(struct iio_dev *indio_dev)
 
 	/* is data new & valid */
 	if (!(ret & TSL2X7X_STA_ADC_VALID)) {
-		dev_err(&chip->client->dev,
-			"%s: data not valid yet\n", __func__);
-		ret = chip->als_cur_info.lux; /* return LAST VALUE */
+		control = tsl2x7x_read_control_reg(chip);
+		if (control < 0) {
+			ret = control;
+			goto out_unlock;
+		}
+
+		if (__ratelimit(&chip->als_invalid_rs))
+			dev_warn(&chip->client->dev,
+				 "%s: data not valid yet (status=0x%02x, enable=0x%02x)\n",
+				 __func__, ret, control);
+
+		if ((control & TSL2X7X_CNTL_ALSPON_ENBL) !=
+				TSL2X7X_CNTL_ALSPON_ENBL) {
+			ret = tsl2x7x_recover(indio_dev);
+			if (ret < 0) {
+				dev_err(&chip->client->dev,
+					"%s: failed to recover disabled ALS: %d\n",
+					__func__, ret);
+				goto out_unlock;
+			}
+		}
+
+		ret = -EAGAIN;
 		goto out_unlock;
 	}
 
@@ -610,11 +694,13 @@ static int tsl2x7x_als_calibrate(struct iio_dev *indio_dev)
 static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 {
 	int i;
+	int control;
 	int ret = 0;
-	u8 *dev_reg;
 	int als_count;
 	int als_time;
 	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
+	bool has_proximity = tsl2x7x_has_proximity(chip);
+	u8 interrupts;
 	u8 reg_val = 0;
 
 	/* Non calculated parameters */
@@ -649,6 +735,7 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 		dev_info(&chip->client->dev, "device is already enabled\n");
 		return -EINVAL;
 	}
+	chip->tsl2x7x_chip_status = TSL2X7X_CHIP_SUSPENDED;
 
 	/* determine als integration register */
 	als_count = (chip->settings.als_time * 100 + 135) / 270;
@@ -661,10 +748,13 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 
 	/* Set the gain based on tsl2x7x_settings struct */
 	chip->tsl2x7x_config[TSL2X7X_GAIN] =
-		(chip->settings.als_gain & 0xFF) |
-		((chip->settings.prox_gain & 0xFF) << 2) |
-		(chip->settings.prox_diode << 4) |
-		(chip->settings.prox_power << 6);
+		chip->settings.als_gain & 0xFF;
+	if (has_proximity) {
+		chip->tsl2x7x_config[TSL2X7X_GAIN] |=
+			((chip->settings.prox_gain & 0xFF) << 2) |
+			(chip->settings.prox_diode << 4) |
+			(chip->settings.prox_power << 6);
+	}
 
 	/* set chip struct saturation */
 	if ((256-als_count) > 63) {
@@ -689,11 +779,13 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 	 * Use the following shadow copy for our delay before enabling ADC.
 	 * Write all the registers.
 	 */
-	for (i = 0, dev_reg = chip->tsl2x7x_config;
-			i < TSL2X7X_MAX_CONFIG_REG; i++) {
+	for (i = TSL2X7X_ALS_TIME; i < TSL2X7X_MAX_CONFIG_REG; i++) {
+		if (!has_proximity && tsl2x7x_is_proximity_register(i))
+			continue;
+
 		ret = i2c_smbus_write_byte_data(chip->client,
 						TSL2X7X_CMD_REG + i,
-						*dev_reg++);
+						chip->tsl2x7x_config[i]);
 		if (ret < 0) {
 			dev_err(&chip->client->dev,
 				"failed on write to reg %d.\n", i);
@@ -708,33 +800,46 @@ static int tsl2x7x_chip_on(struct iio_dev *indio_dev)
 	 * NOW enable the ADC
 	 * initialize the desired mode of operation
 	 */
-	ret = tsl2x7x_write_control_reg(chip,
-					TSL2X7X_CNTL_PWR_ON |
-					TSL2X7X_CNTL_ADC_ENBL |
-					TSL2X7X_CNTL_PROX_DET_ENBL);
+	reg_val = tsl2x7x_control_value(chip);
+	ret = tsl2x7x_write_control_reg(chip, reg_val);
 	if (ret < 0)
 		return ret;
 
-	chip->tsl2x7x_chip_status = TSL2X7X_CHIP_WORKING;
+	control = tsl2x7x_read_control_reg(chip);
+	if (control < 0)
+		return control;
+	if ((control & reg_val) != reg_val) {
+		dev_err(&chip->client->dev,
+			"failed to enable device: wrote 0x%02x, read 0x%02x\n",
+			reg_val, control);
+		return -EIO;
+	}
 
-	if (chip->settings.interrupts_en != 0) {
+	interrupts = tsl2x7x_interrupt_mask(chip);
+	if (interrupts != 0) {
 		dev_info(&chip->client->dev, "Setting Up Interrupt(s)\n");
-
-		reg_val = TSL2X7X_CNTL_PWR_ON | TSL2X7X_CNTL_ADC_ENBL;
-		if (chip->settings.interrupts_en == 0x20 ||
-		    chip->settings.interrupts_en == 0x30)
-			reg_val |= TSL2X7X_CNTL_PROX_DET_ENBL;
-
-		reg_val |= chip->settings.interrupts_en;
-		ret = tsl2x7x_write_control_reg(chip, reg_val);
-		if (ret < 0)
-			return ret;
 
 		ret = tsl2x7x_clear_interrupts(chip,
 					       TSL2X7X_CMD_PROXALS_INT_CLR);
 		if (ret < 0)
 			return ret;
 	}
+
+	chip->tsl2x7x_chip_status = TSL2X7X_CHIP_WORKING;
+
+	return 0;
+}
+
+/* Called by the ALS path with als_mutex held. */
+static int tsl2x7x_recover(struct iio_dev *indio_dev)
+{
+	struct tsl2X7X_chip *chip = iio_priv(indio_dev);
+	int ret;
+
+	mutex_lock(&chip->prox_mutex);
+	chip->tsl2x7x_chip_status = TSL2X7X_CHIP_SUSPENDED;
+	ret = tsl2x7x_chip_on(indio_dev);
+	mutex_unlock(&chip->prox_mutex);
 
 	return ret;
 }
@@ -1260,8 +1365,10 @@ static int tsl2x7x_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_PROCESSED:
 		switch (chan->type) {
 		case IIO_LIGHT:
-			tsl2x7x_get_lux(indio_dev);
-			*val = chip->als_cur_info.lux;
+			ret = tsl2x7x_get_lux(indio_dev);
+			if (ret < 0)
+				return ret;
+			*val = ret;
 			ret = IIO_VAL_INT;
 			break;
 		default:
@@ -1271,7 +1378,9 @@ static int tsl2x7x_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_RAW:
 		switch (chan->type) {
 		case IIO_INTENSITY:
-			tsl2x7x_get_lux(indio_dev);
+			ret = tsl2x7x_get_lux(indio_dev);
+			if (ret < 0)
+				return ret;
 			if (chan->channel == 0)
 				*val = chip->als_cur_info.als_ch0;
 			else
@@ -1730,6 +1839,7 @@ static int tsl2x7x_probe(struct i2c_client *clientp,
 
 	chip = iio_priv(indio_dev);
 	chip->client = clientp;
+	ratelimit_state_init(&chip->als_invalid_rs, 60 * HZ, 1);
 	i2c_set_clientdata(clientp, indio_dev);
 
 	ret = i2c_smbus_read_byte_data(chip->client,
@@ -1790,7 +1900,12 @@ static int tsl2x7x_probe(struct i2c_client *clientp,
 	/* Load up the defaults */
 	tsl2x7x_defaults(chip);
 	/* Make sure the chip is on */
-	tsl2x7x_chip_on(indio_dev);
+	ret = tsl2x7x_chip_on(indio_dev);
+	if (ret < 0) {
+		dev_err(&clientp->dev,
+			"%s: failed to initialize sensor: %d\n", __func__, ret);
+		return ret;
+	}
 
 	ret = iio_device_register(indio_dev);
 	if (ret) {
