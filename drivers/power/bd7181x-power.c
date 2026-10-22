@@ -380,7 +380,9 @@ static const struct tn_power_values_st TN_POWER_TERRA = {
 	.rsense_mohm_x10 = BD7181X_RSENSE_6P9_MOHM_X10,
 	.term_current_ma = 70, // 0.02C=53mA (teórico), pero forzamos 70mA para que IFST_TERM sea 0x05 (~72mA) como en kernel 1.1.69
 	.fast_charge_current_ma = 1000, // Rsense 6.9mOhm: 0x07 ~= 1014mA
-	.capacity = 2650,
+	.capacity = 2333, // TWON-19080: Valor original 2650
+					  //  lo ajustamos a este valor de compromiso, ya que el envejecimiento de la batería
+					  //  provoca apagados a un 20% (tenemos un fuelgauge demasiado simple)
 	.low_voltage_th = 0x0C8, // 3200 / 16mV (step) = 200 -> 0x00C8
 	.fast_charge_termination_voltage = 0x62, // 0.016V -> 4.2-0.016=4.184V
 	// Because Murata chip cannot enter low power modes and is connected dirrectly to the battery, when 100% is reached
